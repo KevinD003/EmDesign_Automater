@@ -1,0 +1,210 @@
+:root {
+  --bg: #0f1115;
+  --panel: #171a21;
+  --panel-2: #1d212b;
+  --line: #2a2f3a;
+  --text: #e6e8ee;
+  --muted: #8b93a7;
+  --accent: #7c5cff;
+  --accent-2: #1e90ff;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.45 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+code {
+  background: var(--panel-2);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+/* ── App shell grid ─────────────────────────────────────────── */
+.app-shell {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  height: 100%;
+}
+
+.app-body {
+  display: grid;
+  grid-template-columns: 240px 1fr 280px;
+  min-height: 0;
+}
+
+/* ── Toolbar ────────────────────────────────────────────────── */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 14px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+}
+
+.brand {
+  font-weight: 700;
+  letter-spacing: 0.3px;
+}
+
+.tools {
+  display: flex;
+  gap: 4px;
+  flex: 1;
+}
+
+.toolbar button,
+.tool-btn {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 13px;
+  cursor: not-allowed;
+  opacity: 0.85;
+}
+
+.toolbar-actions {
+  display: flex;
+  gap: 6px;
+}
+
+/* ── Panels ─────────────────────────────────────────────────── */
+.panel {
+  background: var(--panel);
+  border-left: 1px solid var(--line);
+  padding: 12px 14px;
+  overflow: auto;
+}
+
+.panel-left {
+  border-left: none;
+  border-right: 1px solid var(--line);
+}
+
+.panel-right {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  min-height: 0;
+}
+
+.panel-title {
+  margin: 0 0 10px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--muted);
+}
+
+.object-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.object-list button {
+  width: 100%;
+  text-align: left;
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 8px;
+  cursor: pointer;
+}
+
+.object-list .seq {
+  display: inline-block;
+  min-width: 18px;
+  margin-right: 6px;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Canvas ─────────────────────────────────────────────────── */
+.canvas-area {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at 50% 40%, #14171f, #0c0e12);
+  min-height: 0;
+  overflow: auto;
+}
+
+.canvas-wrap {
+  position: relative;
+}
+
+.stitch-stage {
+  background: #0a0c10;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+}
+
+.canvas-overlay {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  pointer-events: none;
+}
+
+.canvas-title {
+  margin: 0 0 4px;
+  font-weight: 600;
+}
+
+/* ── Stitch player ──────────────────────────────────────────── */
+.stitch-player {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  background: var(--panel);
+  border-top: 1px solid var(--line);
+}
+
+.stitch-player button {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 5px 12px;
+  cursor: not-allowed;
+  opacity: 0.85;
+}
+
+.stitch-player input[type='range'] {
+  flex: 1;
+}
+
+/* ── TrueView (separate view, not in default shell) ─────────── */
+.trueview-wrap {
+  width: 100%;
+  height: 100%;
+  min-height: 320px;
+}

@@ -1,0 +1,12 @@
+{
+  "brand": "Madeira",
+  "productLine": "Polyneon 40wt",
+  "note": "Tiny sample set (spec §4.4/§8). Replace with full 200-color catalogue + Lab values.",
+  "threads": [
+    { "catalogNumber": "1761", "colorName": "Flame", "hex": "#F4511E", "weight": 40, "fiberType": "polyester" },
+    { "catalogNumber": "1040", "colorName": "Black", "hex": "#0A0A0A", "weight": 40, "fiberType": "polyester" },
+    { "catalogNumber": "1801", "colorName": "White", "hex": "#FFFFFF", "weight": 40, "fiberType": "polyester" },
+    { "catalogNumber": "1733", "colorName": "Royal Blue", "hex": "#1E40AF", "weight": 40, "fiberType": "polyester" },
+    { "catalogNumber": "1751", "colorName": "Kelly Green", "hex": "#15803D", "weight": 40, "fiberType": "polyester" }
+  ]
+}

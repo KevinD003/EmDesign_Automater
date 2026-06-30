@@ -1,0 +1,12 @@
+# Feature libraries — needed to implement the stub endpoints (spec §4.x).
+# Lazy-imported inside services, so they are NOT required just to boot the app.
+# NOTE: on very new Python (3.14) some of these may lack prebuilt wheels yet; pin or
+# use Python 3.11–3.12 if a build fails.
+
+pyembroidery>=1.5        # read/write 45+ embroidery formats (files/convert/export)
+opencv-python-headless>=4.10  # auto-digitizing image pipeline
+pillow>=10.4             # image I/O
+reportlab>=4.2           # worksheet PDF
+numpy>=1.26
+scipy>=1.11              # k-d tree thread color match
+supabase>=2.9            # auth + persistence + storage

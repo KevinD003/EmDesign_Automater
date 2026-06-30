@@ -1,0 +1,24 @@
+{
+  "name": "stitchiq",
+  "version": "0.1.0",
+  "private": true,
+  "description": "STITCHIQ — AI embroidery design platform (monorepo scaffold). TypeScript frontend + Python backend.",
+  "workspaces": [
+    "apps/frontend"
+  ],
+  "scripts": {
+    "dev": "concurrently -n frontend,backend -c blue,green \"npm run dev:frontend\" \"npm run dev:backend\"",
+    "dev:frontend": "npm run dev --workspace apps/frontend",
+    "dev:backend": "cd apps/backend && . .venv/bin/activate && uvicorn app.main:app --reload --port 8000",
+    "typecheck": "npm run typecheck --workspace apps/frontend",
+    "lint": "npm run lint --workspace apps/frontend",
+    "build": "npm run build --workspace apps/frontend",
+    "backend:setup": "cd apps/backend && python3 -m venv .venv && . .venv/bin/activate && pip install -r requirements.txt"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

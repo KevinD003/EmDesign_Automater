@@ -1,0 +1,9 @@
+# Core — required to BOOT the scaffold (FastAPI app + typed models).
+fastapi>=0.115
+uvicorn[standard]>=0.32
+pydantic>=2.9
+pydantic-settings>=2.5
+python-multipart>=0.0.12
+
+# Feature libraries are in requirements-features.txt (installed when implementing
+# the stub endpoints). They are lazy-imported, so the app boots without them.
