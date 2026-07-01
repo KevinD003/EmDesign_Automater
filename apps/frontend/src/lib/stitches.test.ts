@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { buildRuns, computeBounds } from './stitches';
-import type { ColorStop, Stitch, StitchCommand } from '../types/design';
+import { buildRuns, computeBounds, reorderColorStop } from './stitches';
+import type { ColorStop, Design, Stitch, StitchCommand } from '../types/design';
 
 const S = (x: number, y: number, command: StitchCommand = 'STITCH'): Stitch => ({ x, y, command });
 
@@ -47,5 +47,50 @@ describe('buildRuns', () => {
   it('falls back to a palette color when a stop has no hex', () => {
     const runs = buildRuns([S(0, 0), S(1, 1)], [], null);
     expect(runs[0].color).toMatch(/^#[0-9a-f]{6}$/i);
+  });
+});
+
+const design3 = (): Design => ({
+  name: 'd',
+  widthMm: 6,
+  heightMm: 6,
+  stitchCount: 6,
+  version: 1,
+  status: 'digitized',
+  objects: [],
+  colorStops: [
+    { stopNumber: 1, threadBrand: 'M', catalogNumber: 'a', threadName: 'Red', hex: '#ff0000', stitchCount: 2 },
+    { stopNumber: 2, threadBrand: 'M', catalogNumber: 'b', threadName: 'Green', hex: '#00ff00', stitchCount: 2 },
+    { stopNumber: 3, threadBrand: 'M', catalogNumber: 'c', threadName: 'Blue', hex: '#0000ff', stitchCount: 2 },
+  ],
+  stitches: [
+    S(0, 0), S(1, 1), S(1, 1, 'COLOR_CHANGE'),
+    S(2, 2), S(3, 3), S(3, 3, 'COLOR_CHANGE'),
+    S(4, 4), S(5, 5), S(5, 5, 'END'),
+  ],
+});
+
+describe('reorderColorStop', () => {
+  it('moves a stop up: reorders blocks, renumbers, keeps END last', () => {
+    const r = reorderColorStop(design3(), 2, 'up');
+    expect(r.colorStops.map((c) => c.threadName)).toEqual(['Green', 'Red', 'Blue']);
+    expect(r.colorStops.map((c) => c.stopNumber)).toEqual([1, 2, 3]);
+    expect(r.stitches[0]).toEqual({ x: 2, y: 2, command: 'STITCH' }); // green block now first
+    expect(r.stitches[r.stitches.length - 1].command).toBe('END');
+    expect(r.stitches.filter((s) => s.command === 'COLOR_CHANGE')).toHaveLength(2);
+  });
+
+  it('moving a stop up then that same stop back down restores the order', () => {
+    // move Green (stop 2) up → it becomes stop 1; move stop 1 back down → original order
+    const r = reorderColorStop(reorderColorStop(design3(), 2, 'up'), 1, 'down');
+    expect(r.colorStops.map((c) => c.threadName)).toEqual(['Red', 'Green', 'Blue']);
+  });
+
+  it('no-ops at boundaries and on stitch/stop mismatch (same reference)', () => {
+    const d = design3();
+    expect(reorderColorStop(d, 1, 'up')).toBe(d);
+    expect(reorderColorStop(d, 3, 'down')).toBe(d);
+    expect(reorderColorStop({ ...d, stitches: [S(0, 0), S(1, 1)] }, 2, 'up').colorStops).toHaveLength(3);
+    expect(reorderColorStop({ ...d, stitches: [S(0, 0), S(1, 1)] }, 2, 'up').stitches).toHaveLength(2);
   });
 });

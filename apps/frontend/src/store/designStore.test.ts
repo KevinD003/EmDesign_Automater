@@ -60,4 +60,34 @@ describe('designStore', () => {
     expect(useDesignStore.getState().future).toEqual([]);
     expect(useDesignStore.getState().design?.colorStops[0].hex).toBe('#0000ff');
   });
+
+  it('reorderStop moves a stop, records history, and selection follows', () => {
+    const d: Design = {
+      ...makeDesign(),
+      colorStops: [
+        { stopNumber: 1, threadBrand: 'M', catalogNumber: 'a', threadName: 'Red', hex: '#ff0000', stitchCount: 0 },
+        { stopNumber: 2, threadBrand: 'M', catalogNumber: 'b', threadName: 'Blue', hex: '#0000ff', stitchCount: 0 },
+      ],
+      stitches: [
+        { x: 0, y: 0, command: 'STITCH' },
+        { x: 1, y: 1, command: 'STITCH' },
+        { x: 1, y: 1, command: 'COLOR_CHANGE' },
+        { x: 2, y: 2, command: 'STITCH' },
+        { x: 3, y: 3, command: 'END' },
+      ],
+    };
+    useDesignStore.getState().setDesign(d);
+    useDesignStore.getState().selectStop(2);
+    useDesignStore.getState().reorderStop(2, 'up');
+    const s = useDesignStore.getState();
+    expect(s.design?.colorStops.map((c) => c.threadName)).toEqual(['Blue', 'Red']);
+    expect(s.selectedStop).toBe(1);
+    expect(s.past).toHaveLength(1);
+  });
+
+  it('reorderStop is a no-op at the boundary (no history)', () => {
+    useDesignStore.getState().setDesign(makeDesign());
+    useDesignStore.getState().reorderStop(1, 'up');
+    expect(useDesignStore.getState().past).toEqual([]);
+  });
 });

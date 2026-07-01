@@ -302,6 +302,26 @@ code {
   font-size: 12px;
 }
 
+.move-btns {
+  display: flex;
+  gap: 4px;
+}
+
+.move-btns button {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 3px 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.move-btns button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .swatch {
   width: 14px;
   height: 14px;

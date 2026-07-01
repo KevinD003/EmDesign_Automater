@@ -1,4 +1,4 @@
-import type { ColorStop, Stitch } from '../types/design';
+import type { ColorStop, Design, Stitch } from '../types/design';
 
 /** Fallback palette for stops without a hex (e.g. missing color data). */
 export const FALLBACK_COLORS = ['#e11d48', '#2563eb', '#16a34a', '#d97706', '#7c3aed', '#0891b2', '#db2777', '#65a30d'];
@@ -61,4 +61,63 @@ export function buildRuns(stitches: Stitch[], colorStops: ColorStop[], limit: nu
   }
   if (cur.length >= 4) out.push({ points: cur, color: colorForStop(colorStops, stopIdx), stop: stopIdx + 1 });
   return out;
+}
+
+/** Split a stitch stream into blocks separated by COLOR_CHANGE (the marker is dropped). */
+function partitionByColorChange(stitches: Stitch[]): Stitch[][] {
+  const blocks: Stitch[][] = [];
+  let cur: Stitch[] = [];
+  for (const s of stitches) {
+    if (s.command === 'COLOR_CHANGE') {
+      blocks.push(cur);
+      cur = [];
+    } else {
+      cur.push(s);
+    }
+  }
+  blocks.push(cur);
+  return blocks;
+}
+
+/** Rejoin blocks with a COLOR_CHANGE between them (positioned at the previous stitch). */
+function joinBlocks(blocks: Stitch[][]): Stitch[] {
+  const out: Stitch[] = [];
+  blocks.forEach((block, i) => {
+    if (i > 0) {
+      const prev = out[out.length - 1];
+      out.push({ x: prev?.x ?? 0, y: prev?.y ?? 0, command: 'COLOR_CHANGE' });
+    }
+    out.push(...block);
+  });
+  return out;
+}
+
+/**
+ * Move a color stop one position up/down: re-sequences the underlying stitch blocks,
+ * renumbers stops, and keeps a trailing END last. Returns the SAME design reference on
+ * a no-op (boundary or a stitch/stop structure mismatch). Pure — unit-tested.
+ */
+export function reorderColorStop(design: Design, stopNumber: number, direction: 'up' | 'down'): Design {
+  const idx = design.colorStops.findIndex((cs) => cs.stopNumber === stopNumber);
+  if (idx < 0) return design;
+  const target = direction === 'up' ? idx - 1 : idx + 1;
+  if (target < 0 || target >= design.colorStops.length) return design;
+
+  // Keep a trailing END at the very end after reordering.
+  const raw = design.stitches.slice();
+  const endCmd = raw.length > 0 && raw[raw.length - 1].command === 'END' ? raw.pop() : undefined;
+
+  const blocks = partitionByColorChange(raw);
+  if (blocks.length !== design.colorStops.length) return design; // structure mismatch → safe no-op
+
+  const newBlocks = blocks.slice();
+  [newBlocks[idx], newBlocks[target]] = [newBlocks[target], newBlocks[idx]];
+  const newStitches = joinBlocks(newBlocks);
+  if (endCmd) newStitches.push(endCmd);
+
+  const swapped = design.colorStops.slice();
+  [swapped[idx], swapped[target]] = [swapped[target], swapped[idx]];
+  const newStops = swapped.map((cs, i) => ({ ...cs, stopNumber: i + 1 }));
+
+  return { ...design, stitches: newStitches, colorStops: newStops };
 }

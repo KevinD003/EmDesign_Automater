@@ -8,14 +8,18 @@ function normalizeHex(h: string): string {
 
 /**
  * Properties panel (spec §3). For a parsed stitch file the editable unit is the color
- * stop (recolor / rename). Object-level properties (density, underlay, angle) arrive with
- * the vector object model later in Phase 2.
+ * stop: recolor, rename, and reorder (which re-sequences the stitch blocks). Object-level
+ * properties (density, underlay, angle) arrive with the vector object model in Phase 3.
  */
 export function PropertiesPanel() {
   const design = useDesignStore((s) => s.design);
   const selectedStop = useDesignStore((s) => s.selectedStop);
   const updateColorStop = useDesignStore((s) => s.updateColorStop);
-  const stop = design?.colorStops.find((cs) => cs.stopNumber === selectedStop) ?? null;
+  const reorderStop = useDesignStore((s) => s.reorderStop);
+
+  const stops = design?.colorStops ?? [];
+  const idx = stops.findIndex((cs) => cs.stopNumber === selectedStop);
+  const stop = idx >= 0 ? stops[idx] : null;
 
   const onColor = (e: ChangeEvent<HTMLInputElement>) => {
     if (stop) updateColorStop(stop.stopNumber, { hex: e.target.value });
@@ -38,6 +42,21 @@ export function PropertiesPanel() {
             <input type="text" value={stop.threadName} onChange={onName} />
           </label>
           <div className="prop-row">
+            <span>Order</span>
+            <span className="move-btns">
+              <button type="button" onClick={() => reorderStop(stop.stopNumber, 'up')} disabled={idx <= 0}>
+                ▲ Up
+              </button>
+              <button
+                type="button"
+                onClick={() => reorderStop(stop.stopNumber, 'down')}
+                disabled={idx < 0 || idx >= stops.length - 1}
+              >
+                ▼ Down
+              </button>
+            </span>
+          </div>
+          <div className="prop-row">
             <span>Catalog</span>
             <span className="muted">{stop.catalogNumber || '—'}</span>
           </div>
@@ -46,11 +65,11 @@ export function PropertiesPanel() {
             <span className="muted">{stop.stitchCount.toLocaleString()}</span>
           </div>
           <p className="muted small">
-            Density, underlay &amp; angle need a vector object model — coming later in Phase 2.
+            Density, underlay &amp; angle need a vector object model — coming with the digitizer in Phase 3.
           </p>
         </div>
       ) : (
-        <p className="muted">Select a color stop (left panel) to recolor or rename it.</p>
+        <p className="muted">Select a color stop (left panel) to recolor, rename, or reorder it.</p>
       )}
     </section>
   );

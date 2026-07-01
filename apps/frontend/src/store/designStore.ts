@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { ColorStop, Design } from '../types/design';
+import { reorderColorStop } from '../lib/stitches';
 
 const HISTORY_LIMIT = 50;
 
@@ -16,6 +17,7 @@ interface DesignState {
   selectStop: (stopNumber: number | null) => void;
   setPlayHead: (n: number | null) => void;
   updateColorStop: (stopNumber: number, patch: Partial<ColorStop>) => void;
+  reorderStop: (stopNumber: number, direction: 'up' | 'down') => void;
   undo: () => void;
   redo: () => void;
 }
@@ -40,6 +42,19 @@ export const useDesignStore = create<DesignState>((set) => ({
         ),
       };
       return { design: next, past: [...state.past, state.design].slice(-HISTORY_LIMIT), future: [] };
+    }),
+  reorderStop: (stopNumber, direction) =>
+    set((state) => {
+      if (!state.design) return {};
+      const next = reorderColorStop(state.design, stopNumber, direction);
+      if (next === state.design) return {}; // boundary / structure mismatch → no-op
+      const movedTo = direction === 'up' ? stopNumber - 1 : stopNumber + 1;
+      return {
+        design: next,
+        selectedStop: state.selectedStop === stopNumber ? movedTo : state.selectedStop,
+        past: [...state.past, state.design].slice(-HISTORY_LIMIT),
+        future: [],
+      };
     }),
   undo: () =>
     set((state) => {
