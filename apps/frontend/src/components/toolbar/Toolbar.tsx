@@ -15,10 +15,14 @@ function download(blob: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-/** Top toolbar. Open / Export / Worksheet are live; digitizing tools land in later phases. */
+/** Top toolbar. Open / Export / Worksheet / Undo / Redo are live; digitizing tools land in later phases. */
 export function Toolbar() {
   const design = useDesignStore((s) => s.design);
   const setDesign = useDesignStore((s) => s.setDesign);
+  const undo = useDesignStore((s) => s.undo);
+  const redo = useDesignStore((s) => s.redo);
+  const canUndo = useDesignStore((s) => s.past.length > 0);
+  const canRedo = useDesignStore((s) => s.future.length > 0);
   const fileRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -49,6 +53,14 @@ export function Toolbar() {
   return (
     <header className="toolbar">
       <span className="brand">🧵 STITCHIQ</span>
+      <div className="undo-redo">
+        <button type="button" onClick={undo} disabled={!canUndo} title="Undo (Ctrl+Z)">
+          ↶
+        </button>
+        <button type="button" onClick={redo} disabled={!canRedo} title="Redo (Ctrl+Shift+Z)">
+          ↷
+        </button>
+      </div>
       <nav className="tools">
         {TOOLS.map((tool) => (
           <button key={tool} type="button" className="tool-btn" disabled title="Coming in a later phase">

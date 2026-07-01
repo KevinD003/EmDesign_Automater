@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Stage, Layer, Line } from 'react-konva';
+import { Stage, Layer, Group, Line } from 'react-konva';
 import type { KonvaEventObject } from 'konva/lib/Node';
 import type { ColorStop, Stitch } from '../../types/design';
+import { buildRuns, computeBounds } from '../../lib/stitches';
 
 interface StitchCanvasProps {
   stitches?: Stitch[];
@@ -10,28 +11,23 @@ interface StitchCanvasProps {
   limit?: number | null;
   /** Highlight this color stop (dim the others), or null for no emphasis. */
   selectedStop?: number | null;
+  /** Called when a run is clicked (its stop) or empty canvas is clicked (null). */
+  onSelectStop?: (stop: number | null) => void;
   widthPx?: number;
   heightPx?: number;
 }
 
-interface Run {
-  points: number[];
-  color: string;
-  stop: number; // 1-based color stop this run belongs to
-}
-
-const FALLBACK_COLORS = ['#e11d48', '#2563eb', '#16a34a', '#d97706', '#7c3aed', '#0891b2', '#db2777', '#65a30d'];
-
 /**
- * Canvas design editor (spec §3). Renders the raw stitch list as color-grouped
- * polylines: consecutive STITCH commands form a line; JUMP/TRIM/COLOR_CHANGE/END
- * break it. Fits the design to view; scroll to zoom, drag to pan; dims non-selected stops.
+ * Canvas design editor (spec §3). Renders color-grouped polylines (via the pure
+ * `buildRuns`) in a fit-to-view Group; the Stage handles zoom (wheel) and pan (drag).
+ * Click a run to select its color stop; click empty canvas to deselect.
  */
 export function StitchCanvas({
   stitches = [],
   colorStops = [],
   limit = null,
   selectedStop = null,
+  onSelectStop,
   widthPx = 900,
   heightPx = 560,
 }: StitchCanvasProps) {
@@ -43,49 +39,18 @@ export function StitchCanvas({
     setPos({ x: 0, y: 0 });
   }, [stitches]);
 
+  const bounds = useMemo(() => computeBounds(stitches), [stitches]);
   const fit = useMemo(() => {
-    let minX = Infinity;
-    let minY = Infinity;
-    let maxX = -Infinity;
-    let maxY = -Infinity;
-    for (const s of stitches) {
-      if (s.x < minX) minX = s.x;
-      if (s.y < minY) minY = s.y;
-      if (s.x > maxX) maxX = s.x;
-      if (s.y > maxY) maxY = s.y;
-    }
-    if (!Number.isFinite(minX)) return { scale: 1, offsetX: 0, offsetY: 0, w: 0, h: 0 };
-    const w = Math.max(maxX - minX, 1);
-    const h = Math.max(maxY - minY, 1);
+    const w = Math.max(bounds.maxX - bounds.minX, 1);
+    const h = Math.max(bounds.maxY - bounds.minY, 1);
     const s = Math.min(widthPx / w, heightPx / h) * 0.9;
     return {
       scale: s,
-      offsetX: (widthPx - w * s) / 2 - minX * s,
-      offsetY: (heightPx - h * s) / 2 - minY * s,
-      w: maxX - minX,
-      h: maxY - minY,
+      offsetX: (widthPx - w * s) / 2 - bounds.minX * s,
+      offsetY: (heightPx - h * s) / 2 - bounds.minY * s,
     };
-  }, [stitches, widthPx, heightPx]);
-
-  const runs = useMemo(() => {
-    const out: Run[] = [];
-    const n = limit == null ? stitches.length : Math.min(limit, stitches.length);
-    let cur: number[] = [];
-    let stopIdx = 0;
-    const colorAt = (i: number) => colorStops[i]?.hex ?? FALLBACK_COLORS[i % FALLBACK_COLORS.length];
-    for (let i = 0; i < n; i += 1) {
-      const s = stitches[i];
-      if (s.command === 'STITCH') {
-        cur.push(fit.offsetX + s.x * fit.scale, fit.offsetY + s.y * fit.scale);
-      } else {
-        if (cur.length >= 4) out.push({ points: cur, color: colorAt(stopIdx), stop: stopIdx + 1 });
-        cur = [];
-        if (s.command === 'COLOR_CHANGE') stopIdx += 1;
-      }
-    }
-    if (cur.length >= 4) out.push({ points: cur, color: colorAt(stopIdx), stop: stopIdx + 1 });
-    return out;
-  }, [stitches, colorStops, fit, limit]);
+  }, [bounds, widthPx, heightPx]);
+  const runs = useMemo(() => buildRuns(stitches, colorStops, limit), [stitches, colorStops, limit]);
 
   if (stitches.length === 0) {
     return (
@@ -105,9 +70,11 @@ export function StitchCanvas({
     const factor = e.evt.deltaY > 0 ? 0.9 : 1.1;
     setScale((s) => Math.max(0.2, Math.min(10, s * factor)));
   };
-  const onDragEnd = (e: KonvaEventObject<DragEvent>) => {
-    setPos({ x: e.target.x(), y: e.target.y() });
+  const onDragEnd = (e: KonvaEventObject<DragEvent>) => setPos({ x: e.target.x(), y: e.target.y() });
+  const onStageClick = (e: KonvaEventObject<MouseEvent>) => {
+    if (e.target === e.target.getStage()) onSelectStop?.(null);
   };
+  const pxPerMm = fit.scale * scale; // effective px per design-mm, for constant stroke width
 
   return (
     <div className="canvas-wrap">
@@ -122,26 +89,34 @@ export function StitchCanvas({
         y={pos.y}
         onWheel={onWheel}
         onDragEnd={onDragEnd}
+        onClick={onStageClick}
+        onTap={onStageClick}
       >
         <Layer>
-          {runs.map((r, i) => {
-            const active = selectedStop == null || r.stop === selectedStop;
-            return (
-              <Line
-                key={i}
-                points={r.points}
-                stroke={r.color}
-                strokeWidth={(r.stop === selectedStop ? 1.8 : 1) / scale}
-                opacity={active ? 1 : 0.12}
-                lineCap="round"
-                lineJoin="round"
-              />
-            );
-          })}
+          <Group scaleX={fit.scale} scaleY={fit.scale} x={fit.offsetX} y={fit.offsetY}>
+            {runs.map((r, i) => {
+              const active = selectedStop == null || r.stop === selectedStop;
+              return (
+                <Line
+                  key={i}
+                  points={r.points}
+                  stroke={r.color}
+                  strokeWidth={(r.stop === selectedStop ? 2 : 1.2) / pxPerMm}
+                  opacity={active ? 1 : 0.12}
+                  lineCap="round"
+                  lineJoin="round"
+                  hitStrokeWidth={6 / pxPerMm}
+                  onClick={() => onSelectStop?.(r.stop)}
+                  onTap={() => onSelectStop?.(r.stop)}
+                />
+              );
+            })}
+          </Group>
         </Layer>
       </Stage>
       <div className="canvas-badge">
-        {stitches.length.toLocaleString()} stitches · {fit.w.toFixed(0)}×{fit.h.toFixed(0)} mm · scroll to zoom, drag to pan
+        {stitches.length.toLocaleString()} stitches · {(bounds.maxX - bounds.minX).toFixed(0)}×
+        {(bounds.maxY - bounds.minY).toFixed(0)} mm · click a color · scroll zoom · drag pan
       </div>
     </div>
   );

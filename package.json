@@ -12,6 +12,7 @@
     "dev:backend": "cd apps/backend && . .venv/bin/activate && uvicorn app.main:app --reload --port 8000",
     "typecheck": "npm run typecheck --workspace apps/frontend",
     "lint": "npm run lint --workspace apps/frontend",
+    "test": "npm run test --workspace apps/frontend",
     "build": "npm run build --workspace apps/frontend",
     "backend:setup": "cd apps/backend && python3 -m venv .venv && . .venv/bin/activate && pip install -r requirements.txt"
   },
