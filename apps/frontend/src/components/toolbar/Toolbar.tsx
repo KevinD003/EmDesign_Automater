@@ -5,6 +5,7 @@ import { api } from '../../api/client';
 
 const TOOLS = ['Select', 'Run', 'Satin', 'Fill', 'Lettering', 'Appliqué', 'Manual', 'Shape'];
 const ACCEPT = '.dst,.pes,.pec,.jef,.exp,.vp3,.vip,.xxx,.sew,.u01';
+const ACCEPT_IMG = '.png,.jpg,.jpeg,.bmp,.webp';
 
 function download(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
@@ -24,6 +25,7 @@ export function Toolbar() {
   const canUndo = useDesignStore((s) => s.past.length > 0);
   const canRedo = useDesignStore((s) => s.future.length > 0);
   const fileRef = useRef<HTMLInputElement>(null);
+  const imgRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -44,6 +46,14 @@ export function Toolbar() {
     e.target.value = '';
     if (!file) return;
     run(async () => setDesign(await api.parseFile(file)));
+  };
+
+  const onDigitize = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    // v1 uses default fabric (cotton) + hoop (100x100); a params dialog comes later.
+    run(async () => setDesign(await api.digitize(file)));
   };
 
   const stem = (design?.name || 'design').replace(/\.[^.]+$/, '');
@@ -70,8 +80,12 @@ export function Toolbar() {
       </nav>
       <div className="toolbar-actions">
         <input ref={fileRef} type="file" accept={ACCEPT} hidden onChange={onOpen} />
+        <input ref={imgRef} type="file" accept={ACCEPT_IMG} hidden onChange={onDigitize} />
         <button type="button" onClick={() => fileRef.current?.click()} disabled={busy}>
           {busy ? '…' : 'Open'}
+        </button>
+        <button type="button" onClick={() => imgRef.current?.click()} disabled={busy} title="Auto-digitize an image (PNG/JPG)">
+          Digitize
         </button>
         <button type="button" onClick={onExport} disabled={!design || busy}>
           Export .DST
