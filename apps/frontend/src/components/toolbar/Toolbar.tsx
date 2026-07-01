@@ -6,7 +6,16 @@ import { api } from '../../api/client';
 const TOOLS = ['Select', 'Run', 'Satin', 'Fill', 'Lettering', 'Appliqué', 'Manual', 'Shape'];
 const ACCEPT = '.dst,.pes,.pec,.jef,.exp,.vp3,.vip,.xxx,.sew,.u01';
 
-/** Top toolbar. Open (parse a file) and Export (download) are live; digitizing tools land in Phase 2. */
+function download(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+/** Top toolbar. Open / Export / Worksheet are live; digitizing tools land in later phases. */
 export function Toolbar() {
   const design = useDesignStore((s) => s.design);
   const setDesign = useDesignStore((s) => s.setDesign);
@@ -14,46 +23,35 @@ export function Toolbar() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  const onOpen = async (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file) return;
+  const run = async (fn: () => Promise<void>) => {
     setBusy(true);
     setErr(null);
     try {
-      setDesign(await api.parseFile(file));
+      await fn();
     } catch (ex) {
-      setErr(ex instanceof Error ? ex.message : 'Failed to open file');
+      setErr(ex instanceof Error ? ex.message : 'Something went wrong');
     } finally {
       setBusy(false);
     }
   };
 
-  const onExport = async () => {
-    if (!design) return;
-    setBusy(true);
-    setErr(null);
-    try {
-      const blob = await api.exportDesign(design, 'dst');
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${(design.name || 'design').replace(/\.[^.]+$/, '')}.dst`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (ex) {
-      setErr(ex instanceof Error ? ex.message : 'Export failed');
-    } finally {
-      setBusy(false);
-    }
+  const onOpen = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    run(async () => setDesign(await api.parseFile(file)));
   };
+
+  const stem = (design?.name || 'design').replace(/\.[^.]+$/, '');
+  const onExport = () => design && run(async () => download(await api.exportDesign(design, 'dst'), `${stem}.dst`));
+  const onWorksheet = () => design && run(async () => download(await api.worksheetPdf(design), `${stem}-worksheet.pdf`));
 
   return (
     <header className="toolbar">
       <span className="brand">🧵 STITCHIQ</span>
       <nav className="tools">
         {TOOLS.map((tool) => (
-          <button key={tool} type="button" className="tool-btn" disabled title="Coming in Phase 2">
+          <button key={tool} type="button" className="tool-btn" disabled title="Coming in a later phase">
             {tool}
           </button>
         ))}
@@ -65,6 +63,9 @@ export function Toolbar() {
         </button>
         <button type="button" onClick={onExport} disabled={!design || busy}>
           Export .DST
+        </button>
+        <button type="button" onClick={onWorksheet} disabled={!design || busy}>
+          Worksheet
         </button>
         {err && (
           <span className="toolbar-err" title={err}>

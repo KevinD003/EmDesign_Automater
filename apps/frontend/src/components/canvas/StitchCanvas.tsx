@@ -8,6 +8,8 @@ interface StitchCanvasProps {
   colorStops?: ColorStop[];
   /** Only render stitches up to this index (null = all). Drives the stitch-player animation. */
   limit?: number | null;
+  /** Highlight this color stop (dim the others), or null for no emphasis. */
+  selectedStop?: number | null;
   widthPx?: number;
   heightPx?: number;
 }
@@ -15,6 +17,7 @@ interface StitchCanvasProps {
 interface Run {
   points: number[];
   color: string;
+  stop: number; // 1-based color stop this run belongs to
 }
 
 const FALLBACK_COLORS = ['#e11d48', '#2563eb', '#16a34a', '#d97706', '#7c3aed', '#0891b2', '#db2777', '#65a30d'];
@@ -22,25 +25,24 @@ const FALLBACK_COLORS = ['#e11d48', '#2563eb', '#16a34a', '#d97706', '#7c3aed', 
 /**
  * Canvas design editor (spec §3). Renders the raw stitch list as color-grouped
  * polylines: consecutive STITCH commands form a line; JUMP/TRIM/COLOR_CHANGE/END
- * break it. Fits the design to view; scroll to zoom, drag to pan.
+ * break it. Fits the design to view; scroll to zoom, drag to pan; dims non-selected stops.
  */
 export function StitchCanvas({
   stitches = [],
   colorStops = [],
   limit = null,
+  selectedStop = null,
   widthPx = 900,
   heightPx = 560,
 }: StitchCanvasProps) {
   const [scale, setScale] = useState(1);
   const [pos, setPos] = useState({ x: 0, y: 0 });
 
-  // Reset zoom/pan whenever a new design is loaded.
   useEffect(() => {
     setScale(1);
     setPos({ x: 0, y: 0 });
   }, [stitches]);
 
-  // Fit-to-view transform (design mm → canvas px), computed from bounds.
   const fit = useMemo(() => {
     let minX = Infinity;
     let minY = Infinity;
@@ -76,12 +78,12 @@ export function StitchCanvas({
       if (s.command === 'STITCH') {
         cur.push(fit.offsetX + s.x * fit.scale, fit.offsetY + s.y * fit.scale);
       } else {
-        if (cur.length >= 4) out.push({ points: cur, color: colorAt(stopIdx) });
+        if (cur.length >= 4) out.push({ points: cur, color: colorAt(stopIdx), stop: stopIdx + 1 });
         cur = [];
         if (s.command === 'COLOR_CHANGE') stopIdx += 1;
       }
     }
-    if (cur.length >= 4) out.push({ points: cur, color: colorAt(stopIdx) });
+    if (cur.length >= 4) out.push({ points: cur, color: colorAt(stopIdx), stop: stopIdx + 1 });
     return out;
   }, [stitches, colorStops, fit, limit]);
 
@@ -122,16 +124,20 @@ export function StitchCanvas({
         onDragEnd={onDragEnd}
       >
         <Layer>
-          {runs.map((r, i) => (
-            <Line
-              key={i}
-              points={r.points}
-              stroke={r.color}
-              strokeWidth={1 / scale}
-              lineCap="round"
-              lineJoin="round"
-            />
-          ))}
+          {runs.map((r, i) => {
+            const active = selectedStop == null || r.stop === selectedStop;
+            return (
+              <Line
+                key={i}
+                points={r.points}
+                stroke={r.color}
+                strokeWidth={(r.stop === selectedStop ? 1.8 : 1) / scale}
+                opacity={active ? 1 : 0.12}
+                lineCap="round"
+                lineJoin="round"
+              />
+            );
+          })}
         </Layer>
       </Stage>
       <div className="canvas-badge">

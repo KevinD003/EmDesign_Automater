@@ -226,13 +226,75 @@ code {
 }
 
 .object-list li {
+  list-style: none;
+}
+
+.stop-row {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 5px 8px;
+}
+
+.stop-row.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent) inset;
+}
+
+.thread-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.thread-swatch {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border-radius: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  cursor: pointer;
+  padding: 0;
+}
+
+.thread-swatch:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.prop-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.prop-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.prop-row input[type='text'] {
+  flex: 1;
+  min-width: 0;
   background: var(--panel-2);
   border: 1px solid var(--line);
-  border-radius: 6px;
+  color: var(--text);
+  border-radius: 5px;
+  padding: 4px 6px;
+}
+
+.prop-row input[type='color'] {
+  width: 42px;
+  height: 26px;
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+}
+
+.small {
+  font-size: 12px;
 }
 
 .swatch {

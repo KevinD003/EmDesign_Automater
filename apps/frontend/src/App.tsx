@@ -14,6 +14,7 @@ import { useDesignStore } from './store/designStore';
 export default function App() {
   const design = useDesignStore((s) => s.design);
   const playHead = useDesignStore((s) => s.playHead);
+  const selectedStop = useDesignStore((s) => s.selectedStop);
 
   return (
     <div className="app-shell">
@@ -25,6 +26,7 @@ export default function App() {
             stitches={design?.stitches ?? []}
             colorStops={design?.colorStops ?? []}
             limit={playHead}
+            selectedStop={selectedStop}
           />
         </main>
         <div className="panel-right">

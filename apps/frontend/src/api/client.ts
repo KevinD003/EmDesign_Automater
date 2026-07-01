@@ -59,6 +59,17 @@ export const api = {
   worksheet: (design: Design) =>
     request<Worksheet>('/api/worksheet', { method: 'POST', body: JSON.stringify(design) }),
 
+  /** Render the production worksheet to a PDF Blob for download. */
+  worksheetPdf: async (design: Design): Promise<Blob> => {
+    const res = await fetch(`${API_BASE}/api/worksheet/pdf`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(design),
+    });
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText} — worksheet pdf`);
+    return res.blob();
+  },
+
   validate: (design: Design) =>
     request<ValidationReport>('/api/export/validate', {
       method: 'POST',

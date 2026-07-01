@@ -1,12 +1,13 @@
 import { useDesignStore } from '../../store/designStore';
 
 /**
- * Left sidebar — the color sequence of the loaded design (spec §3). Parsed stitch
- * files (.DST/.PES) carry color stops but no vector objects; object-level editing
- * arrives in Phase 2.
+ * Left sidebar — the color sequence of the loaded design (spec §3). Click a stop to
+ * select it (highlights its stitches on the canvas and opens it in the Properties panel).
  */
 export function ColorObjectList() {
   const design = useDesignStore((s) => s.design);
+  const selectedStop = useDesignStore((s) => s.selectedStop);
+  const selectStop = useDesignStore((s) => s.selectStop);
   const stops = design?.colorStops ?? [];
 
   return (
@@ -16,10 +17,16 @@ export function ColorObjectList() {
         <ol className="object-list">
           {stops.map((cs) => (
             <li key={cs.stopNumber}>
-              <span className="swatch" style={{ background: cs.hex }} />
-              <span className="seq">{cs.stopNumber}</span>
-              <span className="stop-name">{cs.threadName}</span>
-              <span className="stop-count muted">{cs.stitchCount.toLocaleString()}</span>
+              <button
+                type="button"
+                className={`stop-row${selectedStop === cs.stopNumber ? ' selected' : ''}`}
+                onClick={() => selectStop(selectedStop === cs.stopNumber ? null : cs.stopNumber)}
+              >
+                <span className="swatch" style={{ background: cs.hex }} />
+                <span className="seq">{cs.stopNumber}</span>
+                <span className="stop-name">{cs.threadName}</span>
+                <span className="stop-count muted">{cs.stitchCount.toLocaleString()}</span>
+              </button>
             </li>
           ))}
         </ol>
