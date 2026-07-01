@@ -7,12 +7,12 @@
 | Field | Value |
 |---|---|
 | **Project** | STITCHIQ — AI-powered embroidery design & digitizing platform |
-| **Document version** | **v5** |
-| **Times updated** | **5** |
+| **Document version** | **v6** |
+| **Times updated** | **6** |
 | **Last updated** | 2026-07-01 |
-| **Current phase** | **Phase 2 (Interactive Editing) — progressing.** Selection, recolor, undo/redo done |
+| **Current phase** | **Phase 2 core editing done** (select/recolor/rename/reorder/undo). **Next: Phase 3 (auto-digitize)** |
 | **Git branch** | `main` |
-| **Latest code commit** | `05117e9` (on-canvas selection + undo/redo + tests) |
+| **Latest code commit** | `dfe8901` (reorder color stops) |
 | **Working tree** | clean |
 | **Tracked files** | 65 |
 | **Location** | `/Users/INDIA/Downloads/EmDesign_Automater` |
@@ -21,19 +21,19 @@
 
 ## 📌 For the next model / session — READ THIS FIRST
 
-1. **Current reality:** Scaffold + **Phase 1 complete** + **Phase 2 progressing**. Open a real
-   `.DST`/`.PES` → render → **click a color on the canvas to select it** → recolor (picker/thread
-   swatch) → **undo/redo** → export `.DST` → **worksheet PDF**. Verified: pytest 8/8, **vitest 13/13**,
-   Vite proxy. Remaining features are typed stubs — see [§5](#-5-feature-status-matrix).
+1. **Current reality:** Scaffold + **Phase 1 complete** + **Phase 2 core editing done**. Open a real
+   `.DST`/`.PES` → render → **click a color to select** → recolor / rename / **reorder** (▲▼) → **undo/redo**
+   → export `.DST` → **worksheet PDF**. Verified: pytest 8/8, **vitest 18/18**, Vite proxy. Other features are stubs — see [§5](#-5-feature-status-matrix).
 2. **Chosen scope (by the user):** build **vertically**, one phase at a time ([§14](#-14-full-project-roadmap-phases-010)).
-3. **Next task:** **reorder color stops** (finishes Phase 2 for stitch files), then **Phase 3
-   (auto-digitize)** — the real **vector object model** arrives with the digitizer, since parsed
-   files are stitch-only (`design.objects` empty). See [§14](#-14-full-project-roadmap-phases-010).
-4. **⚠️ MANDATORY — every change is logged in THIS FILE.** Before finishing any task: bump
-   **Document version** + **Times updated**; update **Last updated** + **Latest code commit**; add a
-   [§2](#-2-update-history--changelog) row (**newest on top**); flip [§5](#-5-feature-status-matrix)
-   rows (`🔴`→`🟡`→`🟢`); move [§7](#-7-whats-remaining)→[§6](#-6-whats-done-verified); tick the phase
-   in [§14](#-14-full-project-roadmap-phases-010); commit the doc with the code.
+3. **Next task:** **Phase 3 — auto-digitize (OpenCV)**: image → regions → stitch types → a `Design` **with
+   `objects`**. This is what unblocks object-level property editing (density/underlay/angle) — parsed
+   files are stitch-only, so `design.objects` is empty today. Optional Phase-2 polish first: surface
+   `validate` warnings in the UI + canvas rulers/grid. See [§14](#-14-full-project-roadmap-phases-010).
+4. **⚠️ MANDATORY — every change is logged in THIS FILE.** Before finishing any task: bump **Document
+   version** + **Times updated**; update **Last updated** + **Latest code commit**; add a
+   [§2](#-2-update-history--changelog) row (**newest on top**); flip [§5](#-5-feature-status-matrix) rows
+   (`🔴`→`🟡`→`🟢`); move [§7](#-7-whats-remaining)→[§6](#-6-whats-done-verified); tick the phase in
+   [§14](#-14-full-project-roadmap-phases-010); commit the doc with the code.
 
 ---
 
@@ -50,10 +50,10 @@
 ## ✅ 1. TL;DR
 
 - **Stack:** TypeScript (React + Vite) frontend · Python (FastAPI) backend · PostgreSQL/Supabase (schema written, not applied).
-- **Built:** scaffold **+ Phase 1 (complete)** + **Phase 2 (progressing)** — open/parse files, Konva render, **click-to-select + recolor + thread palette + undo/redo**, export machine files, **worksheet PDF**. Shared typed data model, DB schema, docs.
-- **Verified:** backend **pytest 8/8**; frontend **vitest 13/13** (editing logic) + typecheck + build (281 modules); all endpoints via TestClient + Vite proxy.
+- **Built:** scaffold **+ Phase 1 (complete)** + **Phase 2 core editing** — open/parse files, Konva render, **click-to-select + recolor + rename + reorder + thread palette + undo/redo**, export machine files, **worksheet PDF**. Shared typed data model, DB schema, docs.
+- **Verified:** backend **pytest 8/8**; frontend **vitest 18/18** (editing logic) + typecheck + build; all endpoints via TestClient + Vite proxy.
 - **Still stubbed:** auto-digitize, thread nearest-match, convert, persistence/auth, AI/ML.
-- **Next:** reorder stops → Phase 3 auto-digitize (the vector object model comes with it). *(In-browser click/keyboard wiring not eyeballed — §12.)*
+- **Next:** Phase 3 **auto-digitize** (brings the vector object model) — optionally rulers/grid + validate-surfacing first. *(In-browser event wiring not eyeballed — §12.)*
 
 ---
 
@@ -63,10 +63,11 @@
 
 | # | Date | Author | Type | Summary |
 |---|------|--------|------|---------|
-| 5 | 2026-07-01 | Claude (Opus 4.8) | ✨ Feature | **Phase 2: on-canvas selection + undo/redo + frontend tests** — commit `05117e9`. Click a run → select its stop; Toolbar ↶/↷ + Ctrl/Cmd+Z shortcuts; extracted pure `buildRuns`/`computeBounds` → `lib/stitches.ts`. **vitest 13/13** (run-builder, units, store undo/redo) — editing logic now unit-tested. |
-| 4 | 2026-06-30 | Claude (Opus 4.8) | ✨ Feature | **Phase 1 tail + Phase 2 start** — commit `12a18f7`. Worksheet **PDF** (ReportLab 5.0.0) + `/worksheet/pdf`; `GET /threads`. Frontend: color-stop select/highlight/recolor/rename, ThreadPalette, Worksheet button. pytest 8/8. |
-| 3 | 2026-06-30 | Claude (Opus 4.8) | ✨ Feature | **Phase 1 core (File I/O + Canvas)** — commit `d9fbc28`. pyembroidery read/write, `/files/parse` `/export` `/export/validate` `/worksheet`; Konva render, Open/Export, StitchPlayer. pytest 5/5. |
-| 2 | 2026-06-30 | Claude (Opus 4.8) | 📝 Docs | Full roadmap (§14) + pyembroidery-grounded Phase 1 deep-dive (§15). STATUS.md v1 `3e34389`. |
+| 6 | 2026-07-01 | Claude (Opus 4.8) | ✨ Feature | **Phase 2: reorder color stops** — commit `dfe8901`. Pure `reorderColorStop` (re-sequences stitch blocks by COLOR_CHANGE, renumbers, keeps END last, no-op at boundaries); store `reorderStop` (history + selection follows); PropertiesPanel ▲/▼. **vitest 18/18** (+5). |
+| 5 | 2026-07-01 | Claude (Opus 4.8) | ✨ Feature | **Phase 2: on-canvas selection + undo/redo + frontend tests** — commit `05117e9`. Click a run → select stop; Toolbar ↶/↷ + Ctrl/Cmd+Z; extracted pure `buildRuns`. vitest 13/13. |
+| 4 | 2026-06-30 | Claude (Opus 4.8) | ✨ Feature | **Phase 1 tail + Phase 2 start** — `12a18f7`. Worksheet **PDF** (ReportLab 5.0.0) + `/worksheet/pdf`; `GET /threads`; color-stop select/recolor/rename, ThreadPalette. pytest 8/8. |
+| 3 | 2026-06-30 | Claude (Opus 4.8) | ✨ Feature | **Phase 1 core (File I/O + Canvas)** — `d9fbc28`. pyembroidery read/write, parse/export/validate/worksheet; Konva render, StitchPlayer. pytest 5/5. |
+| 2 | 2026-06-30 | Claude (Opus 4.8) | 📝 Docs | Full roadmap (§14) + Phase 1 deep-dive (§15). STATUS.md v1 `3e34389`. |
 | 1 | 2026-06-30 | Claude (Opus 4.8) | 🏗 Scaffold | Greenfield monorepo: TS/React + Python/FastAPI, 11 stub endpoints, shared data model, DB schema, docs. `d6a4fd1`. |
 
 **Type legend:** 🏗 Scaffold · ✨ Feature · 🐛 Fix · ♻️ Refactor · 📝 Docs · ⬆️ Deps · 🚀 Deploy
@@ -77,7 +78,7 @@
 
 **Frontend** (`apps/frontend`, **TypeScript**): react/react-dom 18.3.1 · vite 5.4.21 · typescript 5.9.3 ·
 konva 9.3.22 + react-konva 18.2.16 (**used**) · three 0.169 + @react-three/fiber 8.18 (stub) · zustand 5.0.14 ·
-@tanstack/react-query 5.101.2 · zod 3.25.76 · eslint 8.57.1 · **vitest 2.1.9** (13 tests).
+@tanstack/react-query 5.101.2 · zod 3.25.76 · eslint 8.57.1 · **vitest 2.1.9** (18 tests).
 
 **Backend** (`apps/backend`, **Python 3.14**):
 | Package | Role | Installed? |
@@ -97,16 +98,18 @@ konva 9.3.22 + react-konva 18.2.16 (**used**) · three 0.169 + @react-three/fibe
 apps/frontend/src/
   App.tsx (+ undo/redo shortcuts)  main.tsx  index.css
   types/design.ts                shared data model (TS)
-  lib/stitches.ts                pure buildRuns / computeBounds (unit-tested)
+  lib/stitches.ts                pure buildRuns / computeBounds / reorderColorStop (unit-tested)
   lib/units.ts                   mm↔px helpers (unit-tested)
   api/client.ts                  parse · export · worksheetPdf · listThreads · validate
-  store/designStore.ts           design · selectedStop · playHead · updateColorStop · undo/redo (unit-tested)
+  store/designStore.ts           design · selectedStop · playHead · updateColorStop · reorderStop · undo/redo (unit-tested)
   components/
     toolbar/Toolbar.tsx          Open · Export · Worksheet · Undo/Redo (live)
     canvas/StitchCanvas.tsx      Konva render + zoom/pan + click-to-select (live)
-    panels/ColorObjectList.tsx · PropertiesPanel.tsx · ThreadPalette.tsx   (live)
+    panels/ColorObjectList.tsx   selectable color stops (live)
+    panels/PropertiesPanel.tsx   recolor / rename / reorder (▲▼) selected stop (live)
+    panels/ThreadPalette.tsx     load catalog + apply to stop (live)
     player/StitchPlayer.tsx (live) · trueview/TrueView3D.tsx (stub)
-  {lib,store}/*.test.ts          vitest (13 tests)
+  {lib,store}/*.test.ts          vitest (18 tests)
 apps/backend/app/
   main.py  config.py  models/design.py            shared data model (Pydantic)
   routers/  files · export · worksheet · threads(list) (live) · convert · digitize · designs · threads/match (stub)
@@ -140,33 +143,34 @@ db/schema.sql (not applied) · docs/ · STATUS.md · README.md · AI-Embroidery-
 | Component | Status | Notes |
 |---|---|---|
 | App shell · api client · types · lib/stitches · lib/units | 🟢 | pure libs unit-tested |
-| StitchCanvas | 🟢 | polylines (pure `buildRuns`), fit-to-view, zoom/pan, playHead, **click-to-select** |
+| StitchCanvas | 🟢 | polylines (pure `buildRuns`), fit-to-view, zoom/pan, playHead, click-to-select |
 | ColorObjectList · ThreadPalette · StitchPlayer | 🟢 | select · apply swatch · animate |
-| designStore | 🟢 | design · playHead · selectStop · updateColorStop · **undo/redo** |
-| Toolbar | 🟡 | Open/Export/Worksheet/**Undo/Redo** live; digitizing tools stub |
-| PropertiesPanel | 🟡 | recolor/rename stop ✅; object props (density/underlay) TBD |
+| PropertiesPanel | 🟢 | recolor / rename / **reorder** the selected stop |
+| designStore | 🟢 | selectStop · updateColorStop · **reorderStop** · undo/redo |
+| Toolbar | 🟡 | Open/Export/Worksheet/Undo/Redo live; digitizing tools stub |
 | TrueView3D | 🔴 | Phase 7 |
 
 ### Infrastructure
 | Item | Status | Notes |
 |---|---|---|
 | Monorepo · shared data model | 🟢 | camelCase-on-wire verified |
-| Tests | 🟡 | **pytest 8 + vitest 13**; no CI yet |
+| Tests | 🟡 | **pytest 8 + vitest 18**; no CI yet |
 | DB applied · Supabase · deploy · AI/ML · `.STIQ` | 🔴 | Phases 6/8/X |
 
 ---
 
 ## 🟢 6. What's DONE (verified)
 
-**Scaffold + Phase 1 + Phase 1-tail (Updates #1–4):** monorepo, shared data model (TS ⇄ Pydantic),
-FastAPI on py3.14, parse/export/validate/worksheet(JSON+**PDF**), Konva render, Open/Export/Worksheet UI,
-StitchPlayer, color-stop recolor + ThreadPalette, pytest 8/8, upload verified via the Vite proxy.
+**Scaffold + Phase 1 (Updates #1–4):** monorepo, shared data model (TS ⇄ Pydantic), FastAPI on py3.14,
+parse/export/validate/worksheet(JSON+**PDF**), Konva render, Open/Export/Worksheet UI, StitchPlayer,
+color-stop recolor + ThreadPalette, pytest 8/8, upload verified via the Vite proxy.
 
-**Phase 2 progress (Update #5, commit `05117e9`) — each confirmed by running it:**
-1. **On-canvas selection** — click a stitch run → its color stop selects & highlights (others dim); click empty → deselect.
-2. **Undo/redo** — Zustand history (`past`/`future`) + Toolbar ↶/↷ + Ctrl/Cmd+Z / Ctrl+Shift+Z / Ctrl+Y.
-3. **Pure, tested render logic** — `buildRuns`/`computeBounds` extracted to `lib/stitches.ts`.
-4. **Frontend tests** — **vitest 13/13** (run-builder split/limit/fallback, bounds, units, store recolor + undo/redo).
+**Phase 2 core editing (Updates #5–6) — each confirmed by running it:**
+1. **On-canvas selection** — click a run → its stop selects & highlights; click empty → deselect.
+2. **Recolor / rename** — Properties color picker + name; ThreadPalette swatch applies to the selected stop.
+3. **Reorder** — Properties ▲/▼ re-sequences the underlying stitch blocks (renumbers, keeps END last), reflected in render + export.
+4. **Undo/redo** — history + Toolbar ↶/↷ + Ctrl/Cmd+Z / Shift / Ctrl+Y.
+5. **Frontend tests** — **vitest 18/18**: `buildRuns` (split/limit/fallback), `computeBounds`, `reorderColorStop` (move/inverse/no-op), units, store (recolor, reorder, undo/redo).
 
 ---
 
@@ -174,15 +178,17 @@ StitchPlayer, color-stop recolor + ThreadPalette, pytest 8/8, upload verified vi
 
 Full plan in [§14](#-14-full-project-roadmap-phases-010). Immediate:
 
-### A. Phase 2 — interactive editing (IN PROGRESS)
-- **Done:** color-stop select (list + **on-canvas click**), highlight, recolor/rename, ThreadPalette apply, **undo/redo**.
-- **Left:** **reorder color stops** (re-sequence the stitch blocks + renumber); canvas rulers/grid; surface
-  `validate` warnings pre-export. The vector **object model** + object props (density/underlay/angle — §4.3)
-  come with the **digitizer (Phase 3)** — parsed files are stitch-only (`design.objects` empty).
+### A. Phase 2 polish (optional, small)
+- Surface `/export/validate` warnings in the UI before export; canvas rulers/grid.
 
-### B. Phases 3–10 & cross-cutting
-- Auto-digitize (OpenCV, 3) · lettering (4) · export/convert package (5) · Supabase persistence/auth (6) ·
-  TrueView 3D (7) · AI engine + `nearest_thread` (8) · generative + assistant (9) · collab/API/mobile (10).
+### B. Phase 3 — auto-digitize (the next substantive phase)
+- `digitizer.digitize_image` (OpenCV): image → regions → stitch types → a `Design` **with `objects`** —
+  this is what makes object-level property editing (density/underlay/angle — §4.3) real. Wire
+  `POST /api/digitize` + an upload dialog. **Deps:** opencv/numpy/pillow (untested on py3.14 → maybe use 3.11).
+
+### C. Phases 4–10 & cross-cutting
+- Lettering (4) · export/convert package (5) · Supabase persistence/auth (6) · TrueView 3D (7) ·
+  AI engine + `nearest_thread` (8) · generative + assistant (9) · collab/API/mobile (10).
 - Cross-cutting: **CI** (run pytest + vitest), Dockerfiles/deploy, logging, authz/upload-limits/rate-limits.
 
 ---
@@ -193,10 +199,9 @@ Full plan in [§14](#-14-full-project-roadmap-phases-010). Immediate:
 |---|---|
 | **TypeScript** + **Python** | User request; Python mandatory for pyembroidery/reportlab/AI. |
 | Build **vertically**, phase by phase | User scope; full spec is multi-year. |
-| **Color stop** is the editable unit (Phase 2) | Parsed files are stitch-only (no vector objects yet). Object model waits for the digitizer (Phase 3) that produces objects with real params — not fabricated onto imported stitches. |
-| **Color stops from `get_as_colorblocks`** | DST stores no color → `threadlist` empty; colorblocks give filler + work for PES. |
-| Round-trip asserts on **bounds**, not stitch count | DST writer adds ties/splits → count changes; bounds stable. |
-| Pure `buildRuns` extracted from `StitchCanvas` | Makes the render/selection logic **unit-testable** without a browser. |
+| **Color stop** is the editable unit (Phase 2) | Parsed files are stitch-only (no vector objects). Object model waits for the digitizer (Phase 3) — not fabricated onto imported stitches. |
+| **Reorder = re-sequence stitch blocks** (pure `reorderColorStop`) | Files have no objects, so "reorder" means moving the COLOR_CHANGE-delimited blocks; keeps a valid stream (END last). Pure ⇒ unit-tested. |
+| Color stops from `get_as_colorblocks` · round-trip asserts on **bounds** · pure libs extracted for testability | DST has no color / writer normalizes counts / verify logic without a browser. |
 | npm workspaces · tiered py deps · single tsconfig · ESLint 8 · lazy heavy imports | See Updates #1–2. |
 
 ---
@@ -204,21 +209,21 @@ Full plan in [§14](#-14-full-project-roadmap-phases-010). Immediate:
 ## ⚠️ 9. Environment & Gotchas
 
 - **Python 3.14.3** — `pyembroidery`, `reportlab 5.0.0`, `pytest` install clean (**confirmed**). `opencv`/`scipy` untested; fall back to **3.11** (present) if a wheel is missing.
-- **DST has no color** — parsed `.DST` shows filler colors; `.PES` preserves real ones. Recolor via Properties/ThreadPalette.
+- **DST has no color** — parsed `.DST` shows filler colors; `.PES` preserves real ones.
 - **Round-trip stitch count is not stable** (writer normalizes) — compare **bounds**.
-- **Parsed files are stitch-only** — `design.objects` is empty; the editable unit is the **color stop** until the digitizer (Phase 3) creates objects.
+- **Parsed files are stitch-only** — `design.objects` is empty; editable unit is the **color stop** until the digitizer (Phase 3).
 - **pnpm not installed** → `npm`. **venv** at `apps/backend/.venv` (gitignored). **Vite proxies** `/api`+`/health` → `:8000`.
-- **Port hygiene:** `lsof -ti tcp:8000 | xargs kill -9` before booting (a stale server serving old code causes confusion).
+- **Port hygiene:** `lsof -ti tcp:8000 | xargs kill -9` before booting.
 
 ---
 
 ## 🎯 10. Next Steps (do these IN ORDER)
 
-1. **Reorder color stops** — up/down re-sequences the stitch blocks + renumbers stops (finishes Phase 2 for stitch files).
-2. **Surface `validate` warnings** in the UI before export; add canvas rulers/grid.
-3. **Phase 3 — auto-digitize** (OpenCV): image → regions → stitch types → `Design` **with objects** — this is
-   where the vector object model + `PropertiesPanel` density/underlay editing become real. **Deps:** opencv/numpy/pillow.
-4. **CI** — GitHub Actions running `pytest` + `vitest` + typecheck on push.
+1. *(optional polish)* Surface `validate` warnings in the UI before export; add canvas rulers/grid.
+2. **Phase 3 — auto-digitize** (OpenCV): implement `digitizer.digitize_image` → `Design` **with objects**;
+   wire `POST /api/digitize` + upload dialog. Install opencv/numpy/pillow (use py3.11 if a wheel is missing).
+   This unblocks object-level `PropertiesPanel` editing (density/underlay/angle).
+3. **CI** — GitHub Actions running `pytest` + `vitest` + typecheck on push.
 
 > After each step: re-run §11 checks and **update this file** (§2 + §5 + metadata).
 
@@ -238,21 +243,21 @@ cd apps/backend && python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt -r requirements-dev.txt   # core + tests (incl. reportlab)
 python tests/make_fixtures.py                             # (re)generate fixtures
 ```
-### Baseline (last confirmed 2026-07-01, Update #5)
+### Baseline (last confirmed 2026-07-01, Update #6)
 | Check | Command | Expected | Result |
 |---|---|---|---|
 | Backend tests | `cd apps/backend && python -m pytest tests -q` | **8 passed** | ✅ |
-| Frontend tests | `npm test -w apps/frontend` | **vitest 13 passed** | ✅ |
+| Frontend tests | `npm test -w apps/frontend` | **vitest 18 passed** | ✅ |
 | Parse / Export / Validate / Worksheet PDF / Threads | curl fixture → endpoints | 200; PES round-trips; `%PDF-`; 5 threads | ✅ |
 | Via **Vite proxy** | `:5173/api/{files/parse,worksheet/pdf,threads}` | 200 | ✅ |
-| Frontend typecheck / build | `npm run typecheck` · `build -w apps/frontend` | 0 errors · **281 modules** | ✅ |
+| Frontend typecheck / build | `npm run typecheck` · `build -w apps/frontend` | 0 errors · builds | ✅ |
 
 ---
 
 ## 🚧 12. Known Risks / Unverified Claims
 
-- **In-browser event wiring NOT eyeballed** (narrower now — the pure logic is vitest-tested): canvas paint,
-  **clicking a run to select**, live recolor, **Undo/Redo buttons + Ctrl+Z**, and Open/Export/Worksheet downloads.
+- **In-browser event wiring NOT eyeballed** (narrow — pure logic is vitest-tested): canvas paint,
+  **clicking a run**, live recolor, **reorder ▲▼**, **Undo/Redo + Ctrl+Z**, and Open/Export/Worksheet downloads.
   Open `:5173`, load `apps/backend/tests/fixtures/sample.dst`, and confirm. *(Logic tested; Konva/DOM events not.)*
 - **Auto-digitize, `/threads/match`, convert, persistence** unimplemented.
 - **opencv/scipy untested on py3.14**; **DB schema unvalidated** against live Postgres.
@@ -276,8 +281,8 @@ Entities: `Stitch` · `StitchType`/`UnderlayType`/`ConnectMethod` · `Thread` ·
 |---|---|---|---|---|
 | 0 | Scaffold | 🟢 Done | — | the codebase |
 | 1 | File I/O + Canvas | 🟢 Done | L | open/view/export designs + worksheet PDF |
-| **2** | **Interactive editing** | 🟡 **In progress** | L | select (canvas) + recolor + undo/redo ✅ · reorder TBD |
-| 3 | Auto-digitizing v1 (OpenCV) | ⬜ **Next** | XL | image → stitches (+ real object model) |
+| 2 | Interactive editing | 🟢 **Core done** | L | select · recolor · rename · reorder · undo/redo ✅ (rulers/validate-surfacing optional) |
+| **3** | **Auto-digitizing v1 (OpenCV)** | ⬜ **Next** | XL | image → stitches **+ real object model** |
 | 4 | Lettering & monogramming | ⬜ | L | text → stitches |
 | 5 | Production output & formats | ⬜ | M | export packages, convert, 25+ formats |
 | 6 | Persistence & accounts (Supabase) | ⬜ | M | save/load, auth, versions, teams |
@@ -287,12 +292,11 @@ Entities: `Stitch` · `StitchType`/`UnderlayType`/`ConnectMethod` · `Thread` ·
 | 10 | Platform & scale | ⬜ | XL | collab, cloud API, mobile |
 | X | Cross-cutting (tests/CI/deploy/security) | 🟡 Ongoing | — | ships everything safely |
 
-### Phase 2 — Interactive Editing 🟡 IN PROGRESS (size L)
-- **Done:** color-stop selection (list + **on-canvas click**) ↔ highlight; recolor/rename; `ThreadPalette` apply;
-  **undo/redo** (+ shortcuts); pure `buildRuns` extracted & unit-tested.
-- **Left:** reorder stops; rulers/grid; surface validate warnings. Vector **object model** + object props
-  (density/underlay/angle — §4.3) move to **Phase 3** (they need a source that produces objects).
-  **Files:** `store/designStore.ts`, `StitchCanvas`, `lib/stitches.ts`.
+### Phase 2 — Interactive Editing 🟢 CORE DONE (size L)
+- **Done:** color-stop selection (list + on-canvas click) ↔ highlight; recolor/rename; **reorder** (re-sequences
+  stitch blocks, unit-tested); `ThreadPalette` apply; **undo/redo** (+ shortcuts); pure `buildRuns`/`reorderColorStop`.
+- **Optional left:** canvas rulers/grid; surface `validate` warnings pre-export. (Vector **object model** + object
+  props move to Phase 3 — parsed files are stitch-only.)
 
 ### Phase 3 — Auto-Digitizing v1 (OpenCV) ⬜ (XL) — *next*
 - `digitizer.digitize_image`: quantize colors, segment regions, assign stitch types by size, generate fill/satin,
@@ -327,7 +331,7 @@ Entities: `Stitch` · `StitchType`/`UnderlayType`/`ConnectMethod` · `Thread` ·
 
 Implemented in `services/embroidery_io.py`, `worksheet_pdf.py`, `threads.py`; routers `files`/`export`/`worksheet`/`threads`;
 frontend `StitchCanvas`, `lib/stitches.ts`, `Toolbar`, `StitchPlayer`, panels, `store/designStore`, `api/client`.
-Verify: `pytest -q` (8) + `npm test` (13). Manual: open `tests/fixtures/sample.dst`, click a stop, recolor, undo, Export, Worksheet.
+Verify: `pytest -q` (8) + `npm test` (18). Manual: open `tests/fixtures/sample.dst`, click a stop, recolor, reorder ▲▼, undo, Export, Worksheet.
 
 ---
 
