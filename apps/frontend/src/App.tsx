@@ -10,10 +10,10 @@ import { useDesignStore } from './store/designStore';
  * App shell — the Wilcom-style studio layout (spec §3):
  * Toolbar (top) · ColorObjectList (left) · StitchCanvas (center) ·
  * ThreadPalette + PropertiesPanel (right) · StitchPlayer (bottom).
- * Panels render placeholder content; features are stubs.
  */
 export default function App() {
   const design = useDesignStore((s) => s.design);
+  const playHead = useDesignStore((s) => s.playHead);
 
   return (
     <div className="app-shell">
@@ -21,7 +21,11 @@ export default function App() {
       <div className="app-body">
         <ColorObjectList />
         <main className="canvas-area">
-          <StitchCanvas stitches={design?.stitches ?? []} />
+          <StitchCanvas
+            stitches={design?.stitches ?? []}
+            colorStops={design?.colorStops ?? []}
+            limit={playHead}
+          />
         </main>
         <div className="panel-right">
           <ThreadPalette />

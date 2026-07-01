@@ -45,6 +45,17 @@ export const api = {
     return request<Design>('/api/digitize', { method: 'POST', body: form, headers: {} });
   },
 
+  /** Encode a Design to a machine file (.dst/.pes/...) and return the bytes as a Blob for download. */
+  exportDesign: async (design: Design, format = 'dst'): Promise<Blob> => {
+    const res = await fetch(`${API_BASE}/api/export?format=${encodeURIComponent(format)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(design),
+    });
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText} — export`);
+    return res.blob();
+  },
+
   worksheet: (design: Design) =>
     request<Worksheet>('/api/worksheet', { method: 'POST', body: JSON.stringify(design) }),
 

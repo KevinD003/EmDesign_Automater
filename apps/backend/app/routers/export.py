@@ -2,28 +2,63 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+import io
+import math
+
+from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import StreamingResponse
 
 from app.models.design import Design, ValidationReport
+from app.services import embroidery_io
 
 router = APIRouter(tags=["export"])
+
+_MAX_STITCH_MM = 12.7  # machine limit (0.5")
+
+
+def _cmd(stitch) -> str:
+    c = stitch.command
+    return c.value if hasattr(c, "value") else c
+
+
+@router.post("/export")
+async def export_design(design: Design, format: str = Query("dst")) -> StreamingResponse:
+    """Encode a Design to a machine file and stream it back."""
+    try:
+        data = embroidery_io.write_embroidery(design, format)
+    except ValueError as exc:
+        raise HTTPException(status_code=415, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"Export failed: {exc}") from exc
+
+    stem = (design.name or "design").rsplit(".", 1)[0]
+    filename = f"{stem}.{format.lower()}"
+    return StreamingResponse(
+        io.BytesIO(data),
+        media_type="application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.post("/export/validate", response_model=ValidationReport)
 async def validate(design: Design) -> ValidationReport:
-    """Pre-export validation.
+    """Pre-export sanity checks (spec §4.8)."""
+    issues: list[str] = []
+    warnings: list[str] = []
 
-    TODO: check jumps within machine max (12.7mm), stitch count within memory, design
-    fits hoop, tie-ups present before trims. Return passed + issues + warnings.
-    """
-    raise HTTPException(status_code=501, detail="export/validate not implemented (scaffold stub)")
+    if design.stitch_count == 0 and not design.stitches:
+        issues.append("Design has no stitches.")
+    if design.width_mm > 200 or design.height_mm > 200:
+        warnings.append(f"Design {design.width_mm}x{design.height_mm}mm exceeds a typical 200mm hoop.")
 
+    long_stitches = 0
+    prev = None
+    for s in design.stitches:
+        if _cmd(s) == "STITCH" and prev is not None:
+            if math.hypot(s.x - prev[0], s.y - prev[1]) > _MAX_STITCH_MM:
+                long_stitches += 1
+        prev = (s.x, s.y)
+    if long_stitches:
+        warnings.append(f"{long_stitches} stitches exceed {_MAX_STITCH_MM}mm (thread-break risk).")
 
-@router.post("/export")
-async def export_package(design: Design) -> dict[str, str]:
-    """Generate the production package.
-
-    TODO: machine file (.DST/.PES/...) + master .STIQ (Design JSON) + worksheet PDF +
-    thread color card + TrueView PNG, bundled for download.
-    """
-    raise HTTPException(status_code=501, detail="export not implemented (scaffold stub)")
+    return ValidationReport(passed=not issues, issues=issues, warnings=warnings)

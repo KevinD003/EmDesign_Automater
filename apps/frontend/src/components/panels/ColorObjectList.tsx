@@ -1,26 +1,30 @@
 import { useDesignStore } from '../../store/designStore';
 
-/** Left sidebar — objects in stitching sequence, grouped by color stop (spec §3). */
+/**
+ * Left sidebar — the color sequence of the loaded design (spec §3). Parsed stitch
+ * files (.DST/.PES) carry color stops but no vector objects; object-level editing
+ * arrives in Phase 2.
+ */
 export function ColorObjectList() {
   const design = useDesignStore((s) => s.design);
-  const selectObject = useDesignStore((s) => s.selectObject);
+  const stops = design?.colorStops ?? [];
 
   return (
     <aside className="panel panel-left">
       <h2 className="panel-title">Color · Object List</h2>
-      {design && design.objects.length > 0 ? (
+      {stops.length > 0 ? (
         <ol className="object-list">
-          {design.objects.map((obj) => (
-            <li key={obj.id ?? obj.sequenceOrder}>
-              <button type="button" onClick={() => selectObject(obj.id ?? null)}>
-                <span className="seq">{obj.sequenceOrder}</span>
-                {obj.name} — {obj.stitchType}
-              </button>
+          {stops.map((cs) => (
+            <li key={cs.stopNumber}>
+              <span className="swatch" style={{ background: cs.hex }} />
+              <span className="seq">{cs.stopNumber}</span>
+              <span className="stop-name">{cs.threadName}</span>
+              <span className="stop-count muted">{cs.stitchCount.toLocaleString()}</span>
             </li>
           ))}
         </ol>
       ) : (
-        <p className="muted">No design loaded. Open a .DST/.PES file to populate the sequence.</p>
+        <p className="muted">No design loaded. Open a .DST/.PES file to populate the color sequence.</p>
       )}
     </aside>
   );
