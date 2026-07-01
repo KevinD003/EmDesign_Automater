@@ -8,38 +8,34 @@
 | Field | Value |
 |---|---|
 | **Project** | STITCHIQ — AI-powered embroidery design & digitizing platform |
-| **Document version** | **v2** |
-| **Times updated** | **2** |
+| **Document version** | **v3** |
+| **Times updated** | **3** |
 | **Last updated** | 2026-06-30 |
-| **Current phase** | Scaffold complete — **no feature logic yet**. Next: Phase 1 (see §14–15) |
+| **Current phase** | **Phase 1 (File I/O + Canvas) — core done & verified.** Remaining: worksheet PDF, then Phase 2 |
 | **Git branch** | `main` |
-| **Latest code commit** | `d6a4fd1` (scaffold — no code has changed since; only docs) |
+| **Latest code commit** | `d9fbc28` (Phase 1 core) |
 | **Working tree** | clean |
-| **Tracked files** | 55 |
+| **Tracked files** | 60 |
 | **Location** | `/Users/INDIA/Downloads/EmDesign_Automater` |
 
 ---
 
 ## 📌 For the next model / session — READ THIS FIRST
 
-1. **Current reality:** The project is a **booting scaffold only**. Frontend (TypeScript/React)
-   and backend (Python/FastAPI) both start and are wired together, but **every feature is a
-   typed stub**. Backend feature endpoints return HTTP `501`; frontend panels render placeholder
-   text. Nothing parses, renders, digitizes, or exports yet.
-2. **Chosen scope (by the user):** *Scaffold only*, shaped around **File I/O + canvas editor**
-   as the first real feature. Do not build the whole spec at once — it is a multi-year product.
-   The full phased plan is in [§14](#-14-full-project-roadmap-phases-010).
-3. **Next task:** implement **Phase 1 — File I/O + Canvas**. Quick list in
-   [§10](#-10-next-steps-do-these-in-order); **full technical plan (pyembroidery-grounded) in
-   [§15](#-15-phase-1-deep-dive--file-io--canvas-current-work)**; whole roadmap in
-   [§14](#-14-full-project-roadmap-phases-010).
+1. **Current reality:** Scaffold **plus Phase 1 core (File I/O + Canvas)**. You can open a real
+   `.DST`/`.PES` → see it rendered on the Konva canvas → export it → get a worksheet (JSON).
+   Verified end-to-end (pytest 5/5 + upload through the Vite dev proxy). *Most other* features are
+   still typed stubs (`501` / placeholder) — see [§5](#-5-feature-status-matrix) for exactly what's done vs stubbed.
+2. **Chosen scope (by the user):** build **vertically**, one phase at a time. Full phased plan in
+   [§14](#-14-full-project-roadmap-phases-010). Do not build the whole spec at once.
+3. **Next task:** finish the **Phase 1 tail** — worksheet **PDF** render via ReportLab
+   (`render_pdf` in `services/worksheet_pdf.py`) — then start **Phase 2 (Interactive Editing)**.
+   Phase 1 technical notes live in [§15](#-15-phase-1-deep-dive--file-io--canvas).
 4. **⚠️ MANDATORY — every change to this project is logged in THIS FILE.** Before you finish any task:
    - Bump **Document version** and **Times updated** in the metadata table above.
-   - Update **Last updated**; add a row to [§2 Update History](#-2-update-history--changelog) (**newest on top**).
-   - Flip the relevant rows in [§5 Feature Status Matrix](#-5-feature-status-matrix):
-     `🔴 Stub` → `🟡 In progress` → `🟢 Done`.
-   - Move completed items from [§7 Remaining](#-7-whats-remaining) to [§6 Done](#-6-whats-done-verified);
-     tick the phase in [§14](#-14-full-project-roadmap-phases-010).
+   - Update **Last updated** + **Latest code commit**; add a row to [§2 Update History](#-2-update-history--changelog) (**newest on top**).
+   - Flip the relevant rows in [§5 Feature Status Matrix](#-5-feature-status-matrix): `🔴 Stub` → `🟡 In progress` → `🟢 Done`.
+   - Move completed items from [§7 Remaining](#-7-whats-remaining) to [§6 Done](#-6-whats-done-verified); tick the phase in [§14](#-14-full-project-roadmap-phases-010).
    - Commit the doc **with** the code change (or as a `docs:` commit).
 
 ---
@@ -59,17 +55,17 @@
 12. [Known Risks / Unverified Claims](#-12-known-risks--unverified-claims)
 13. [Data Model Reference](#-13-data-model-reference)
 14. [Full Project Roadmap (Phases 0–10)](#-14-full-project-roadmap-phases-010)
-15. [Phase 1 Deep-Dive — File I/O + Canvas](#-15-phase-1-deep-dive--file-io--canvas-current-work)
+15. [Phase 1 Deep-Dive — File I/O + Canvas](#-15-phase-1-deep-dive--file-io--canvas)
 
 ---
 
 ## ✅ 1. TL;DR
 
 - **Stack:** TypeScript (React + Vite) frontend · Python (FastAPI) backend · PostgreSQL/Supabase (schema written, not applied).
-- **Built:** monorepo scaffold — app shell, 11 stubbed API endpoints, a shared typed data model mirrored between TS and Python, DB schema, docs.
-- **Verified working:** backend boots (`/health`, OpenAPI, stub responses); frontend typechecks, builds (279 modules), and the dev server serves.
-- **NOT built:** all feature logic (parsing, rendering, digitizing, export, PDF, thread matching, persistence, auth, AI/ML). No tests. No deployment config.
-- **First slice to implement:** open an embroidery file → render stitches on the Konva canvas → export ([§15](#-15-phase-1-deep-dive--file-io--canvas-current-work)).
+- **Built:** scaffold **+ Phase 1 core** — open/parse embroidery files, render stitches on the Konva canvas, export to machine files, worksheet (JSON). Shared typed data model, DB schema, docs.
+- **Verified working:** backend **pytest 5/5** + all endpoints (TestClient + real HTTP); **upload through the Vite proxy**; frontend **typecheck + build (280 modules)**. *(In-browser canvas paint not eyeballed — see §12.)*
+- **Still stubbed:** auto-digitize, thread matching, persistence/auth, AI/ML, and the worksheet **PDF** render (JSON works).
+- **Next:** worksheet PDF (Phase 1 tail), then Phase 2 interactive editing ([§14](#-14-full-project-roadmap-phases-010)).
 
 ---
 
@@ -79,7 +75,8 @@
 
 | # | Date | Author | Type | Summary |
 |---|------|--------|------|---------|
-| 2 | 2026-06-30 | Claude (Opus 4.8) | 📝 Docs | Added the **full project roadmap** (Phases 0–10, §14) and a **pyembroidery-grounded Phase 1 deep-dive** (§15). Confirmed the real pyembroidery v1.5.1 API on Python 3.14. Committed STATUS.md v1 (`3e34389`) beforehand. No code changes. |
+| 3 | 2026-06-30 | Claude (Opus 4.8) | ✨ Feature | **Phase 1 core (File I/O + Canvas)** — commit `d9fbc28`. Backend: pyembroidery read/write, `POST /api/files/parse`, `/export`, `/export/validate`, `/worksheet` (JSON). Frontend: Konva stitch rendering + zoom/pan, live Open/Export .DST, StitchPlayer. Tests: pytest 5/5 + generated `sample.dst`/`.pes` fixtures. Verified end-to-end via the Vite proxy. Remaining in Phase 1: worksheet **PDF** render. |
+| 2 | 2026-06-30 | Claude (Opus 4.8) | 📝 Docs | Added the **full project roadmap** (Phases 0–10, §14) and a **pyembroidery-grounded Phase 1 deep-dive** (§15). Committed STATUS.md v1 (`3e34389`) beforehand. No code changes. |
 | 1 | 2026-06-30 | Claude (Opus 4.8) | 🏗 Scaffold | Initial greenfield scaffold: TypeScript/React frontend + Python/FastAPI backend monorepo. 11 stub endpoints, shared data model (TS ⇄ Pydantic), DB schema, docs. Verified backend boot + frontend typecheck/build/dev-serve. Committed `d6a4fd1` (54 files); STATUS.md added in `3e34389`. |
 
 **Legend for "Type":** 🏗 Scaffold · ✨ Feature · 🐛 Fix · ♻️ Refactor · 📝 Docs · ⬆️ Deps · 🚀 Deploy
@@ -94,12 +91,12 @@
 | react / react-dom | 18.3.1 | UI framework |
 | vite | 5.4.21 | dev server + bundler |
 | typescript | 5.9.3 | language / typecheck |
-| konva | 9.3.22 | 2D canvas engine (stitch rendering) |
+| konva | 9.3.22 | 2D canvas engine (**used** — stitch rendering) |
 | react-konva | 18.2.16 | React bindings for Konva |
-| three | 0.169.0 | WebGL (TrueView 3D) |
+| three | 0.169.0 | WebGL (TrueView 3D — still stub) |
 | @react-three/fiber | 8.18.0 | React bindings for Three.js |
-| zustand | 5.0.14 | client state |
-| @tanstack/react-query | 5.101.2 | server state / data fetching |
+| zustand | 5.0.14 | client state (**used** — design + playHead) |
+| @tanstack/react-query | 5.101.2 | server state |
 | zod | 3.25.76 | runtime schema validation |
 | eslint | 8.57.1 | linting (legacy `.eslintrc.cjs`) |
 
@@ -108,19 +105,16 @@
 |---|---|---|---|
 | fastapi | 0.138.2 | API framework | ✅ core |
 | uvicorn | 0.49.0 | ASGI server | ✅ core |
-| pydantic | 2.13.4 | data models | ✅ core |
-| pydantic-settings | 2.14.2 | env config | ✅ core |
+| pydantic (+settings) | 2.13.4 / 2.14.2 | data models / env | ✅ core |
 | python-multipart | 0.0.32 | file uploads | ✅ core |
-| starlette | 1.3.1 | (FastAPI dep) | ✅ core |
-| pyembroidery | 1.5.1 | 45+ embroidery formats I/O | ✅ installed in venv (listed in features file) |
-| opencv-python-headless | ≥4.10 | auto-digitizing | ❌ **not installed** |
-| pillow | ≥10.4 | image I/O | ❌ **not installed** |
-| reportlab | ≥4.2 | worksheet PDF | ❌ **not installed** |
-| numpy / scipy | ≥1.26 / ≥1.11 | math / k-d tree | ❌ **not installed** |
-| supabase | ≥2.9 | auth + DB + storage | ❌ **not installed** |
+| pyembroidery | 1.5.1 | embroidery I/O | ✅ **used** (Phase 1) |
+| pytest / httpx | 8.x / 0.27+ | tests | ✅ dev (`requirements-dev.txt`) |
+| opencv-python-headless, pillow | ≥4.10 / ≥10.4 | auto-digitizing (Phase 3) | ❌ not installed |
+| reportlab | ≥4.2 | worksheet **PDF** (Phase 1 tail) | ❌ **not installed** |
+| numpy / scipy | ≥1.26 / ≥1.11 | math / k-d tree | ❌ not installed |
+| supabase | ≥2.9 | auth + DB + storage (Phase 6) | ❌ not installed |
 
-> Core deps → `apps/backend/requirements.txt`. Feature deps → `apps/backend/requirements-features.txt`
-> (lazy-imported, so the app boots without them).
+> Deps: `requirements.txt` (core, boots app) · `requirements-dev.txt` (pytest) · `requirements-features.txt` (heavy libs, lazy-imported).
 
 ---
 
@@ -128,43 +122,35 @@
 
 ```
 EmDesign_Automater/
-├── STATUS.md                       ← THIS FILE (project state / handoff / roadmap)
-├── README.md                       setup + run instructions
-├── AI-Embroidery-Software-Prompt.md  ← the master spec (source of all requirements)
-├── package.json                    npm workspace root + dev scripts
-├── package-lock.json
-├── .gitignore  .env.example
-├── docs/
-│   ├── ARCHITECTURE.md             condensed architecture (spec §3)
-│   └── DATA-MODEL.md               entity list + TS⇄Python mirror notes
-├── db/
-│   └── schema.sql                  PostgreSQL/Supabase schema (spec §8) — NOT applied
+├── STATUS.md                       ← THIS FILE (state / handoff / roadmap)
+├── README.md   AI-Embroidery-Software-Prompt.md (master spec)
+├── package.json  package-lock.json  .gitignore  .env.example
+├── docs/  ARCHITECTURE.md  DATA-MODEL.md
+├── db/    schema.sql               PostgreSQL/Supabase schema (spec §8) — NOT applied
 ├── apps/
 │   ├── frontend/                   TypeScript / React / Vite
-│   │   ├── package.json  tsconfig.json  vite.config.ts  index.html  .eslintrc.cjs
 │   │   └── src/
-│   │       ├── main.tsx  App.tsx           app shell
+│   │       ├── App.tsx  main.tsx  index.css
 │   │       ├── types/design.ts             ← shared data model (TS)
-│   │       ├── api/client.ts               typed API client (calls all endpoints)
-│   │       ├── store/designStore.ts        Zustand store
-│   │       ├── lib/units.ts                mm↔px / unit helpers
+│   │       ├── api/client.ts               parse / export / worksheet / validate …
+│   │       ├── store/designStore.ts        design + playHead
+│   │       ├── lib/units.ts
 │   │       └── components/
-│   │           ├── toolbar/Toolbar.tsx
-│   │           ├── canvas/StitchCanvas.tsx      ← Konva (first to implement)
-│   │           ├── panels/ColorObjectList.tsx
-│   │           ├── panels/ThreadPalette.tsx
-│   │           ├── panels/PropertiesPanel.tsx
-│   │           ├── player/StitchPlayer.tsx
-│   │           └── trueview/TrueView3D.tsx      (r3f stub, not mounted in shell)
+│   │           ├── toolbar/Toolbar.tsx          Open + Export (live)
+│   │           ├── canvas/StitchCanvas.tsx      Konva rendering (live)
+│   │           ├── panels/ColorObjectList.tsx   color sequence (live)
+│   │           ├── panels/ThreadPalette.tsx     (stub)
+│   │           ├── panels/PropertiesPanel.tsx   (stub → Phase 2)
+│   │           ├── player/StitchPlayer.tsx      animation (live)
+│   │           └── trueview/TrueView3D.tsx      (stub → Phase 7)
 │   └── backend/                    Python / FastAPI
-│       ├── requirements.txt  requirements-features.txt  pyproject.toml  .env.example
-│       └── app/
-│           ├── main.py  config.py          FastAPI app, CORS, /health, router registration
-│           ├── models/design.py            ← shared data model (Pydantic, mirrors TS)
-│           ├── routers/                     files, convert, digitize, worksheet,
-│           │                                export, threads, designs (all stubs)
-│           ├── services/                    embroidery_io, digitizer, worksheet_pdf, threads
-│           └── data/threads_madeira_sample.json
+│       ├── requirements*.txt  pyproject.toml
+│       ├── app/
+│       │   ├── main.py  config.py
+│       │   ├── models/design.py            ← shared data model (Pydantic)
+│       │   ├── routers/  files, export, worksheet (live) · convert, digitize, threads, designs (stub)
+│       │   └── services/ embroidery_io (live) · worksheet_pdf (build live, PDF stub) · digitizer, threads (stub)
+│       └── tests/  test_embroidery_io.py  make_fixtures.py  fixtures/sample.dst,.pes
 └── .venv (gitignored) · node_modules (gitignored)
 ```
 
@@ -172,106 +158,91 @@ EmDesign_Automater/
 
 ## 📊 5. Feature Status Matrix
 
-**Status:** 🔴 Stub (not implemented) · 🟡 In progress / partial · 🟢 Done & verified
+**Status:** 🔴 Stub · 🟡 In progress / partial · 🟢 Done & verified
 
-### Backend endpoints (all under `/api`)
-| Endpoint | Method | Status | Returns now | File | Spec |
+### Backend endpoints (under `/api`)
+| Endpoint | Method | Status | Behavior | File | Spec |
 |---|---|---|---|---|---|
 | `/health` | GET | 🟢 Done | `{"status":"ok"}` | `app/main.py` | — |
-| `/api/files/parse` | POST | 🔴 Stub **(NEXT)** | 501 | `app/routers/files.py` | §4.8 |
-| `/api/convert` | POST | 🔴 Stub | 501 | `app/routers/convert.py` | §4.8 |
-| `/api/digitize` | POST | 🔴 Stub | 501 | `app/routers/digitize.py` | §4.2 |
-| `/api/worksheet` | POST | 🔴 Stub | 501 | `app/routers/worksheet.py` | §4.9 |
-| `/api/export` | POST | 🔴 Stub | 501 | `app/routers/export.py` | §4.8 |
-| `/api/export/validate` | POST | 🔴 Stub | 501 | `app/routers/export.py` | §4.8 |
-| `/api/threads` | GET | 🔴 Stub | 501 | `app/routers/threads.py` | §4.4 |
-| `/api/threads/match` | POST | 🔴 Stub | 501 | `app/routers/threads.py` | §4.4 |
-| `/api/designs` | GET | 🟡 Partial | `200 []` (in-memory) | `app/routers/designs.py` | §8 |
-| `/api/designs/{id}` | GET | 🟡 Partial | 404 (in-memory) | `app/routers/designs.py` | §8 |
-| `/api/designs` | POST | 🔴 Stub | 501 | `app/routers/designs.py` | §8 |
+| `/api/files/parse` | POST | 🟢 **Done** | upload → `Design` (pyembroidery) | `routers/files.py` | §4.8 |
+| `/api/export` | POST | 🟢 **Done** | `Design` → streams machine file | `routers/export.py` | §4.8 |
+| `/api/export/validate` | POST | 🟢 **Done** | jump/size/long-stitch checks | `routers/export.py` | §4.8 |
+| `/api/worksheet` | POST | 🟡 **Partial** | Worksheet **JSON** (PDF TBD) | `routers/worksheet.py` | §4.9 |
+| `/api/convert` | POST | 🔴 Stub | 501 | `routers/convert.py` | §4.8 |
+| `/api/digitize` | POST | 🔴 Stub | 501 | `routers/digitize.py` | §4.2 |
+| `/api/threads`, `/threads/match` | GET/POST | 🔴 Stub | 501 | `routers/threads.py` | §4.4 |
+| `/api/designs` (GET/GET id) | GET | 🟡 Partial | in-memory | `routers/designs.py` | §8 |
+| `/api/designs` | POST | 🔴 Stub | 501 | `routers/designs.py` | §8 |
 
-### Backend services (business logic)
-| Function | Status | File | Needs |
-|---|---|---|---|
-| `read_embroidery` / `write_embroidery` | 🔴 Stub | `app/services/embroidery_io.py` | pyembroidery |
-| `digitize_image` | 🔴 Stub | `app/services/digitizer.py` | opencv, numpy |
-| `build_worksheet` / `render_pdf` | 🔴 Stub | `app/services/worksheet_pdf.py` | reportlab |
-| `nearest_thread` | 🔴 Stub | `app/services/threads.py` | scipy |
+### Backend services
+| Function | Status | File |
+|---|---|---|
+| `read_embroidery` / `write_embroidery` | 🟢 **Done** | `services/embroidery_io.py` |
+| `build_worksheet` | 🟢 **Done** | `services/worksheet_pdf.py` |
+| `render_pdf` | 🔴 Stub (needs reportlab) | `services/worksheet_pdf.py` |
+| `digitize_image` | 🔴 Stub | `services/digitizer.py` |
+| `nearest_thread` | 🔴 Stub | `services/threads.py` |
 
 ### Frontend components
-| Component | Status | Notes | File |
-|---|---|---|---|
-| App shell / layout | 🟢 Done | grid layout renders | `src/App.tsx`, `src/index.css` |
-| Toolbar | 🔴 Stub | buttons disabled | `src/components/toolbar/Toolbar.tsx` |
-| StitchCanvas | 🔴 Stub **(NEXT)** | Konva stage mounts, no geometry | `src/components/canvas/StitchCanvas.tsx` |
-| ColorObjectList | 🟡 Partial | renders from store if data present; selection wired; no data yet | `src/components/panels/ColorObjectList.tsx` |
-| ThreadPalette | 🔴 Stub | placeholder | `src/components/panels/ThreadPalette.tsx` |
-| PropertiesPanel | 🔴 Stub | placeholder | `src/components/panels/PropertiesPanel.tsx` |
-| StitchPlayer | 🔴 Stub | disabled controls | `src/components/player/StitchPlayer.tsx` |
-| TrueView3D | 🔴 Stub | r3f cube; not mounted in shell | `src/components/trueview/TrueView3D.tsx` |
-| designStore (Zustand) | 🟡 Partial | `design`, `selectedObjectId`, setters; needs update/reorder actions | `src/store/designStore.ts` |
-| api client | 🟢 Done | all endpoints wired (call the stubs) | `src/api/client.ts` |
-| shared types | 🟢 Done | full data model | `src/types/design.ts` |
+| Component | Status | Notes |
+|---|---|---|
+| App shell / layout | 🟢 Done | |
+| StitchCanvas | 🟢 **Done** | Konva polylines, fit-to-view, zoom/pan, playHead limit |
+| Toolbar | 🟡 **Partial** | Open + Export **live**; digitizing tools stub (Phase 2) |
+| ColorObjectList | 🟢 **Done** | shows color sequence + swatches |
+| StitchPlayer | 🟢 **Done** | play/scrub/reset over stitches |
+| designStore (Zustand) | 🟡 Partial | design + playHead; needs edit/undo actions (Phase 2) |
+| api client | 🟢 Done | all endpoints incl. `exportDesign` |
+| shared types | 🟢 Done | |
+| ThreadPalette / PropertiesPanel / TrueView3D | 🔴 Stub | Phase 2 / Phase 7 |
 
 ### Infrastructure
 | Item | Status | Notes |
 |---|---|---|
-| Monorepo / npm workspaces | 🟢 Done | |
-| Shared data model (TS ⇄ Pydantic) | 🟢 Done | camelCase-on-wire verified |
-| DB schema (`db/schema.sql`) | 🟡 Written | **not applied** to any Supabase project |
-| Supabase wiring (auth/persistence/storage) | 🔴 Not started | needs project + credentials |
-| Tests / CI | 🔴 None | no test framework set up |
-| Dockerfile / deployment | 🔴 None | target: Vercel + Railway/Fly.io (spec §7) |
-| AI/ML models (SAM, CNN, RL, diffusion) | 🔴 Not started | future; needs GPU + training data |
-| `.STIQ` master format | 🔴 Not started | currently represented as `Design` JSON |
+| Monorepo / npm workspaces · shared data model | 🟢 Done | camelCase-on-wire verified |
+| Tests (pytest) | 🟡 **Started** | `test_embroidery_io.py` (5 tests); no frontend tests, no CI |
+| DB schema applied · Supabase · Dockerfile/deploy · AI/ML · `.STIQ` | 🔴 Not started | Phases 6/8/X |
 
 ---
 
 ## 🟢 6. What's DONE (verified)
 
-Each item below was **confirmed by running it**, not assumed:
+**Scaffold (Updates #1–2):** monorepo, shared data model (TS ⇄ Pydantic, camelCase verified), FastAPI
+app boots on Python 3.14, frontend typecheck/build/dev-serve. Full roadmap + Phase 1 plan documented.
 
-1. **Monorepo scaffold** — npm workspaces, 54 files committed (`d6a4fd1`), tree clean.
-2. **Shared data model** — `Design`/`DesignObject`/`ColorStop`/`Thread`/`Worksheet`/`ValidationReport` +
-   enums — mirrored in `types/design.ts` and `models/design.py`. Verified serialization: Python
-   `width_mm` → JSON `widthMm` (camelCase alias works).
-3. **Backend boots on Python 3.14** — `uvicorn app.main:app` starts; `GET /health` →
-   `{"status":"ok"}`; OpenAPI (`/openapi.json`, `/docs`) lists **all 11 endpoints**.
-4. **Stub behavior correct** — `GET /api/designs` → `200 []` (in-memory works); unimplemented
-   endpoints → `501` with a clear detail message.
-5. **Frontend typecheck** — `tsc --noEmit` clean (0 errors).
-6. **Frontend production build** — `vite build` transforms **279 modules** (konva, three,
-   react-konva all resolve), emits `dist/`.
-7. **Frontend dev server** — `vite` boots in ~84 ms, serves `200` at `http://localhost:5173`,
-   HTML references the TS entry `/src/main.tsx`.
-8. **`pyembroidery` installs + imports on Python 3.14** — `read`/`write_dst`/`EmbPattern` present;
-   full API confirmed (see [§15](#-15-phase-1-deep-dive--file-io--canvas-current-work)).
+**Phase 1 core (Update #3, commit `d9fbc28`) — each confirmed by running it:**
+1. **Parse** — `POST /api/files/parse` decodes a real `.DST`/`.PES` via pyembroidery → `Design`
+   (stitches in mm, color stops from `get_as_colorblocks`, dimensions from `bounds`). Verified: 200,
+   40×40mm, 2 stops.
+2. **Export** — `POST /api/export?format=…` streams a machine file; PES round-trips (threads preserved).
+3. **Validate** — `POST /api/export/validate` flags long stitches / oversize / empty.
+4. **Worksheet** — `POST /api/worksheet` returns the worksheet **JSON** (color sequence, trims, sew-time estimate).
+5. **Canvas render** — `StitchCanvas` draws color-grouped Konva polylines with fit-to-view + zoom/pan.
+6. **Upload/Export UI** — Toolbar "Open" parses a file into the store; "Export .DST" downloads.
+7. **Stitch player** — play/scrub/reset animates the stitch sequence via `playHead`.
+8. **Tests** — pytest 5/5 (parse dims/stops, DST + PES round-trip, unsupported-ext, worksheet) + committed fixtures.
+9. **Integration** — upload verified **through the Vite dev proxy** (`:5173` → `:8000`), the real browser path.
 
 ---
 
 ## 🔴 7. What's REMAINING
 
-Grouped by priority. **Everything here is unimplemented.** Full phased plan in [§14](#-14-full-project-roadmap-phases-010).
+Full phased plan in [§14](#-14-full-project-roadmap-phases-010). Immediate:
 
-### A. Phase 1 — File I/O + canvas (do first; see §15)
-- Backend `POST /api/files/parse` → real pyembroidery decode → `Design` (+ `embroidery_io.read_embroidery`).
-- Frontend `StitchCanvas` Konva rendering of `Design.stitches`; populate `ColorObjectList`.
-- Backend `POST /api/export` + `write_embroidery` (Design → .DST/.PES).
-- Backend `POST /api/worksheet` + `render_pdf` (ReportLab PDF).
-- Frontend `StitchPlayer` animation.
+### A. Phase 1 tail
+- **Worksheet PDF** — implement `worksheet_pdf.render_pdf` (ReportLab) + a download endpoint/button.
+- (Optional) surface `validate` warnings in the UI before export.
 
-### B. Phases 2–5 — core editor & production
-- Interactive editing (properties, thread palette, selection, undo/redo) — Phase 2.
-- Auto-digitizing (OpenCV) — Phase 3. Lettering — Phase 4. Full export/convert/validate — Phase 5.
+### B. Phase 2 — interactive editing (next big phase)
+- Canvas selection ↔ `ColorObjectList`; `PropertiesPanel` bound to a selected object (density,
+  underlay, pull-comp — §4.3); `ThreadPalette` load + assign; recolor stops; undo/redo; rulers/grid.
+- Note: parsed `.DST`/`.PES` files carry **stitches + color stops but no vector objects**
+  (`design.objects` is empty). Object-level editing needs an object model — design it in Phase 2.
 
-### C. Phase 6 — persistence & accounts
-- Supabase project + apply `db/schema.sql`; auth; `designs` CRUD; versions; teams; `.STIQ` master format.
-
-### D. Phases 7–10 — advanced (future)
-- TrueView 3D (7); AI engine SAM/CNN/RL/quality-scoring (8); generative + STITCH-GPT (9); collab/cloud API/mobile (10).
-
-### E. Cross-cutting (start now, never "done")
-- Tests (pytest + vitest) + CI; Dockerfiles + deployment; logging/observability; auth/validation/rate-limiting.
+### C. Phases 3–10 & cross-cutting
+- Auto-digitize (OpenCV, 3) · lettering (4) · full export/convert (5) · Supabase persistence/auth (6) ·
+  TrueView 3D (7) · AI engine (8) · generative + assistant (9) · collab/API/mobile (10).
+- Cross-cutting: frontend tests + CI, Dockerfiles/deploy, logging, authz/rate-limits.
 
 ---
 
@@ -279,49 +250,36 @@ Grouped by priority. **Everything here is unimplemented.** Full phased plan in [
 
 | Decision | Why | Reversible? |
 |---|---|---|
-| **TypeScript** (frontend) + **Python** (backend) | User request ("most advanced/flexible non-HTML"); matches spec §7. Python is mandatory — pyembroidery/PyTorch/OpenCV are Python-only. | Foundational |
-| **Scaffold-only** first pass | User chose it; full spec is a multi-year product. | — |
-| **File I/O + canvas** as first feature | User chose it; pyembroidery makes it the most achievable, high-value backbone. | — |
-| **npm workspaces** (not pnpm) | pnpm not installed on this machine; npm 11 is present and equivalent. | Yes — swap to pnpm later. |
-| **Tiered Python deps** (`requirements.txt` core + `requirements-features.txt`) | Python 3.14 is new; heavy wheels may lag. Core (5 pkgs) guarantees boot; features lazy-imported. | Yes |
-| **Single `tsconfig.json`** (dropped project references) | `tsc --noEmit` + composite refs threw `TS6310`. Simpler & robust for a scaffold. | Yes |
-| **ESLint 8 legacy `.eslintrc.cjs`** (not 9 flat) | Stability; fewer moving parts for a scaffold. | Yes |
-| Services **lazy-import** heavy libs | So the app boots before opencv/reportlab/etc. are installed. | Yes |
-| Made **git commits** (scaffold + docs) | Standard for a new project; local only. Rollback: `git reset --soft HEAD~1` or `rm -rf .git`. | Yes |
+| **TypeScript** (frontend) + **Python** (backend) | User request; matches spec §7; Python mandatory for pyembroidery/AI libs. | Foundational |
+| Build **vertically**, one phase at a time | User scope; full spec is multi-year. | — |
+| **Color stops from `get_as_colorblocks`**, not `threadlist` | DST stores no color → `threadlist` empty on read; colorblocks supply filler colors and work for PES too. | Yes |
+| Round-trip test asserts on **bounds**, not stitch count | DST writer adds ties/splits long moves → stitch count changes; bounds are the stable invariant. | Yes |
+| Worksheet endpoint returns **JSON now**, PDF later | ReportLab is untested on Python 3.14; JSON is dependency-free and unblocks the UI. | Yes |
+| **npm workspaces** (not pnpm) · **tiered Python deps** · **single tsconfig** · **ESLint 8** · **lazy heavy imports** | See Updates #1–2 rationale (pnpm absent; py3.14 wheel risk; `TS6310`; stability; boot without heavy libs). | Yes |
+| Git commits per logical change (scaffold, docs, phase) | Clean history. Rollback: `git reset --soft HEAD~1`. | Yes |
 
 ---
 
 ## ⚠️ 9. Environment & Gotchas
 
-- **Python 3.14.3** is the local interpreter — **very new**. `opencv-python-headless`, `scipy`,
-  `reportlab` are **untested** here and may lack 3.14 wheels. If `pip install -r requirements-features.txt`
-  fails, use **Python 3.11–3.12** for the backend venv.
-- **pnpm is NOT installed** — use `npm`. Scripts assume npm workspaces.
-- **Backend venv** lives at `apps/backend/.venv` (gitignored). Activate before running uvicorn.
-- **Vite dev proxy:** `/api` and `/health` are proxied to `http://localhost:8000` (see `vite.config.ts`).
-  In production set `VITE_API_BASE_URL` to the deployed backend origin.
-- **Supabase** requires the user's own project URL + keys (`.env`); nothing is wired yet.
-- **CORS** allows `http://localhost:5173` only (see `app/config.py`).
-- **`tsconfig` has `noUnusedLocals/Parameters: false`** (relaxed for stubs) — re-enable when implementing.
-- **No secrets committed.** `.env` files are gitignored; only `.env.example` templates are tracked.
+- **Python 3.14.3** — very new. `reportlab`/`opencv`/`scipy` **untested**; may lack wheels. Fall back to **3.11–3.12** if `pip install -r requirements-features.txt` fails. Core + pyembroidery + pytest **do** install cleanly (confirmed).
+- **DST has no color data** — parsed `.DST` shows filler/auto colors; `.PES` preserves real thread colors. Not a bug.
+- **Round-trip stitch count is not stable** (writer normalizes). Compare **bounds**, not counts.
+- **pnpm not installed** → use `npm`. **Backend venv** at `apps/backend/.venv` (gitignored).
+- **Vite proxies** `/api` + `/health` → `http://localhost:8000` (`vite.config.ts`). Set `VITE_API_BASE_URL` in prod.
+- **CORS** allows `http://localhost:5173` only (`app/config.py`). **Supabase** needs the user's keys (nothing wired).
+- **Port 8000 hygiene:** kill stray servers with `lsof -ti tcp:8000 | xargs kill -9` before booting (a stale server serving old code causes confusing results).
 
 ---
 
 ## 🎯 10. Next Steps (do these IN ORDER)
 
-The **File-I/O + canvas** vertical slice — makes the app actually do something end-to-end.
-**> Full technical detail (API cheat-sheet, mapping, acceptance criteria) for every step is in
-[§15 Phase 1 Deep-Dive](#-15-phase-1-deep-dive--file-io--canvas-current-work).**
+1. **Worksheet PDF** — `services/worksheet_pdf.render_pdf` (ReportLab) + `GET/POST` download; add a "Worksheet" button. *(Install `reportlab`; if it fails on 3.14, use a 3.12 venv.)*
+2. **Phase 2 kickoff** — canvas object/stitch **selection** + `PropertiesPanel` binding; `ThreadPalette` load via `api.listThreads` (implement `/api/threads` first: load `data/threads_madeira_sample.json`).
+3. **Convert endpoint** — `POST /api/convert` (any→any) using the existing `read_embroidery`/`write_embroidery`.
+4. **Frontend tests** — add vitest + a StitchCanvas run-builder unit test.
 
-1. `app/services/embroidery_io.py` → `read_embroidery` (pyembroidery decode → `Design`).
-2. `app/routers/files.py` → wire `POST /api/files/parse`; remove the `501`.
-3. `components/canvas/StitchCanvas.tsx` → render stitches in Konva; `ColorObjectList` populates.
-4. `Toolbar` "Open" → file picker → `api.parseFile` → `setDesign`.
-5. `write_embroidery` + `POST /api/export` (Design → .DST/.PES).
-6. `worksheet_pdf` + `POST /api/worksheet` (ReportLab PDF).
-7. `StitchPlayer` animation over `Design.stitches`.
-
-> After each step: re-run the verification in §11 and **update this file** (§2 changelog + §5 matrix).
+> After each step: re-run §11 checks and **update this file** (§2 changelog + §5 matrix + metadata).
 
 ---
 
@@ -329,53 +287,42 @@ The **File-I/O + canvas** vertical slice — makes the app actually do something
 
 ### Run
 ```bash
-# Backend
-cd apps/backend
-source .venv/bin/activate          # venv already created
-uvicorn app.main:app --reload --port 8000
-#   → http://localhost:8000/health  and  /docs
-
-# Frontend (new terminal, from repo root)
-npm run dev:frontend               # → http://localhost:5173
-
-# Both at once (from repo root)
-npm run dev
+# Backend  (from apps/backend)
+source .venv/bin/activate && uvicorn app.main:app --reload --port 8000    # /health, /docs
+# Frontend (from repo root, new terminal)
+npm run dev:frontend                                                       # http://localhost:5173
+# Both:  npm run dev
 ```
 
 ### One-time setup on a fresh clone
 ```bash
-npm install                                        # frontend deps (workspace root)
+npm install
 cd apps/backend && python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt                    # core (boots the app)
-pip install -r requirements-features.txt           # heavy libs (for features; may need py3.11–3.12)
+pip install -r requirements.txt -r requirements-dev.txt   # core + tests (boots + tests)
+# pip install -r requirements-features.txt                # heavy libs (Phase 3+/PDF; may need py3.11–3.12)
+python tests/make_fixtures.py                             # (re)generate sample.dst/.pes
 ```
 
-### Verification baseline (last confirmed 2026-06-30, Update #1)
-| Check | Command | Expected | Last result |
+### Verification baseline (last confirmed 2026-06-30, Update #3)
+| Check | Command | Expected | Result |
 |---|---|---|---|
-| Backend health | `curl localhost:8000/health` | `{"status":"ok"}` | ✅ pass |
-| Endpoints registered | `curl localhost:8000/openapi.json` | 11 `/api/*` paths + `/health` | ✅ pass |
-| Stub behavior | `curl localhost:8000/api/threads` | `501` | ✅ pass |
-| Frontend typecheck | `npm run typecheck` | 0 errors | ✅ pass |
-| Frontend build | `npm run build --workspace apps/frontend` | 279 modules, `dist/` | ✅ pass |
-| Frontend dev serve | `npm run dev:frontend` + `curl localhost:5173` | `200`, refs `/src/main.tsx` | ✅ pass |
-
-**Tests:** none exist yet — there is no test suite to run. Add one (Phase X / §14).
+| Backend tests | `cd apps/backend && python -m pytest tests -q` | 5 passed | ✅ |
+| Parse endpoint | `curl -F file=@tests/fixtures/sample.dst localhost:8000/api/files/parse` | 200, Design JSON | ✅ |
+| Export round-trip | POST parsed design to `/api/export?format=pes` → re-read | threads preserved | ✅ |
+| Validate | POST design to `/api/export/validate` | `passed:true` + warnings | ✅ |
+| Upload via **Vite proxy** | `curl -F file=@… localhost:5173/api/files/parse` | 200 (proxied to :8000) | ✅ |
+| Frontend typecheck / build | `npm run typecheck` · `npm run build -w apps/frontend` | 0 errors · 280 modules | ✅ |
 
 ---
 
 ## 🚧 12. Known Risks / Unverified Claims
 
-- **In-browser render not confirmed.** Build + typecheck + dev-serve all pass, but the React app
-  was **not opened in a real browser** during scaffold creation. Open `http://localhost:5173`
-  and confirm the panels paint and no console errors appear. *(Most likely to surprise you.)*
-- **Feature libraries untested on Python 3.14** — opencv/scipy/reportlab/pillow/numpy/supabase are
-  **not installed**. First `pip install -r requirements-features.txt` may hit a missing-wheel/build
-  error; fall back to Python 3.11–3.12.
-- **DB schema unvalidated against a live Postgres** — `db/schema.sql` is written but never executed;
-  syntax/RLS may need adjustment when first applied to Supabase.
-- **`_IncludedRouter` note:** FastAPI 0.138 represents included routers lazily in `app.routes`
-  (they don't flatten). This is normal — routing and OpenAPI work correctly (verified).
+- **In-browser canvas paint NOT eyeballed.** Typecheck + build + upload-via-proxy all pass, and the
+  render logic is straightforward, but no one has opened `:5173` in a browser to confirm the stitches
+  actually draw, zoom/pan feels right, and the player animates. **Open it and check** — *most likely to surprise you.*
+- **Worksheet PDF, digitize, threads, persistence** are unimplemented — don't assume they work.
+- **Feature libs untested on Python 3.14** (reportlab/opencv/scipy) — first install may fail; use 3.11–3.12.
+- **DB schema unvalidated** against a live Postgres.
 
 ---
 
@@ -385,210 +332,97 @@ Mirrored in [`apps/frontend/src/types/design.ts`](./apps/frontend/src/types/desi
 [`apps/backend/app/models/design.py`](./apps/backend/app/models/design.py). **Edit both together.**
 Full details in [`docs/DATA-MODEL.md`](./docs/DATA-MODEL.md).
 
-Core entities: `Stitch` (x, y, command) · `StitchType` enum · `UnderlayType` enum · `ConnectMethod`
-enum · `Thread` · `ColorStop` · `DesignObject` · `Design` · `Worksheet` · `ValidationReport` ·
-`ConvertRequest`/`ConvertResponse`. Python uses a camelCase alias generator so JSON matches the TS
-interfaces exactly (`width_mm` ⇄ `widthMm`).
+Entities: `Stitch` · `StitchType`/`UnderlayType`/`ConnectMethod` enums · `Thread` · `ColorStop` ·
+`DesignObject` · `Design` · `Worksheet` · `ValidationReport` · `ConvertRequest`/`ConvertResponse`.
+Python's camelCase alias generator makes JSON match the TS interfaces (`width_mm` ⇄ `widthMm`).
 
 ---
 
 ## 🗺 14. Full Project Roadmap (Phases 0–10)
 
-> **Build vertically, not horizontally.** Each phase is a thin end-to-end slice that ships
-> something usable; the next phase deepens it. Sizes are *relative complexity*, not calendar
-> promises: **S** = hours · **M** = 1–2 days · **L** = ~a week · **XL** = multi-week.
-> Workflow every phase: **implement → run/verify → update this file (§2 + §5 + tick below).**
+> **Build vertically.** Sizes are relative complexity, not calendar: **S** hours · **M** 1–2 days · **L** ~a week · **XL** multi-week.
+> Every phase: **implement → run/verify → update this file (§2 + §5).**
 
-### Overview
-
-| Phase | Name | Status | Size | What it unlocks |
+| Phase | Name | Status | Size | Unlocks |
 |---|---|---|---|---|
-| 0 | Scaffold | 🟢 Done | — | the whole codebase |
-| **1** | **File I/O + Canvas** | ⬜ **Next** | L | open, view, export real designs ([§15](#-15-phase-1-deep-dive--file-io--canvas-current-work)) |
-| 2 | Interactive editing | ⬜ | L | select/edit objects, properties, threads |
+| 0 | Scaffold | 🟢 Done | — | the codebase |
+| **1** | **File I/O + Canvas** | 🟡 **Core done** (PDF left) | L | open/view/export real designs |
+| 2 | Interactive editing | ⬜ **Next** | L | select/edit objects, properties, threads |
 | 3 | Auto-digitizing v1 (OpenCV) | ⬜ | XL | image → stitches |
 | 4 | Lettering & monogramming | ⬜ | L | text → stitches |
-| 5 | Production output & formats | ⬜ | M | worksheets, export packages, 25+ formats |
+| 5 | Production output & formats | ⬜ | M | worksheets, packages, 25+ formats |
 | 6 | Persistence & accounts (Supabase) | ⬜ | M | save/load, auth, versions, teams |
 | 7 | TrueView 3D simulation | ⬜ | L | realistic preview |
 | 8 | AI engine | ⬜ | XL | smart digitizing, path optimization, quality scoring |
 | 9 | Generative & assistant | ⬜ | XL | text-to-design, STITCH-GPT, NL editing |
-| 10 | Platform & scale | ⬜ | XL | real-time collab, cloud API, mobile, machine monitoring |
+| 10 | Platform & scale | ⬜ | XL | collab, cloud API, mobile, machine monitoring |
 | X | Cross-cutting (tests/CI/deploy/security) | 🟡 Ongoing | — | ships everything safely |
 
-### Phase 1 — File I/O + Canvas ⬜  *(full detail in [§15](#-15-phase-1-deep-dive--file-io--canvas-current-work))*
-- **Goal:** open a real `.DST`/`.PES` → render stitches on the Konva canvas → export → worksheet PDF.
-- **Depends on:** pyembroidery (✅), reportlab (features, for the PDF).
-- **Acceptance:** open real file → render → edit a color → export `.PES` → re-open (stitch count stable) → worksheet PDF.
+### Phase 1 — File I/O + Canvas 🟡 (core done; see [§15](#-15-phase-1-deep-dive--file-io--canvas))
+- **Done:** parse, export, validate, worksheet-JSON, Konva render, upload/export UI, stitch player, tests.
+- **Left:** worksheet **PDF** (ReportLab); optionally surface validation warnings pre-export.
 
-### Phase 2 — Interactive Editing ⬜  (size L)
-- **Goal:** turn the viewer into an editor — select objects, edit stitch properties, manage threads.
-- **Tasks:** canvas hit-test selection ↔ `ColorObjectList`; `PropertiesPanel` bound to the selected
-  `DesignObject` (density, stitch angle, underlay, pull-comp — spec §4.3); `ThreadPalette` loads the
-  catalog + drag-to-assign; reorder color stops; undo/redo (Zustand history); zoom/pan/grid/rulers.
-- **Files:** `components/panels/*`, `store/designStore.ts` (add `updateObject`, `reorder`, history), `StitchCanvas`.
-- **Spec:** §3, §4.3, §4.4. **Acceptance:** change a selected object's density and see it reflected; assign a thread; undo restores.
+### Phase 2 — Interactive Editing ⬜ (size L) — *next*
+- Canvas hit-test selection ↔ `ColorObjectList`; `PropertiesPanel` bound to the selected object
+  (density, stitch angle, underlay, pull-comp — §4.3); `ThreadPalette` load + drag-assign; reorder
+  stops; undo/redo (Zustand history); zoom/pan/grid/rulers. Needs a vector **object model** (parsed
+  files are stitch-only). **Files:** `components/panels/*`, `store/designStore.ts`, `StitchCanvas`.
 
-### Phase 3 — Auto-Digitizing v1 (classical OpenCV) ⬜  (size XL)
-- **Goal:** upload an image → get an editable stitch `Design` (pure CV + heuristics, no AI yet).
-- **Tasks:** implement `digitizer.digitize_image` — color quantization (k-means), region segmentation
-  (contours/threshold), per-region stitch-type by size (satin for narrow, tatami fill for large, run
-  for thin lines), fill/satin generation, color-stop ordering, nearest-neighbor path planning + trims.
-  Wire `POST /api/digitize` + an upload dialog with fabric/hoop inputs.
-- **Files:** `services/digitizer.py`, `routers/digitize.py`, new frontend digitize dialog.
-- **Deps:** opencv-python-headless, numpy, pillow (features — may need py3.11–3.12).
-- **Spec:** §4.2, §4.5, §4.6. **Acceptance:** a simple logo → recognizable stitched regions, correct color count, editable on the canvas.
-- **Honesty note:** classical CV output is approximate; neural quality arrives in Phase 8. Keep this path as the fallback.
+### Phase 3 — Auto-Digitizing v1 (OpenCV) ⬜ (XL)
+- `digitizer.digitize_image`: quantize colors, segment regions, assign stitch types by size, generate
+  fill/satin, order stops, plan paths + trims. Wire `POST /api/digitize` + upload dialog. **Deps:** opencv/numpy/pillow.
+- **Honesty:** classical CV is approximate; neural quality is Phase 8. Keep CV as fallback.
 
-### Phase 4 — Lettering & Monogramming ⬜  (size L)
-- **Goal:** type text → generate satin/fill lettering with proper underlay.
-- **Tasks:** font glyph → outline (freetype/fonttools) → satin columns / fill per glyph; kerning,
-  baseline, arc/envelope layouts, monogram frames; auto-underlay; density rules. New lettering tool + panel.
-- **Spec:** §4.10. **Deps:** freetype-py / fonttools. **Acceptance:** "ABC" in a chosen font → clean satin lettering, editable, exportable.
+### Phase 4 — Lettering ⬜ (L) · Phase 5 — Production output/formats ⬜ (M)
+- 4: font glyph → satin/fill lettering with underlay (§4.10). 5: full export package + `/convert` +
+  `/export/validate` decision tree + machine-brand format map (§4.8).
 
-### Phase 5 — Production Output & Formats ⬜  (size M)
-- **Goal:** complete the production pipeline.
-- **Tasks:** finish `POST /api/export` package (machine file + master JSON + worksheet PDF + thread
-  color card + TrueView PNG + placement guide); `POST /api/export/validate` (jump/size/stitch-count/
-  tie-off checks — spec §4.8); `POST /api/convert` (any→any via pyembroidery's 29 read/write formats);
-  format decision tree by machine brand.
-- **Files:** `routers/export.py`, `routers/convert.py`, `services/worksheet_pdf.py`, `services/embroidery_io.py`.
-- **Spec:** §4.8, §4.9. **Acceptance:** export a full ZIP package; validation flags a deliberately-bad design; DST↔PES convert round-trips.
+### Phase 6 — Persistence & Accounts (Supabase) ⬜ (M)
+- Create project, apply `db/schema.sql`, wire auth + `designs` CRUD + Storage + `design_versions`. **User must provide keys.**
 
-### Phase 6 — Persistence & Accounts (Supabase) ⬜  (size M)
-- **Goal:** users save/load designs; auth; versions; teams.
-- **Tasks:** create Supabase project; apply `db/schema.sql`; wire Supabase auth (frontend) + service
-  client (backend); implement `designs` CRUD against Postgres + Supabase Storage for files;
-  `design_versions` snapshots; RLS review.
-- **Files:** `routers/designs.py`, new `services/supabase_*.py`, frontend auth pages, `config.py` (keys).
-- **Deps:** supabase (features); **user must provide** a Supabase project URL + keys.
-- **Spec:** §8. **Acceptance:** sign in → save a design → reload → it's there; another user can't read it (RLS).
+### Phase 7 — TrueView 3D ⬜ (L) · Phase 8 — AI engine ⬜ (XL) · Phase 9 — Generative + assistant ⬜ (XL) · Phase 10 — Platform & scale ⬜ (XL)
+- 7: 3D thread geometry (§4.7). 8: SAM/CNN/RL + quality scoring + Lab k-d thread match (§4.2/§6). 9: diffusion text-to-design + STITCH-GPT (§4.1/§4.11). 10: collab/cloud API/mobile (§4.12).
 
-### Phase 7 — TrueView 3D Simulation ⬜  (size L)
-- **Goal:** realistic thread preview.
-- **Tasks:** implement `TrueView3D` — per-stitch thread geometry (tubes/quads) with normal/specular
-  for sheen, soft shadowing, a fabric background; 2D↔3D toggle; export TrueView PNG.
-- **Files:** `components/trueview/TrueView3D.tsx`, materials/shaders.
-- **Spec:** §4.7. **Acceptance:** a design renders as recognizable 3D thread matching the 2D layout.
-
-### Phase 8 — AI Engine ⬜  (size XL)
-- **Goal:** replace heuristics with learned models; add quality scoring.
-- **Tasks:** SAM/U-Net region segmentation; CNN (ResNet/EfficientNet) stitch-type classifier;
-  graph + RL stitch-path optimizer (NetworkX + custom); predictive stitch-quality scoring; k-d tree
-  Lab thread match (`services/threads.nearest_thread`). Serve via ONNX Runtime; GPU inference (Modal/RunPod).
-- **Spec:** §4.2, §4.5, §6. **Deps:** torch, onnxruntime, GPU, training data.
-- **Acceptance:** AI digitize beats the Phase-3 CV baseline on a test set; quality score correlates with real defects.
-- **Note:** largest phase; needs data + GPU budget. Keep the Phase-3 CV path as fallback.
-
-### Phase 9 — Generative & Assistant ⬜  (size XL)
-- **Goal:** text-to-design + an embroidery-expert chat assistant.
-- **Tasks:** fine-tuned diffusion for embroidery-friendly art → digitize pipeline; "STITCH-GPT"
-  assistant (Claude-backed) grounded in the current design; natural-language editing ("make the
-  outline thicker"); generative variations.
-- **Spec:** §4.1, §4.11, §6. **Acceptance:** a prompt yields a stitchable design; the assistant answers digitizing questions about the open design.
-
-### Phase 10 — Platform & Scale ⬜  (size XL)
-- **Goal:** productionize the platform.
-- **Tasks:** real-time collaborative editing (CRDT/WebSocket); public cloud API (spec §4.12); mobile
-  app; machine monitoring/analytics; billing/subscription tiers.
-- **Spec:** §4.12, §6. **Acceptance:** two users edit live; external API create-design works; mobile viewer.
-
-### Phase X — Cross-Cutting (start in Phase 1, never "done")
-- **Testing:** pytest (backend) + vitest/RTL (frontend) + an embroidery round-trip test; meaningful coverage on services.
-- **CI/CD:** GitHub Actions (typecheck, lint, test, build) on every push.
-- **Deployment:** Dockerfile(s); Vercel (frontend) + Railway/Fly.io (backend) + Modal/RunPod (GPU) — spec §7.
-- **Observability:** structured logging, error tracking (Sentry), request tracing.
-- **Security:** authz on every endpoint, input validation, upload file-type/size limits, rate limiting, secret management.
+### Phase X — Cross-Cutting (start now)
+- Tests (pytest ✅ started; add vitest + CI) · Dockerfiles + Vercel/Railway/Fly/Modal deploy (§7) · logging/Sentry · authz, upload limits, rate limiting.
 
 ---
 
-## 🔧 15. Phase 1 Deep-Dive — File I/O + Canvas (current work)
+## 🔧 15. Phase 1 Deep-Dive — File I/O + Canvas
 
-**Objective.** A complete vertical slice proving the architecture: **open a real embroidery file →
-render its stitches on the canvas → export it → generate a worksheet.** After this, STITCHIQ is a
-real (minimal) embroidery viewer/converter, and every later phase plugs into a proven pipeline
-(upload → backend parse → `Design` → canvas render → export).
+> **Status:** core **DONE & verified** (Update #3). Tasks 1.1–1.5 + 1.7 implemented; **1.6 worksheet
+> PDF render is the remaining tail.** This section documents how it works + the confirmed API.
 
 ### pyembroidery API cheat-sheet — CONFIRMED on v1.5.1 / Python 3.14
 | Need | API | Notes |
 |---|---|---|
-| Read a file | `pe.read(filename)` | auto-detects by extension; takes a **filename string** |
-| Read by format | `pe.read_dst(f)`, `read_pes(f)`, … (29 read/write fns) | accept file-like objects |
-| Stitches | `pattern.stitches` → `list[[x, y, cmd_int]]` | coords in **1/10 mm** → divide by 10 for mm |
-| Command ints | `pe.STITCH=0, JUMP=1, TRIM=2, STOP=3, END=4, COLOR_CHANGE=5` | **map via `pe.*` constants, don't hardcode ints** |
-| Threads | `pattern.threadlist` → `list[EmbThread]` | `.hex_color()`, `.description`, `.catalog_number`, `.brand`, `.get_red/green/blue()`, `.weight` |
-| Color blocks | `pattern.get_as_colorblocks()` | yields `(stitches, thread)` per stop → build `ColorStop`s + per-stop counts |
-| Extents | `pattern.bounds()` → `(minx, miny, maxx, maxy)` | in 1/10 mm → width/height |
-| Counts | `pattern.count_stitches()`, `count_color_changes()` | |
-| Build | `pattern.add_stitch_absolute(cmd, x_tenths, y_tenths)`, `add_thread(thread)` | mm→tenths = ×10 |
-| Write | `pe.write(pattern, filename)` / `write_dst(pattern, f)` | `f` can be a `BytesIO` |
-| Formats | `pe.supported_formats()` | 45+ read/write |
+| Read a file | `pe.read(filename)` | filename string; we write the upload to a temp file first |
+| Stitches | `pattern.stitches` → `[[x, y, cmd_int]]` | coords **1/10 mm** → ÷10 for mm |
+| Command ints | `pe.STITCH=0, JUMP=1, TRIM=2, STOP=3, END=4, COLOR_CHANGE=5` | mapped via `pe.*` constants (see `embroidery_io._CMD_TO_STR`) |
+| Threads | `pattern.threadlist` (**empty for DST!**) | `.hex_color()`, `.description`, `.catalog_number`, `.brand` |
+| Color blocks | `pattern.get_as_colorblocks()` → `(stitch_list, EmbThread)` | **use this for color stops** (works for DST + PES) |
+| Extents | `pattern.bounds()` → `(minx,miny,maxx,maxy)` | 1/10 mm → dimensions |
+| Counts | `pattern.count_stitches()` | |
+| Build/Write | `add_thread`, `add_stitch_absolute(cmd, x×10, y×10)`, `pe.write(pattern, filename)` | mm→tenths = ×10 |
 
-**Command mapping (build from constants, not literals):**
-`CMD = {pe.STITCH:'STITCH', pe.JUMP:'JUMP', pe.TRIM:'TRIM', pe.STOP:'STOP', pe.END:'END', pe.COLOR_CHANGE:'COLOR_CHANGE'}`
-and the reverse for export. Unknown commands → skip + log.
+### How it's implemented (files)
+- **`services/embroidery_io.py`** — `read_embroidery(bytes, ext)` (temp-file → `pe.read` → `Design`)
+  and `write_embroidery(design, ext)` (`Design` → `EmbPattern` → bytes). Command maps + supported-ext guards.
+- **`routers/files.py`** `/files/parse` · **`routers/export.py`** `/export` (StreamingResponse) + `/export/validate`
+  (long-stitch/size checks) · **`routers/worksheet.py`** `/worksheet` → `worksheet_pdf.build_worksheet`.
+- **Frontend:** `StitchCanvas.tsx` (run-builder: STITCH runs → Konva `<Line>`, break on JUMP/TRIM/COLOR_CHANGE;
+  fit-to-view + wheel-zoom + drag-pan; `limit` = playHead), `Toolbar.tsx` (Open/Export), `StitchPlayer.tsx`,
+  `store/designStore.ts` (`playHead`), `api/client.ts` (`parseFile`, `exportDesign`).
 
-### Tasks (each: file → what → acceptance)
+### Remaining task 1.6 — worksheet PDF
+- `worksheet_pdf.render_pdf(worksheet) -> bytes` with ReportLab: header, dimensions, color table,
+  sequence map (spec §4.9). Add a download route + a "Worksheet" button. **Install `reportlab`** (try
+  Python 3.12 if the 3.14 wheel is missing).
 
-**1.1 `embroidery_io.read_embroidery(data: bytes, ext: str) -> Design`** — `services/embroidery_io.py`
-1. Write `data` to `tempfile.NamedTemporaryFile(suffix=f'.{ext}')`; `pattern = pe.read(path)`; clean up.
-2. `stitches = [Stitch(x=x/10, y=y/10, command=CMD.get(c,'STITCH')) for x,y,c in pattern.stitches]`.
-3. `minx,miny,maxx,maxy = pattern.bounds()` → `width_mm=(maxx-minx)/10`, `height_mm=(maxy-miny)/10`.
-4. Build `color_stops` from `get_as_colorblocks()`: `stop_number`, `thread_brand=thread.brand`,
-   `catalog_number`, `thread_name=thread.description`, `hex=thread.hex_color()`, `stitch_count=len(block)`.
-5. `stitch_count = pattern.count_stitches()`; `name` from the filename; `status='digitized'`.
-- **Edge cases:** unsupported `ext` → `ValueError` (→ 415); no stitches → return with empty lists + a warning.
-- **Acceptance:** for a known fixture, `stitch_count`, number of color stops, and width/height match expectations.
-
-**1.2 `POST /api/files/parse`** — `routers/files.py`
-- `data = await file.read()`; derive `ext` from `file.filename`; `return read_embroidery(data, ext)`;
-  map `ValueError`→400/415. Remove the `501`.
-- **Acceptance:** `curl -F "file=@sample.dst" localhost:8000/api/files/parse` → `200` with `Design` JSON (camelCase).
-
-**1.3 `StitchCanvas` Konva rendering** — `components/canvas/StitchCanvas.tsx`
-- Walk `stitches`; accumulate consecutive `STITCH` points into the current polyline; on
-  `JUMP`/`TRIM`/`COLOR_CHANGE`/`END`, flush it. Assign each run the current color stop's `hex`
-  (advance the stop index on `COLOR_CHANGE`).
-- Render each run as a Konva `<Line points={[x1,y1,…]} stroke={hex} strokeWidth={~1.2}/>`;
-  mm→px via `lib/units.mmToPx`; compute fit-to-view scale + offset from design bounds; add wheel-zoom
-  + drag-pan (Konva `draggable`).
-- **Acceptance:** opening a design shows recognizable geometry; stop colors correct; zoom/pan smooth.
-
-**1.4 Upload flow** — `components/toolbar/Toolbar.tsx` + `store/designStore.ts`
-- "Open" triggers a hidden `<input type="file" accept=".dst,.pes,.jef,.exp,.vp3,…">`; on change →
-  `const d = await api.parseFile(file); setDesign(d);`. `ColorObjectList` populates from the store automatically.
-- **Acceptance:** click Open → pick a file → canvas + object list fill; errors show a toast/message.
-
-**1.5 Export** — `embroidery_io.write_embroidery` + `routers/export.py`
-- `write_embroidery(design, ext)`: `p=pe.EmbPattern()`; for each stitch `p.add_stitch_absolute(REV_CMD[cmd], x*10, y*10)`;
-  add threads from `color_stops`; write to a `BytesIO` via `write_<ext>`; return bytes.
-- `POST /api/export` returns a `StreamingResponse` (full package comes in Phase 5). Start with `.DST` + `.PES`.
-- **Acceptance:** export → re-parse the exported bytes → `stitch_count` preserved (round-trip stable).
-
-**1.6 Worksheet** — `services/worksheet_pdf.py` + `routers/worksheet.py`
-- `build_worksheet(design)`: aggregate the color sequence, count trims (`TRIM`) and color changes,
-  estimate sew minutes (`stitch_count / 800` SPM), dimensions.
-- `render_pdf(worksheet)`: ReportLab — header, dimensions, color table, sequence map (spec §4.9).
-  `POST /api/worksheet` returns the PDF.
-- **Deps:** reportlab (features; may need py3.11–3.12). **Acceptance:** POST a design → PDF with a correct color table.
-
-**1.7 StitchPlayer** — `components/player/StitchPlayer.tsx`
-- Slider `0..stitches.length`; render only stitches up to the cursor; Play advances via
-  `requestAnimationFrame`; speed control.
-- **Acceptance:** Play animates the needle path; scrub works.
-
-### Phase 1 — Definition of Done
-Open a real `.DST` → render → change one color → export `.PES` → re-open the export (stitch count
-stable) → download a worksheet PDF. All via the entry paths a user actually clicks.
-
-### Test fixtures & verification
-- **Fixture (don't use copyrighted designs):** generate one — a small script builds an `EmbPattern`
-  (e.g., a filled circle + a 2-color shape) and `write_dst` to `apps/backend/tests/fixtures/sample.dst`.
-  Commit the fixture.
-- **Backend test (pytest):** round-trip — read fixture → `Design` → `write_embroidery` → read again →
-  assert stitch counts / thread count match. (This also bootstraps Phase X testing.)
-- **Manual:** open the fixture in the UI; confirm render + colors; export; re-open; worksheet.
-- **Install for Phase 1:** `pyembroidery` (✅ in venv) and, for 1.6, `reportlab`.
+### Test fixtures & how to verify
+- Fixtures generated by `tests/make_fixtures.py` → `tests/fixtures/sample.dst` + `.pes` (committed; 2-color ~40mm).
+- `python -m pytest tests -q` → 5 passing (parse dims/stops, DST + PES round-trip via bounds, unsupported-ext, worksheet).
+- Manual: open a fixture in the UI, confirm render + colors, export, re-open, check the color list + player.
 
 ---
 
