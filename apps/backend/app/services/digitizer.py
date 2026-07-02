@@ -29,6 +29,13 @@ MIN_REGION_MM2 = 4.0      # drop specks smaller than this
 CONNECT_MM = 3.0          # row-to-row travel below this = stitch, else JUMP
 DEFAULT_MAX_COLORS = 6
 
+# Satin classification (spec: min column 0.8mm, max width 10-12mm; we cap at 4mm
+# where satin clearly beats tatami, and require an elongated shape).
+SATIN_MIN_W_MM = 0.8
+SATIN_MAX_W_MM = 4.0
+SATIN_ASPECT = 2.5
+SATIN_SPACING_MM = 0.4    # zigzag pitch along the column
+
 
 def _parse_hoop(hoop_size: str) -> tuple[float, float]:
     try:
@@ -119,7 +126,17 @@ def digitize_image(
                 continue
             region = np.zeros_like(mask)
             cv2.drawContours(region, [contour], -1, 255, thickness=cv2.FILLED)
-            pts = _scanline_fill(region, row_px, max_step_px, connect_px)
+
+            # Narrow elongated region → satin column; otherwise tatami fill.
+            rect = cv2.minAreaRect(contour)
+            w_mm = min(rect[1]) * mm_per_px
+            l_mm = max(rect[1]) * mm_per_px
+            is_satin = SATIN_MIN_W_MM <= w_mm <= SATIN_MAX_W_MM and l_mm / max(w_mm, 0.01) >= SATIN_ASPECT
+            if is_satin:
+                satin_step_px = max(1, round(SATIN_SPACING_MM / mm_per_px))
+                pts = _satin_zigzag(region, rect, satin_step_px, connect_px)
+            else:
+                pts = _scanline_fill(region, row_px, max_step_px, connect_px)
             if len(pts) < 2:
                 continue
             obj_start = len(stitches)
@@ -135,11 +152,11 @@ def digitize_image(
             objects.append(
                 DesignObject(
                     sequence_order=seq,
-                    name=f"Region {seq} ({hexcol})",
-                    stitch_type=StitchType.TATAMI,
+                    name=f"{'Satin' if is_satin else 'Fill'} {seq} ({hexcol})",
+                    stitch_type=StitchType.SATIN if is_satin else StitchType.TATAMI,
                     color_stop=stop_no,
-                    density=1.0 / ROW_SPACING_MM,  # rows per mm
-                    stitch_angle=0.0,
+                    density=1.0 / (SATIN_SPACING_MM if is_satin else ROW_SPACING_MM),
+                    stitch_angle=round(float(rect[2]), 1),
                     underlay_type=UnderlayType.NONE,
                     pull_compensation=0.0,
                     entry_point=Point(x=pts[0][0] * mm_per_px, y=pts[0][1] * mm_per_px),
@@ -216,3 +233,42 @@ def _scanline_fill(region, row_px: int, max_step_px: int, connect_px: float):
 
 def _dist(p, q) -> float:
     return float(((p[0] - q[0]) ** 2 + (p[1] - q[1]) ** 2) ** 0.5)
+
+
+def _satin_zigzag(region, rect, step_px: int, connect_px: float):
+    """Satin column for a narrow elongated region.
+
+    Rotates the mask so the region's long axis is horizontal, walks columns at
+    ``step_px``, emits alternating top/bottom edge points (the zigzag), then maps
+    the points back through the inverse rotation. Returns [(x_px, y_px, is_jump)].
+    """
+    import cv2
+    import numpy as np
+
+    (cx, cy), (rw, rh), ang = rect
+    if rw < rh:  # normalize: long axis → horizontal
+        ang += 90.0
+    M = cv2.getRotationMatrix2D((float(cx), float(cy)), ang, 1.0)
+    h, w = region.shape
+    rot = cv2.warpAffine(region, M, (w, h))
+    Minv = cv2.invertAffineTransform(M)
+
+    pts: list[tuple[float, float, bool]] = []
+    top = True
+    for x in range(0, w, step_px):
+        rows = np.flatnonzero(rot[:, x])
+        if rows.size < 2:
+            continue
+        y0, y1 = int(rows[0]), int(rows[-1])
+        pair = ((x, y0), (x, y1)) if top else ((x, y1), (x, y0))
+        for i, (px_, py_) in enumerate(pair):
+            X = Minv[0, 0] * px_ + Minv[0, 1] * py_ + Minv[0, 2]
+            Y = Minv[1, 0] * px_ + Minv[1, 1] * py_ + Minv[1, 2]
+            # Jump only on a gap BETWEEN columns (i == 0); the cross-width zig
+            # itself (i == 1) is always a stitch, whatever the column width.
+            jump = i == 0 and bool(pts) and _dist(pts[-1], (X, Y)) > connect_px
+            pts.append((float(X), float(Y), jump))
+        top = not top
+    if pts:
+        pts[0] = (pts[0][0], pts[0][1], True)  # enter the column with a jump
+    return pts

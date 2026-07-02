@@ -61,3 +61,41 @@ def test_digitize_rejects_garbage():
 def test_hoop_parsing_defaults_safely():
     d = digitize_image(_test_image(), "cotton", "not-a-hoop")
     assert d.width_mm <= 100  # fell back to 100x100
+
+
+def _bar_image(diagonal: bool = False) -> bytes:
+    """White background with one thin dark bar (~3.6mm wide at a 100mm hoop)."""
+    img = np.full((200, 200, 3), 255, np.uint8)
+    if diagonal:
+        cv2.line(img, (30, 170), (170, 30), (120, 30, 30), thickness=8)
+    else:
+        cv2.rectangle(img, (20, 96), (180, 103), (120, 30, 30), thickness=-1)
+    ok, buf = cv2.imencode(".png", img)
+    assert ok
+    return buf.tobytes()
+
+
+def test_narrow_bar_becomes_satin():
+    d = digitize_image(_bar_image(), "cotton", "100x100", max_colors=2)
+    satins = [o for o in d.objects if o.stitch_type == "SATIN"]
+    assert satins, f"expected a SATIN object, got {[o.stitch_type for o in d.objects]}"
+    # the zigzag must actually stitch (not degenerate to jumps)
+    assert satins[0].stitch_count > 50
+    # zig width stays within the machine stitch limit
+    prev = None
+    for s in d.stitches:
+        if s.command == "STITCH" and prev is not None and prev.command == "STITCH":
+            assert ((s.x - prev.x) ** 2 + (s.y - prev.y) ** 2) ** 0.5 <= 12.7
+        prev = s
+
+
+def test_rotated_bar_becomes_satin_with_angle():
+    d = digitize_image(_bar_image(diagonal=True), "cotton", "100x100", max_colors=2)
+    satins = [o for o in d.objects if o.stitch_type == "SATIN"]
+    assert satins
+    assert satins[0].stitch_count > 50
+
+
+def test_wide_square_stays_tatami():
+    d = digitize_image(_test_image(), "cotton", "100x100")
+    assert all(o.stitch_type == "TATAMI" for o in d.objects)

@@ -37,11 +37,12 @@ export const api = {
   convert: (body: ConvertRequest) =>
     request<ConvertResponse>('/api/convert', { method: 'POST', body: JSON.stringify(body) }),
 
-  digitize: (file: File, fabricType = 'cotton', hoopSize = '100x100') => {
+  digitize: (file: File, fabricType = 'cotton', hoopSize = '100x100', maxColors = 6) => {
     const form = new FormData();
     form.append('file', file);
     form.append('fabric_type', fabricType);
     form.append('hoop_size', hoopSize);
+    form.append('max_colors', String(maxColors));
     return request<Design>('/api/digitize', { method: 'POST', body: form, headers: {} });
   },
 
