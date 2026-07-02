@@ -36,6 +36,10 @@ SATIN_MAX_W_MM = 4.0
 SATIN_ASPECT = 2.5
 SATIN_SPACING_MM = 0.4    # zigzag pitch along the column
 
+# Underlay (spec §4.6): edge-walk inside fills, center-walk under satin columns.
+UNDERLAY_STEP_MM = 2.0    # running-stitch length
+EDGE_INSET_MM = 0.6       # edge-walk offset inside the region edge
+
 
 def _parse_hoop(hoop_size: str) -> tuple[float, float]:
     try:
@@ -132,11 +136,17 @@ def digitize_image(
             w_mm = min(rect[1]) * mm_per_px
             l_mm = max(rect[1]) * mm_per_px
             is_satin = SATIN_MIN_W_MM <= w_mm <= SATIN_MAX_W_MM and l_mm / max(w_mm, 0.01) >= SATIN_ASPECT
+            under_step_px = max(1, round(UNDERLAY_STEP_MM / mm_per_px))
             if is_satin:
                 satin_step_px = max(1, round(SATIN_SPACING_MM / mm_per_px))
-                pts = _satin_zigzag(region, rect, satin_step_px, connect_px)
+                under = _center_walk(region, rect, under_step_px, connect_px)
+                pts = _with_underlay(under, _satin_zigzag(region, rect, satin_step_px, connect_px), connect_px)
+                underlay = UnderlayType.CENTER_WALK
             else:
-                pts = _scanline_fill(region, row_px, max_step_px, connect_px)
+                inset_px = max(1, round(EDGE_INSET_MM / mm_per_px))
+                under = _edge_walk(region, inset_px, under_step_px, connect_px)
+                pts = _with_underlay(under, _scanline_fill(region, row_px, max_step_px, connect_px), connect_px)
+                underlay = UnderlayType.EDGE_WALK
             if len(pts) < 2:
                 continue
             obj_start = len(stitches)
@@ -161,7 +171,7 @@ def digitize_image(
                     color_stop=stop_no,
                     density=1.0 / (SATIN_SPACING_MM if is_satin else ROW_SPACING_MM),
                     stitch_angle=round(float(rect[2]), 1) if is_satin else 0.0,
-                    underlay_type=UnderlayType.NONE,
+                    underlay_type=underlay,
                     pull_compensation=0.0,
                     entry_point=Point(x=pts[0][0] * mm_per_px, y=pts[0][1] * mm_per_px),
                     exit_point=Point(x=pts[-1][0] * mm_per_px, y=pts[-1][1] * mm_per_px),
@@ -279,6 +289,77 @@ def _satin_zigzag(region, rect, step_px: int, connect_px: float):
     return pts
 
 
+def _edge_walk(region, inset_px: int, step_px: int, connect_px: float):
+    """Edge-walk underlay: a running stitch along the region outline, inset inside
+    the edge (spec §4.6). Returns [(x_px, y_px, is_jump)]."""
+    import cv2
+    import numpy as np
+
+    k = max(1, inset_px)
+    eroded = cv2.erode(region, np.ones((2 * k + 1, 2 * k + 1), np.uint8))
+    if cv2.countNonZero(eroded) == 0:
+        eroded = region  # region too thin to inset — walk the raw edge
+    contours, _ = cv2.findContours(eroded, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+
+    pts: list[tuple[float, float, bool]] = []
+    for c in contours:
+        poly = [(float(x), float(y)) for x, y in c.reshape(-1, 2)]
+        if len(poly) < 3:
+            continue
+        poly.append(poly[0])  # close the loop
+        acc = 0.0
+        for i, p in enumerate(poly):
+            if i == 0:
+                jump = bool(pts) and _dist(pts[-1], p) > connect_px
+                pts.append((p[0], p[1], jump if pts else True))
+                continue
+            acc += _dist(poly[i - 1], p)
+            if acc >= step_px:
+                pts.append((p[0], p[1], False))
+                acc = 0.0
+        if pts and pts[-1][:2] != poly[-1]:
+            pts.append((poly[-1][0], poly[-1][1], False))
+    return pts
+
+
+def _center_walk(region, rect, step_px: int, connect_px: float):
+    """Center-walk underlay for a satin column: a running stitch down the column's
+    long-axis midline (spec §4.6). Returns [(x_px, y_px, is_jump)]."""
+    import cv2
+    import numpy as np
+
+    (cx, cy), (rw, rh), ang = rect
+    if rw < rh:
+        ang += 90.0
+    M = cv2.getRotationMatrix2D((float(cx), float(cy)), ang, 1.0)
+    h, w = region.shape
+    rot = cv2.warpAffine(region, M, (w, h))
+    Minv = cv2.invertAffineTransform(M)
+
+    pts: list[tuple[float, float, bool]] = []
+    for x in range(0, w, max(1, step_px)):
+        rows = np.flatnonzero(rot[:, x])
+        if rows.size == 0:
+            continue
+        mid = float(rows[0] + rows[-1]) / 2.0
+        X = Minv[0, 0] * x + Minv[0, 1] * mid + Minv[0, 2]
+        Y = Minv[1, 0] * x + Minv[1, 1] * mid + Minv[1, 2]
+        jump = bool(pts) and _dist(pts[-1], (X, Y)) > connect_px
+        pts.append((float(X), float(Y), jump if pts else True))
+    return pts
+
+
+def _with_underlay(under, top, connect_px: float):
+    """Prepend underlay points to the top stitching; the transition becomes a plain
+    stitch when the two are close, otherwise a jump."""
+    if not under:
+        return top
+    if top:
+        x, y, _ = top[0]
+        top = [(x, y, _dist(under[-1], (x, y)) > connect_px)] + top[1:]
+    return under + top
+
+
 def _scanline_angled(region, angle_deg: float, row_px: int, max_step_px: int, connect_px: float):
     """Scanline fill at an arbitrary angle: rotate the mask so rows are horizontal,
     fill, then map points back through the inverse rotation."""
@@ -351,13 +432,20 @@ def rebuild_design(design: Design) -> Design:
             cv2.fillPoly(mask, [poly], 255)
 
             st = o.stitch_type.value if hasattr(o.stitch_type, "value") else o.stitch_type
+            ut = o.underlay_type.value if hasattr(o.underlay_type, "value") else o.underlay_type
             spacing_mm = 1.0 / max(float(o.density) or 1.0, 0.2)
             spacing_px = max(1, round(spacing_mm / mm_per_px))
+            under_step_px = max(1, round(UNDERLAY_STEP_MM / mm_per_px))
             if st == "SATIN":
                 rect = cv2.minAreaRect(poly)
                 pts = _satin_zigzag(mask, rect, spacing_px, connect_px)
+                if ut and ut != "NONE":  # any non-NONE underlay → center-walk for satin
+                    pts = _with_underlay(_center_walk(mask, rect, under_step_px, connect_px), pts, connect_px)
             else:
                 pts = _scanline_angled(mask, float(o.stitch_angle), spacing_px, max_step_px, connect_px)
+                if ut and ut != "NONE":  # any non-NONE underlay → edge-walk for fills
+                    inset_px = max(1, round(EDGE_INSET_MM / mm_per_px))
+                    pts = _with_underlay(_edge_walk(mask, inset_px, under_step_px, connect_px), pts, connect_px)
             if len(pts) < 2:
                 continue
 

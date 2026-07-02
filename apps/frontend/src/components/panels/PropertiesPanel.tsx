@@ -29,13 +29,15 @@ export function PropertiesPanel() {
 
   const [density, setDensity] = useState('');
   const [angle, setAngle] = useState('');
+  const [underlay, setUnderlay] = useState('NONE');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   useEffect(() => {
     setDensity(obj ? String(obj.density) : '');
     setAngle(obj ? String(obj.stitchAngle) : '');
+    setUnderlay(obj ? String(obj.underlayType) : 'NONE');
     setErr(null);
-  }, [obj?.sequenceOrder, obj?.density, obj?.stitchAngle]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [obj?.sequenceOrder, obj?.density, obj?.stitchAngle, obj?.underlayType]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const onApply = async () => {
     if (!design || !obj) return;
@@ -51,7 +53,9 @@ export function PropertiesPanel() {
       const patched = {
         ...design,
         objects: design.objects.map((o) =>
-          o.sequenceOrder === obj.sequenceOrder ? { ...o, density: d, stitchAngle: a } : o,
+          o.sequenceOrder === obj.sequenceOrder
+            ? { ...o, density: d, stitchAngle: a, underlayType: underlay as typeof o.underlayType }
+            : o,
         ),
       };
       replaceDesign(await api.rebuild(patched)); // history recorded; undo restores pre-rebuild
@@ -89,6 +93,17 @@ export function PropertiesPanel() {
               disabled={obj.stitchType === 'SATIN'}
               title={obj.stitchType === 'SATIN' ? 'Satin columns follow the shape axis' : ''}
             />
+          </label>
+          <label className="prop-row">
+            <span>Underlay</span>
+            <select value={underlay} onChange={(e) => setUnderlay(e.target.value)}>
+              <option value="NONE">None</option>
+              {obj.stitchType === 'SATIN' ? (
+                <option value="CENTER_WALK">Center walk</option>
+              ) : (
+                <option value="EDGE_WALK">Edge walk</option>
+              )}
+            </select>
           </label>
           <div className="dialog-actions">
             <button type="button" className="primary" onClick={onApply} disabled={busy || !obj.contour}>

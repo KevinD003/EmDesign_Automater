@@ -312,6 +312,16 @@ code {
   border-radius: 5px;
 }
 
+.prop-row select,
+.prop-row input[type='number'] {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  color: var(--text);
+  border-radius: 5px;
+  padding: 4px 6px;
+  max-width: 130px;
+}
+
 .small {
   font-size: 12px;
 }
