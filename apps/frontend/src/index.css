@@ -234,6 +234,20 @@ code {
   list-style: none;
 }
 
+.obj-sublist {
+  list-style: none;
+  margin: 3px 0 3px 14px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.obj-row {
+  font-size: 12px;
+  opacity: 0.9;
+}
+
 .stop-row {
   display: flex;
   align-items: center;

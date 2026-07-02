@@ -81,4 +81,8 @@ export const api = {
     request<Thread[]>(`/api/threads${brand ? `?brand=${encodeURIComponent(brand)}` : ''}`),
 
   listDesigns: () => request<Design[]>('/api/designs'),
+
+  /** Regenerate all stitches from object contours + current params (digitized designs only). */
+  rebuild: (design: Design) =>
+    request<Design>('/api/designs/rebuild', { method: 'POST', body: JSON.stringify(design) }),
 };

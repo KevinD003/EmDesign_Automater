@@ -90,4 +90,70 @@ describe('designStore', () => {
     useDesignStore.getState().reorderStop(1, 'up');
     expect(useDesignStore.getState().past).toEqual([]);
   });
+
+  it('updateObject patches the object and records history', () => {
+    const d: Design = {
+      ...makeDesign(),
+      objects: [
+        {
+          sequenceOrder: 1,
+          name: 'Fill 1',
+          stitchType: 'TATAMI' as Design['objects'][0]['stitchType'],
+          colorStop: 1,
+          density: 1.67,
+          stitchAngle: 0,
+          underlayType: 'NONE' as Design['objects'][0]['underlayType'],
+          pullCompensation: 0,
+          connectMethod: 'TRIM' as Design['objects'][0]['connectMethod'],
+          stitchCount: 10,
+        },
+      ],
+    };
+    useDesignStore.getState().setDesign(d);
+    useDesignStore.getState().updateObject(1, { density: 0.8, stitchAngle: 45 });
+    const s = useDesignStore.getState();
+    expect(s.design?.objects[0].density).toBe(0.8);
+    expect(s.design?.objects[0].stitchAngle).toBe(45);
+    expect(s.past).toHaveLength(1);
+  });
+
+  it('replaceDesign keeps selection and records history (undo restores)', () => {
+    const d = makeDesign();
+    useDesignStore.getState().setDesign(d);
+    useDesignStore.getState().selectStop(1);
+    const rebuilt: Design = { ...d, stitchCount: 999 };
+    useDesignStore.getState().replaceDesign(rebuilt);
+    let s = useDesignStore.getState();
+    expect(s.design?.stitchCount).toBe(999);
+    expect(s.selectedStop).toBe(1); // selection preserved
+    expect(s.past).toHaveLength(1);
+    useDesignStore.getState().undo();
+    s = useDesignStore.getState();
+    expect(s.design?.stitchCount).toBe(0); // back to pre-rebuild
+  });
+
+  it('selectObject also selects its color stop', () => {
+    const d: Design = {
+      ...makeDesign(),
+      objects: [
+        {
+          sequenceOrder: 3,
+          name: 'Satin 3',
+          stitchType: 'SATIN' as Design['objects'][0]['stitchType'],
+          colorStop: 1,
+          density: 2.5,
+          stitchAngle: -45,
+          underlayType: 'NONE' as Design['objects'][0]['underlayType'],
+          pullCompensation: 0,
+          connectMethod: 'TRIM' as Design['objects'][0]['connectMethod'],
+          stitchCount: 40,
+        },
+      ],
+    };
+    useDesignStore.getState().setDesign(d);
+    useDesignStore.getState().selectObject(3);
+    const s = useDesignStore.getState();
+    expect(s.selectedObject).toBe(3);
+    expect(s.selectedStop).toBe(1);
+  });
 });

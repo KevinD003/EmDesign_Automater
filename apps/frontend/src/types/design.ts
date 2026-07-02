@@ -115,6 +115,11 @@ export interface DesignObject {
   exitPoint?: Point;
   connectMethod: ConnectMethod;
   stitchCount: number;
+  /**
+   * Region outline in design mm space (populated by the digitizer). Presence of a
+   * contour makes the object regenerable via POST /api/designs/rebuild.
+   */
+  contour?: Point[];
 }
 
 export type DesignStatus = 'draft' | 'digitized' | 'approved' | 'exported';

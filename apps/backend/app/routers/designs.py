@@ -8,8 +8,22 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 
 from app.models.design import Design
+from app.services import digitizer
 
 router = APIRouter(tags=["designs"])
+
+
+@router.post("/designs/rebuild", response_model=Design)
+async def rebuild(design: Design) -> Design:
+    """Regenerate all stitches from object contours + current parameters.
+
+    Used by object-level editing: change density/angle/stitch-type on an object,
+    then rebuild. Only digitized designs (objects with contours) are regenerable.
+    """
+    try:
+        return digitizer.rebuild_design(design)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 # TODO: replace with Supabase-backed storage.
 _DESIGNS: dict[str, Design] = {}

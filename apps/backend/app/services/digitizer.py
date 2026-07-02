@@ -149,6 +149,10 @@ def digitize_image(
                 )
             seq += 1
             count = len(stitches) - obj_start
+            outline = [
+                Point(x=float(px_) * mm_per_px, y=float(py_) * mm_per_px)
+                for px_, py_ in contour.reshape(-1, 2)
+            ]
             objects.append(
                 DesignObject(
                     sequence_order=seq,
@@ -156,13 +160,14 @@ def digitize_image(
                     stitch_type=StitchType.SATIN if is_satin else StitchType.TATAMI,
                     color_stop=stop_no,
                     density=1.0 / (SATIN_SPACING_MM if is_satin else ROW_SPACING_MM),
-                    stitch_angle=round(float(rect[2]), 1),
+                    stitch_angle=round(float(rect[2]), 1) if is_satin else 0.0,
                     underlay_type=UnderlayType.NONE,
                     pull_compensation=0.0,
                     entry_point=Point(x=pts[0][0] * mm_per_px, y=pts[0][1] * mm_per_px),
                     exit_point=Point(x=pts[-1][0] * mm_per_px, y=pts[-1][1] * mm_per_px),
                     connect_method=ConnectMethod.TRIM,
                     stitch_count=count,
+                    contour=outline,
                 )
             )
 
@@ -272,3 +277,129 @@ def _satin_zigzag(region, rect, step_px: int, connect_px: float):
     if pts:
         pts[0] = (pts[0][0], pts[0][1], True)  # enter the column with a jump
     return pts
+
+
+def _scanline_angled(region, angle_deg: float, row_px: int, max_step_px: int, connect_px: float):
+    """Scanline fill at an arbitrary angle: rotate the mask so rows are horizontal,
+    fill, then map points back through the inverse rotation."""
+    import cv2
+    import numpy as np
+
+    if abs(angle_deg) < 0.5:
+        return _scanline_fill(region, row_px, max_step_px, connect_px)
+    h, w = region.shape
+    M = cv2.getRotationMatrix2D((w / 2.0, h / 2.0), float(angle_deg), 1.0)
+    rot = cv2.warpAffine(region, M, (w, h))
+    Minv = cv2.invertAffineTransform(M)
+    out = []
+    for x, y, jump in _scanline_fill(rot, row_px, max_step_px, connect_px):
+        X = Minv[0, 0] * x + Minv[0, 1] * y + Minv[0, 2]
+        Y = Minv[1, 0] * x + Minv[1, 1] * y + Minv[1, 2]
+        out.append((float(X), float(Y), jump))
+    return out
+
+
+def rebuild_design(design: Design) -> Design:
+    """Regenerate the whole stitch stream from object contours + parameters.
+
+    Every object must carry a ``contour`` (only digitized designs do). Objects are
+    re-filled with their CURRENT stitch_type / density / stitch_angle, so editing a
+    parameter and rebuilding applies the edit. Raises ValueError if not regenerable.
+    """
+    import cv2
+    import numpy as np
+
+    objs = sorted(design.objects, key=lambda o: o.sequence_order)
+    if not objs:
+        raise ValueError("Design has no objects to rebuild (imported stitch files are not regenerable)")
+    if any(not o.contour for o in objs):
+        raise ValueError("Some objects have no contour — design is not regenerable")
+
+    xs = [p.x for o in objs for p in o.contour]
+    ys = [p.y for o in objs for p in o.contour]
+    minx, miny = min(xs), min(ys)
+    w_mm = max(max(xs) - minx, 1.0)
+    h_mm = max(max(ys) - miny, 1.0)
+    px_per_mm = min(4.0, 800.0 / max(w_mm, h_mm))  # ≤800px canvas
+    mm_per_px = 1.0 / px_per_mm
+    pad = 2
+    cw, ch = int(w_mm * px_per_mm) + 2 * pad, int(h_mm * px_per_mm) + 2 * pad
+
+    def to_px(p: Point) -> tuple[int, int]:
+        return (int((p.x - minx) * px_per_mm) + pad, int((p.y - miny) * px_per_mm) + pad)
+
+    def to_mm(x: float, y: float) -> tuple[float, float]:
+        return ((x - pad) * mm_per_px + minx, (y - pad) * mm_per_px + miny)
+
+    max_step_px = max(2, round(MAX_STITCH_MM / mm_per_px))
+    connect_px = CONNECT_MM / mm_per_px
+
+    stitches: list[Stitch] = []
+    new_objects: list[DesignObject] = []
+    stop_counts: dict[int, int] = {}
+
+    ordered_stops = sorted(design.color_stops, key=lambda c: c.stop_number)
+    for stop_i, stop in enumerate(ordered_stops):
+        if stop_i > 0 and stitches:
+            prev = stitches[-1]
+            stitches.append(Stitch(x=prev.x, y=prev.y, command="COLOR_CHANGE"))
+        stop_start = len(stitches)
+
+        for o in (ob for ob in objs if ob.color_stop == stop.stop_number):
+            mask = np.zeros((ch, cw), np.uint8)
+            poly = np.array([to_px(p) for p in o.contour], np.int32)
+            cv2.fillPoly(mask, [poly], 255)
+
+            st = o.stitch_type.value if hasattr(o.stitch_type, "value") else o.stitch_type
+            spacing_mm = 1.0 / max(float(o.density) or 1.0, 0.2)
+            spacing_px = max(1, round(spacing_mm / mm_per_px))
+            if st == "SATIN":
+                rect = cv2.minAreaRect(poly)
+                pts = _satin_zigzag(mask, rect, spacing_px, connect_px)
+            else:
+                pts = _scanline_angled(mask, float(o.stitch_angle), spacing_px, max_step_px, connect_px)
+            if len(pts) < 2:
+                continue
+
+            if stitches and stitches[-1].command != "COLOR_CHANGE":
+                last = stitches[-1]
+                stitches.append(Stitch(x=last.x, y=last.y, command="TRIM"))
+                ex, ey = to_mm(pts[0][0], pts[0][1])
+                stitches.append(Stitch(x=ex, y=ey, command="JUMP"))
+            obj_start = len(stitches)
+            for x, y, jump in pts:
+                mx, my = to_mm(x, y)
+                stitches.append(Stitch(x=mx, y=my, command="JUMP" if jump else "STITCH"))
+
+            entry = to_mm(pts[0][0], pts[0][1])
+            exit_ = to_mm(pts[-1][0], pts[-1][1])
+            new_objects.append(
+                o.model_copy(
+                    update={
+                        "stitch_count": len(stitches) - obj_start,
+                        "entry_point": Point(x=entry[0], y=entry[1]),
+                        "exit_point": Point(x=exit_[0], y=exit_[1]),
+                    }
+                )
+            )
+        stop_counts[stop.stop_number] = len(stitches) - stop_start
+
+    if stitches:
+        last = stitches[-1]
+        stitches.append(Stitch(x=last.x, y=last.y, command="END"))
+
+    sxs = [s.x for s in stitches if s.command == "STITCH"] or [0.0]
+    sys_ = [s.y for s in stitches if s.command == "STITCH"] or [0.0]
+    new_stops = [
+        c.model_copy(update={"stitch_count": stop_counts.get(c.stop_number, 0)}) for c in ordered_stops
+    ]
+    return design.model_copy(
+        update={
+            "stitches": stitches,
+            "objects": new_objects,
+            "color_stops": new_stops,
+            "stitch_count": sum(1 for s in stitches if s.command == "STITCH"),
+            "width_mm": round(max(sxs) - min(sxs), 2),
+            "height_mm": round(max(sys_) - min(sys_), 2),
+        }
+    )

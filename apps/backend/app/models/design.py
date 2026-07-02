@@ -127,6 +127,10 @@ class DesignObject(CamelModel):
     exit_point: Point | None = None
     connect_method: ConnectMethod = ConnectMethod.TRIM
     stitch_count: int = 0
+    # Region outline in design mm space (populated by the digitizer). Presence of a
+    # contour makes the object REGENERABLE: /api/designs/rebuild can re-fill it with
+    # new density/angle. Imported stitch files have no contours (objects empty anyway).
+    contour: list[Point] | None = None
 
 
 class Design(CamelModel):

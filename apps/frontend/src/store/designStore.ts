@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { ColorStop, Design } from '../types/design';
+import type { ColorStop, Design, DesignObject } from '../types/design';
 import { reorderColorStop } from '../lib/stitches';
 
 const HISTORY_LIMIT = 50;
@@ -8,29 +8,45 @@ interface DesignState {
   design: Design | null;
   /** Currently selected color stop (ColorStop.stopNumber), or null. */
   selectedStop: number | null;
+  /** Currently selected object (DesignObject.sequenceOrder), or null. Digitized designs only. */
+  selectedObject: number | null;
   /** Render stitches up to this index; null = whole design. Driven by the StitchPlayer. */
   playHead: number | null;
-  /** Undo/redo history of Design snapshots (most-recent-last in `past`). */
   past: Design[];
   future: Design[];
   setDesign: (design: Design | null) => void;
+  /** Swap in a server-modified design (e.g. after /designs/rebuild), KEEPING selection + history. */
+  replaceDesign: (design: Design) => void;
   selectStop: (stopNumber: number | null) => void;
+  selectObject: (sequenceOrder: number | null) => void;
   setPlayHead: (n: number | null) => void;
   updateColorStop: (stopNumber: number, patch: Partial<ColorStop>) => void;
+  updateObject: (sequenceOrder: number, patch: Partial<DesignObject>) => void;
   reorderStop: (stopNumber: number, direction: 'up' | 'down') => void;
   undo: () => void;
   redo: () => void;
 }
 
-/** Current-design state + undo/redo. Populated by /api/files/parse via the Toolbar. */
+const push = (past: Design[], d: Design) => [...past, d].slice(-HISTORY_LIMIT);
+
+/** Current-design state + undo/redo. Populated by /api/files/parse or /api/digitize. */
 export const useDesignStore = create<DesignState>((set) => ({
   design: null,
   selectedStop: null,
+  selectedObject: null,
   playHead: null,
   past: [],
   future: [],
-  setDesign: (design) => set({ design, playHead: null, selectedStop: null, past: [], future: [] }),
-  selectStop: (stopNumber) => set({ selectedStop: stopNumber }),
+  setDesign: (design) =>
+    set({ design, playHead: null, selectedStop: null, selectedObject: null, past: [], future: [] }),
+  replaceDesign: (design) =>
+    set((state) => (state.design ? { design, past: push(state.past, state.design), future: [] } : { design })),
+  selectStop: (stopNumber) => set({ selectedStop: stopNumber, selectedObject: null }),
+  selectObject: (sequenceOrder) =>
+    set((state) => {
+      const obj = state.design?.objects.find((o) => o.sequenceOrder === sequenceOrder) ?? null;
+      return { selectedObject: sequenceOrder, selectedStop: obj ? obj.colorStop : state.selectedStop };
+    }),
   setPlayHead: (n) => set({ playHead: n }),
   updateColorStop: (stopNumber, patch) =>
     set((state) => {
@@ -41,7 +57,18 @@ export const useDesignStore = create<DesignState>((set) => ({
           cs.stopNumber === stopNumber ? { ...cs, ...patch } : cs,
         ),
       };
-      return { design: next, past: [...state.past, state.design].slice(-HISTORY_LIMIT), future: [] };
+      return { design: next, past: push(state.past, state.design), future: [] };
+    }),
+  updateObject: (sequenceOrder, patch) =>
+    set((state) => {
+      if (!state.design) return {};
+      const next: Design = {
+        ...state.design,
+        objects: state.design.objects.map((o) =>
+          o.sequenceOrder === sequenceOrder ? { ...o, ...patch } : o,
+        ),
+      };
+      return { design: next, past: push(state.past, state.design), future: [] };
     }),
   reorderStop: (stopNumber, direction) =>
     set((state) => {
@@ -52,7 +79,7 @@ export const useDesignStore = create<DesignState>((set) => ({
       return {
         design: next,
         selectedStop: state.selectedStop === stopNumber ? movedTo : state.selectedStop,
-        past: [...state.past, state.design].slice(-HISTORY_LIMIT),
+        past: push(state.past, state.design),
         future: [],
       };
     }),
