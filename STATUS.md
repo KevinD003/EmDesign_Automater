@@ -7,14 +7,14 @@
 | Field | Value |
 |---|---|
 | **Project** | STITCHIQ — AI-powered embroidery design & digitizing platform |
-| **Document version** | **v9** |
-| **Times updated** | **9** |
+| **Document version** | **v10** |
+| **Times updated** | **10** |
 | **Last updated** | 2026-07-01 |
-| **Current phase** | **Phase 3 essentially done** — digitize, satin, params dialog, **object-level editing + rebuild**. Underlay remains |
+| **Current phase** | **Phase 3 COMPLETE ✅** (auto-digitize: fills+satin+underlay+object editing). Next: Phase 4/5/CI |
 | **Git branch** | `main` |
-| **Latest code commit** | `f5ddf89` (object editing + rebuild) |
+| **Latest code commit** | `b212b44` (underlay generation) |
 | **Working tree** | clean |
-| **Tracked files** | 68 |
+| **Tracked files** | 69 |
 | **Location** | `/Users/INDIA/Downloads/EmDesign_Automater` |
 
 ---
@@ -25,11 +25,12 @@
    **Open** a real `.DST`/`.PES` **or Digitize a PNG/JPG image** (classical OpenCV → stitches +
    **real vector objects**). Then: render → click-to-select → recolor/rename/reorder → undo/redo →
    export `.DST` → worksheet PDF. Digitized objects are **editable**: select one in the left panel,
-   change density/angle, Apply → server rebuilds the stitches. Verified: **pytest 21/21, vitest 21/21**, e2e via Vite proxy.
+   change density/angle/**underlay**, Apply → server rebuilds the stitches. Fills get edge-walk and
+   satins center-walk underlay by default (§4.6). Verified: **pytest 24/24, vitest 21/21**, e2e via Vite proxy.
 2. **Chosen scope (by the user):** build **vertically**, one phase at a time ([§14](#-14-full-project-roadmap-phases-010)).
-3. **Next task (pick one):** (a) **underlay generation** (§4.6 — last Phase 3 item); (b) **Phase 4
-   lettering**; (c) **Phase 5 convert endpoint**; or (d) **Phase X CI** (GitHub Actions:
-   pytest+vitest+tsc — repo has no remote yet, config-only until pushed).
+3. **Next task (pick one):** (a) **Phase 4 lettering** (text → satin/fill glyphs, §4.10); (b) **Phase 5
+   convert endpoint** (any→any format via existing embroidery_io); or (c) **Phase X CI** (GitHub
+   Actions: pytest+vitest+tsc — repo has no remote yet, config-only until pushed).
 4. **⚠️ MANDATORY — every change is logged in THIS FILE.** Before finishing any task: bump **Document
    version** + **Times updated**; update **Last updated** + **Latest code commit**; add a
    [§2](#-2-update-history--changelog) row (**newest on top**); flip [§5](#-5-feature-status-matrix) rows;
@@ -51,8 +52,8 @@
 ## ✅ 1. TL;DR
 
 - **Stack:** TypeScript (React + Vite) frontend · Python (FastAPI) backend · PostgreSQL/Supabase (schema written, not applied).
-- **Built:** Phases 0–2 complete + **Phase 3 essentially done**: file open/parse, **image auto-digitize (TATAMI fills + SATIN columns, params dialog)**, **object-level editing (density/angle → server-side rebuild from stored contours)**, Konva render, full color-stop editing, export machine files, worksheet PDF.
-- **Verified:** **pytest 21/21** · **vitest 21/21** · typecheck/build · e2e digitize→edit-density→rebuild→export through the Vite proxy.
+- **Built:** **Phases 0–3 complete**: file open/parse, **image auto-digitize (TATAMI fills + SATIN columns + edge/center-walk underlay, params dialog)**, **object-level editing (density/angle/underlay → server-side rebuild from stored contours)**, Konva render, full color-stop editing, export machine files, worksheet PDF.
+- **Verified:** **pytest 24/24** · **vitest 21/21** · typecheck/build · e2e digitize→edit→rebuild→export through the Vite proxy.
 - **Still stubbed:** thread nearest-match, convert endpoint, persistence/auth, lettering, TrueView 3D, AI/ML.
 - **Next:** Phase 3 polish (params dialog, object props editing, satin) / Phase 4 lettering / CI. *(In-browser event wiring not eyeballed — §12.)*
 
@@ -64,6 +65,7 @@
 
 | # | Date | Author | Type | Summary |
 |---|------|--------|------|---------|
+| 10 | 2026-07-01 | Claude (Fable 5) | ✨ Feature | **Phase 3 complete: underlay generation (§4.6)** — commit `b212b44`. Edge-walk under fills (0.6mm inset, 2mm running stitch), center-walk under satin columns; digitize assigns `underlay_type`, rebuild honors it (toggleable per object); Properties underlay selector. **pytest 24/24**; e2e via proxy: underlay 1011 → NONE 790 stitches. |
 | 9 | 2026-07-01 | Claude (Opus 4.8) | ✨ Feature | **Phase 3: object-level editing + server-side rebuild** — commit `f5ddf89`. `DesignObject.contour` (mm outline, TS⇄Pydantic); `rebuild_design` re-fills every object from its contour with current density/angle (angled tatami via rotate-scan); `POST /api/designs/rebuild`; objects listed under stops; Properties object mode (density/angle → Apply). **pytest 21/21, vitest 21/21**; e2e halve-density 885→309 stitches via proxy; imported designs → 422. |
 | 8 | 2026-07-01 | Claude (Opus 4.8) | ✨ Feature | **Phase 3: satin detection + digitize params dialog** — commit `df14eb0`. minAreaRect classifier (0.8–4mm, aspect ≥2.5) → rotated-zigzag **SATIN columns** (any angle); `DigitizeDialog` (fabric/hoop/max-colors). **pytest 16/16** (+3); SATIN confirmed e2e via proxy. Threshold is physical mm → hoop-dependent (by design). |
 | 7 | 2026-07-01 | Claude (Opus 4.8) | ✨ Feature | **Phase 3 core: auto-digitize v1** — commit `9eed902`. OpenCV pipeline (k-means quantize → background drop → contour regions → boustrophedon fills) → `Design` with **real objects** + darkest-first stops; `POST /api/digitize` + Toolbar **Digitize** button. cv2 4.13/numpy 2.5/pillow 12.2 work on py3.14. **pytest 13/13** (+5); e2e PNG→DST verified via proxy. |
@@ -148,7 +150,7 @@ db/schema.sql (not applied) · docs/ · STATUS.md · README.md · AI-Embroidery-
 | Component | Status | Notes |
 |---|---|---|
 | App shell · api client · types · lib/* | 🟢 | pure libs unit-tested |
-| StitchCanvas · ColorObjectList · ThreadPalette · StitchPlayer · PropertiesPanel | 🟢 | select stops **+ objects** · recolor · rename · reorder · **edit density/angle → rebuild** · animate |
+| StitchCanvas · ColorObjectList · ThreadPalette · StitchPlayer · PropertiesPanel | 🟢 | select stops **+ objects** · recolor · rename · reorder · **edit density/angle/underlay → rebuild** · animate |
 | designStore | 🟢 | + reorderStop · **selectObject/updateObject/replaceDesign** · undo/redo |
 | Toolbar + **DigitizeDialog** | 🟡 | Open/Digitize(+params dialog)/Export/Worksheet/Undo/Redo live; manual digitizing tools TBD |
 | TrueView3D | 🔴 | Phase 7 |
@@ -157,7 +159,7 @@ db/schema.sql (not applied) · docs/ · STATUS.md · README.md · AI-Embroidery-
 | Item | Status | Notes |
 |---|---|---|
 | Monorepo · shared data model | 🟢 | camelCase-on-wire verified |
-| Tests | 🟡 | **pytest 21 + vitest 21**; no CI yet |
+| Tests | 🟡 | **pytest 24 + vitest 21**; no CI yet |
 | DB applied · Supabase · deploy · AI/ML · `.STIQ` | 🔴 | Phases 6/8/X |
 
 ---
@@ -190,12 +192,16 @@ StitchPlayer; pytest + vitest suites; everything e2e-verified via the Vite proxy
 9. **Object editing UI** — objects nested under stops in the left panel; Properties object mode
    (density/angle → Apply); undo restores the pre-rebuild design. pytest **21/21**, vitest **21/21**.
 
+**Underlay — Phase 3 complete (Update #10, commit `b212b44`):**
+10. **Edge-walk / center-walk underlay** (§4.6) — generated by digitize (fills → EDGE_WALK, satins →
+    CENTER_WALK), honored + toggleable via rebuild, selectable in Properties. pytest **24/24**;
+    e2e via proxy: underlay on 1011 stitches → NONE 790.
+
 ---
 
 ## 🔴 7. What's REMAINING
 
-### A. Phase 3 polish (remaining)
-- **Underlay generation** (§4.6) — center-walk/edge-walk under fills and satins (the last Phase 3 item).
+### A. Phase 3 — ✅ nothing remaining (complete as of Update #10)
 
 ### B. Phases 4–10 & cross-cutting
 - Lettering (4) · export package + `/convert` (5) · Supabase persistence/auth (6) · TrueView 3D (7) ·
@@ -225,7 +231,8 @@ StitchPlayer; pytest + vitest suites; everything e2e-verified via the Vite proxy
 - **DST has no color** — parsed `.DST` shows filler colors; `.PES` preserves real ones.
 - **Round-trip stitch count is not stable** (writer normalizes) — compare **bounds**.
 - **Imported files are stitch-only** (`objects` empty); **digitized designs have objects**.
-- **Digitizer assumptions:** background ≈ corner color; ≤8 colors; regions <4mm² dropped; all fills TATAMI at 0.6mm rows.
+- **Digitizer assumptions:** background ≈ corner color; ≤8 colors; regions <4mm² dropped; wide shapes →
+  TATAMI (0.6mm rows) + edge-walk underlay; narrow elongated (0.8–4mm, aspect ≥2.5) → SATIN + center-walk.
 - **pnpm not installed** → `npm`. **venv** at `apps/backend/.venv`. **Vite proxies** `/api`+`/health` → `:8000`.
 - **Port hygiene:** `lsof -ti tcp:8000 | xargs kill -9` before booting.
 
@@ -233,8 +240,9 @@ StitchPlayer; pytest + vitest suites; everything e2e-verified via the Vite proxy
 
 ## 🎯 10. Next Steps (do these IN ORDER)
 
-1. **Underlay generation** (§4.6) — center-walk/edge-walk under fills and satin columns (last Phase 3 item).
-2. **Phase 4 lettering** or **Phase 5 convert endpoint** (both unblocked).
+1. **Phase 5 convert endpoint** — `POST /api/convert` (any→any) is a small win: both halves already
+   exist in `embroidery_io` (read + write); wire them together.
+2. **Phase 4 lettering** — text → satin/fill glyphs with underlay (§4.10; needs fonttools/freetype).
 3. **CI** — GitHub Actions: pytest + vitest + tsc on push (note: repo has no remote yet — config only until pushed).
 
 > After each step: re-run §11 checks and **update this file** (§2 + §5 + metadata).
@@ -258,9 +266,10 @@ python tests/make_fixtures.py
 ### Baseline (last confirmed 2026-07-01, Update #7)
 | Check | Command | Expected | Result |
 |---|---|---|---|
-| Backend tests | `python -m pytest tests -q` | **21 passed** | ✅ |
+| Backend tests | `python -m pytest tests -q` | **24 passed** | ✅ |
 | Frontend tests | `npm test -w apps/frontend` | **vitest 21 passed** | ✅ |
 | Rebuild e2e | digitize → halve density → `:5173/api/designs/rebuild` | fewer stitches, bounds stable; imported → 422 | ✅ |
+| Underlay e2e | digitize (EDGE_WALK default) → rebuild with NONE | 1011 → 790 stitches | ✅ |
 | Digitize e2e | PNG → `:5173/api/digitize` → `/api/export?format=dst` → re-read | 200 · objects>0 · valid DST | ✅ |
 | Satin e2e | thin-bar PNG (100x100 hoop) → `:5173/api/digitize` | SATIN object with angle | ✅ |
 | Parse / Export / Worksheet PDF / Threads | curl fixture → endpoints | 200 · `%PDF-` · 5 threads | ✅ |
@@ -272,8 +281,8 @@ python tests/make_fixtures.py
 
 - **In-browser event wiring NOT eyeballed:** canvas paint, click-select, recolor, reorder ▲▼, undo, and the
   **Digitize button flow**. Open `:5173`, load a fixture AND digitize a simple PNG logo, confirm both paths.
-- **Digitizer quality is approximate** (classical CV): uniform-background assumption, no underlay/pull-comp
-  — fine for bold logos, poor for photos/gradients. Phase 8 addresses this.
+- **Digitizer quality is approximate** (classical CV): uniform-background assumption, no pull-comp, only
+  edge/center-walk underlay — fine for bold logos, poor for photos/gradients. Phase 8 addresses this.
 - **Satin threshold is physical mm** (0.8–4mm × aspect ≥2.5) — the same image can digitize as satin at a
   100x100 hoop and tatami at 130x180. By design; verified both ways via proxy.
 - **`/threads/match`, `/convert`, persistence** unimplemented. **scipy/supabase untested on py3.14.**
@@ -299,7 +308,7 @@ Entities: `Stitch` · `StitchType`/`UnderlayType`/`ConnectMethod` · `Thread` ·
 | 0 | Scaffold | 🟢 Done | — | the codebase |
 | 1 | File I/O + Canvas | 🟢 Done | L | open/view/export + worksheet PDF |
 | 2 | Interactive editing | 🟢 Done | L | select/recolor/rename/reorder/undo |
-| **3** | **Auto-digitizing v1 (OpenCV)** | 🟡 **Essentially done** | XL | TATAMI+SATIN + dialog + **object-edit/rebuild** ✅ · underlay TBD |
+| 3 | Auto-digitizing v1 (OpenCV) | 🟢 **Done** | XL | TATAMI+SATIN + underlay + dialog + object-edit/rebuild |
 | 4 | Lettering & monogramming | ⬜ | L | text → stitches |
 | 5 | Production output & formats | ⬜ | M | export packages, convert, 25+ formats |
 | 6 | Persistence & accounts (Supabase) | ⬜ | M | save/load, auth, versions, teams |
@@ -309,11 +318,12 @@ Entities: `Stitch` · `StitchType`/`UnderlayType`/`ConnectMethod` · `Thread` ·
 | 10 | Platform & scale | ⬜ | XL | collab, cloud API, mobile |
 | X | Cross-cutting (tests/CI/deploy/security) | 🟡 Ongoing | — | ships everything safely |
 
-### Phase 3 — Auto-Digitizing v1 🟡 ESSENTIALLY DONE (size XL)
-- **Done:** `digitize_image` (quantize → segment → TATAMI fills + **SATIN columns** → Design with objects,
-  **contours**, stops), `POST /api/digitize` + params dialog, **object editing (density/angle) with
-  server-side `rebuild_design`** (`POST /api/designs/rebuild`), 13 tests, all e2e verified.
-- **Left:** underlay generation (§4.6).
+### Phase 3 — Auto-Digitizing v1 🟢 DONE (size XL)
+`digitize_image` (quantize → segment → TATAMI fills + **SATIN columns** + **edge/center-walk underlay**
+→ Design with objects, **contours**, stops), `POST /api/digitize` + params dialog, **object editing
+(density/angle/underlay) with server-side `rebuild_design`** (`POST /api/designs/rebuild`), 16 tests, all e2e verified.
+Quality notes: classical CV baseline (uniform background assumed); neural digitizing + more underlay
+types (double-zigzag/parallel/contour) are Phase 8.
 
 ### Phases 4–10 (summaries)
 - **4 Lettering:** glyph → satin/fill + underlay (§4.10). **5 Production:** export package + `/convert` + brand map (§4.8).
@@ -344,8 +354,8 @@ Entities: `Stitch` · `StitchType`/`UnderlayType`/`ConnectMethod` · `Thread` ·
 Implemented in `services/embroidery_io.py`, `worksheet_pdf.py`, `threads.py`, `digitizer.py`; routers
 `files`/`digitize`/`export`/`worksheet`/`threads`; frontend `StitchCanvas`, `lib/stitches.ts`, `Toolbar`,
 `StitchPlayer`, panels, `store/designStore`, `api/client`.
-Verify: `pytest -q` (21) + `npm test` (21). Manual: Open `tests/fixtures/sample.dst` **and** Digitize a PNG
-(params dialog appears); click a stop or object, recolor, edit density → Apply, reorder ▲▼, undo, Export, Worksheet.
+Verify: `pytest -q` (24) + `npm test` (21). Manual: Open `tests/fixtures/sample.dst` **and** Digitize a PNG
+(params dialog appears); click a stop or object, recolor, edit density/underlay → Apply, reorder ▲▼, undo, Export, Worksheet.
 
 ---
 
