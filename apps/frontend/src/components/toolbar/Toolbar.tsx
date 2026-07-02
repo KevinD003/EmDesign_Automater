@@ -31,6 +31,7 @@ export function Toolbar() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [pendingImage, setPendingImage] = useState<File | null>(null);
+  const [exportFormat, setExportFormat] = useState('dst');
 
   const run = async (fn: () => Promise<void>) => {
     setBusy(true);
@@ -65,7 +66,9 @@ export function Toolbar() {
   };
 
   const stem = (design?.name || 'design').replace(/\.[^.]+$/, '');
-  const onExport = () => design && run(async () => download(await api.exportDesign(design, 'dst'), `${stem}.dst`));
+  const onExport = () =>
+    design &&
+    run(async () => download(await api.exportDesign(design, exportFormat), `${stem}.${exportFormat}`));
   const onWorksheet = () => design && run(async () => download(await api.worksheetPdf(design), `${stem}-worksheet.pdf`));
 
   return (
@@ -95,8 +98,21 @@ export function Toolbar() {
         <button type="button" onClick={() => imgRef.current?.click()} disabled={busy} title="Auto-digitize an image (PNG/JPG)">
           Digitize
         </button>
+        <select
+          value={exportFormat}
+          onChange={(e) => setExportFormat(e.target.value)}
+          disabled={!design || busy}
+          aria-label="Export format"
+          className="format-select"
+        >
+          {['dst', 'pes', 'jef', 'exp', 'vp3'].map((f) => (
+            <option key={f} value={f}>
+              .{f.toUpperCase()}
+            </option>
+          ))}
+        </select>
         <button type="button" onClick={onExport} disabled={!design || busy}>
-          Export .DST
+          Export
         </button>
         <button type="button" onClick={onWorksheet} disabled={!design || busy}>
           Worksheet

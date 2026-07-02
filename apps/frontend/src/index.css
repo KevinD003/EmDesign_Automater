@@ -221,6 +221,15 @@ code {
   gap: 4px;
 }
 
+.format-select {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 5px 6px;
+  font-size: 13px;
+}
+
 .toolbar-err {
   color: #fca5a5;
   font-size: 12px;
