@@ -7,14 +7,14 @@
 | Field | Value |
 |---|---|
 | **Project** | STITCHIQ — AI-powered embroidery design & digitizing platform |
-| **Document version** | **v16** |
-| **Times updated** | **16** |
+| **Document version** | **v17** |
+| **Times updated** | **17** |
 | **Last updated** | 2026-07-03 |
-| **Current phase** | **Phases 0–5 + 7 done**; §4.4 threads + §4.6 pull-comp complete. Only Phase 6 (Supabase) + 8/9 AI remain |
+| **Current phase** | **Phases 0–5 + 7 done**; §4.3 stitch types (+appliqué), §4.4, §4.6 complete. Only Phase 6 (Supabase) + 8/9 AI remain |
 | **Git branch** | `main` |
-| **Latest code commit** | `407a327` (pull compensation) |
+| **Latest code commit** | `b1a6c35` (appliqué + satin hardening) |
 | **Working tree** | clean |
-| **Tracked files** | 81 |
+| **Tracked files** | 82 |
 | **Location** | `/Users/INDIA/Downloads/EmDesign_Automater` |
 
 ---
@@ -29,7 +29,7 @@
    Export to .DST/.PES/.JEF/.EXP/.VP3, convert via API, or download a **full production package ZIP**
    (machine file + master + worksheet + color card + preview + summary). A **2D/TrueView-3D** toggle shows a
    lit 3D thread preview; snap any color to the nearest catalog thread; edit density/angle/underlay/**pull-comp**.
-   Verified: **pytest 51/51, vitest 25/25**, e2e via Vite proxy (3D paint not eyeballed — §12).
+   Verified: **pytest 55/55, vitest 25/25**, e2e via Vite proxy (3D paint not eyeballed — §12).
 2. **Chosen scope (by the user):** build **vertically**, one phase at a time ([§14](#-14-full-project-roadmap-phases-010)).
 3. **Next task (pick one):** (a) **Phase 6** — Supabase persistence/auth (apply `db/schema.sql`, wire
    `designs` CRUD + Storage; **needs user's Supabase keys — blocked**); (b) **lettering v1.1** (per-stroke
@@ -57,7 +57,7 @@
 
 - **Stack:** TypeScript (React + Vite) frontend · Python (FastAPI) backend · PostgreSQL/Supabase (schema written, not applied).
 - **Built:** **Phases 0–5 essentially done**: open/parse, **image auto-digitize** (TATAMI + SATIN + underlay + **holes/counters**), **text lettering**, **object-level editing** (→ server rebuild), Konva render, full color-stop editing, **export any format + convert + full production package ZIP**, worksheet PDF.
-- **Verified:** **pytest 51/51** · **vitest 25/25** · typecheck/build · e2e lettering→digitize→edit(density/pull-comp)→rebuild→export/convert/package/thread-match through the Vite proxy.
+- **Verified:** **pytest 55/55** · **vitest 25/25** · typecheck/build · e2e lettering→digitize→edit(type/density/pull-comp)→rebuild→export/convert/package/thread-match through the Vite proxy.
 - **Still stubbed:** thread nearest-match, design persistence/auth, TrueView 3D, AI/ML, satin-stroke lettering.
 - **Next:** Phase 6 (Supabase persistence — **blocked on user keys**), thread nearest-match, or lettering v1.1. *(In-browser event wiring not eyeballed — §12.)*
 
@@ -69,6 +69,7 @@
 
 | # | Date | Author | Type | Summary |
 |---|------|--------|------|---------|
+| 17 | 2026-07-03 | Claude (Fable 5) | ✨ Feature | **Appliqué stitch type (§4.3) + satin hardening** — commit `b1a6c35`. rebuild APPLIQUE branch = placement outline → tackdown → 2mm satin border (`_run_along`/`_satin_border`/`_resample_closed`); `_satin_zigzag` subdivides cross-width zigs so wide columns stay ≤12.7mm; PropertiesPanel stitch-type selector. **pytest 55/55** (+4); e2e: 2 objs→APPLIQUE→1220 st, max 2.0mm, exports PES. |
 | 16 | 2026-07-03 | Claude (Fable 5) | ✨ Feature | **Pull compensation (§4.6)** — commit `407a327`. Wires up the dead `DesignObject.pull_compensation` field: digitizer assigns a fabric-dependent default (knit 0.4–0.5, woven 0.15–0.2mm) and dilates the top fill/satin to counter fabric pull; rebuild honors edits; PropertiesPanel pull-comp input. **pytest 51/51** (+4); e2e: pull 0→1mm widens 71.5→72.25mm. v1 = uniform dilation (directional is future). |
 | 15 | 2026-07-03 | Claude (Fable 5) | ✨ Feature | **Thread nearest-match (§4.4 complete)** — commit `c5e942d`. `hex_to_lab` (pure sRGB→Lab D65) + `nearest_thread` (CIE76 ΔE); `POST /api/threads/match` implemented (was 501), 422 on bad hex; ThreadPalette "nearest catalog thread" button snaps a stop's color to an orderable thread. **pytest 47/47** (+5); e2e via proxy (black→Black, red→Flame, blue→Royal Blue). |
 | 14 | 2026-07-03 | Claude (Fable 5) | ✨ Feature | **Phase 7: TrueView 3D thread preview** — commit `af37f26`. `lib/thread3d.buildThreadScene` (pure, tested) → `TrueView3D` renders TubeGeometry per color run with lighting + fabric plane; drag-rotate + scroll-zoom (no OrbitControls dep); 2D/3D toggle. **vitest 25/25** (+4). ⚠️ 3D **paint not eyeballed** (headless) — geometry math tested, render needs a human. |
@@ -163,7 +164,7 @@ db/schema.sql (not applied) · docs/ · STATUS.md · README.md · AI-Embroidery-
 | Component | Status | Notes |
 |---|---|---|
 | App shell · api client · types · lib/* | 🟢 | pure libs unit-tested |
-| StitchCanvas · ColorObjectList · ThreadPalette · StitchPlayer · PropertiesPanel | 🟢 | select stops **+ objects** · recolor · rename · reorder · nearest-match · **edit density/angle/underlay/pull-comp → rebuild** · animate |
+| StitchCanvas · ColorObjectList · ThreadPalette · StitchPlayer · PropertiesPanel | 🟢 | select stops **+ objects** · recolor · rename · reorder · nearest-match · **edit stitch-type(+appliqué)/density/angle/underlay/pull-comp → rebuild** · animate |
 | **TrueView3D** + 2D/3D toggle | 🟢 | thread tubes + lighting + fabric; drag-rotate/zoom (**paint unverified — §12**) |
 | designStore | 🟢 | + reorderStop · **selectObject/updateObject/replaceDesign** · undo/redo |
 | Toolbar (Digitize/Lettering dialogs) | 🟡 | Open/Digitize/Text/Export-any-format/**Package**/Worksheet/Undo/Redo live; manual digitizing tools TBD |
@@ -172,7 +173,7 @@ db/schema.sql (not applied) · docs/ · STATUS.md · README.md · AI-Embroidery-
 | Item | Status | Notes |
 |---|---|---|
 | Monorepo · shared data model | 🟢 | camelCase-on-wire verified |
-| Tests | 🟡 | **pytest 51 + vitest 25**; CI config written (**unverified — no remote**) |
+| Tests | 🟡 | **pytest 55 + vitest 25**; CI config written (**unverified — no remote**) |
 | DB applied · Supabase · deploy · AI/ML · `.STIQ` | 🔴 | Phases 6/8/X |
 
 ---
@@ -245,6 +246,13 @@ StitchPlayer; pytest + vitest suites; everything e2e-verified via the Vite proxy
     default + top-layer dilation on digitize, honored/editable on rebuild, PropertiesPanel input. **pytest 51/51**;
     e2e pull 0→1mm widens 71.5→72.25mm. (v1 = uniform dilation; directional is future.)
 
+**Appliqué + satin hardening (Update #17, commit `b1a6c35`):**
+20. **Appliqué** (§4.3) — object stitch-type APPLIQUE → rebuild emits placement outline + tackdown +
+    2mm satin border along the contour (`_run_along`/`_satin_border` + arc-length `_resample_closed`).
+    PropertiesPanel stitch-type selector. **pytest 55/55**; e2e 2 objs→APPLIQUE→1220 st, max 2.0mm, exports PES.
+21. **Satin hardening** — `_satin_zigzag` subdivides cross-width zigs by max-stitch, so a wide region
+    mis-set to SATIN stays machine-valid (≤12.7mm) instead of emitting one giant stitch.
+
 ---
 
 ## 🔴 7. What's REMAINING
@@ -314,7 +322,7 @@ python tests/make_fixtures.py
 ### Baseline (last confirmed 2026-07-01, Update #7)
 | Check | Command | Expected | Result |
 |---|---|---|---|
-| Backend tests | `python -m pytest tests -q` | **51 passed** | ✅ |
+| Backend tests | `python -m pytest tests -q` | **55 passed** | ✅ |
 | Frontend tests | `npm test -w apps/frontend` | **vitest 25 passed** | ✅ |
 | Rebuild e2e | digitize → halve density → `:5173/api/designs/rebuild` | fewer stitches, bounds stable; imported → 422 | ✅ |
 | Underlay e2e | digitize (EDGE_WALK default) → rebuild with NONE | 1011 → 790 stitches | ✅ |
@@ -415,7 +423,7 @@ types (double-zigzag/parallel/contour) are Phase 8.
 Implemented in `services/embroidery_io.py`, `worksheet_pdf.py`, `threads.py`, `digitizer.py`; routers
 `files`/`digitize`/`export`/`worksheet`/`threads`; frontend `StitchCanvas`, `lib/stitches.ts`, `Toolbar`,
 `StitchPlayer`, panels, `store/designStore`, `api/client`.
-Verify: `pytest -q` (51) + `npm test` (25). Manual: Open `tests/fixtures/sample.dst` **and** Digitize a PNG
+Verify: `pytest -q` (55) + `npm test` (25). Manual: Open `tests/fixtures/sample.dst` **and** Digitize a PNG
 (params dialog appears); click a stop or object, recolor, edit density/underlay → Apply, reorder ▲▼, undo, Export, Worksheet.
 
 ---
