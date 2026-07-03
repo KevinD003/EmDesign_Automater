@@ -7,14 +7,14 @@
 | Field | Value |
 |---|---|
 | **Project** | STITCHIQ — AI-powered embroidery design & digitizing platform |
-| **Document version** | **v13** |
-| **Times updated** | **13** |
-| **Last updated** | 2026-07-02 |
-| **Current phase** | **Phases 0–5 essentially done** (open/digitize/text/edit/export/**package**). Next: Phase 6 Supabase |
+| **Document version** | **v14** |
+| **Times updated** | **14** |
+| **Last updated** | 2026-07-03 |
+| **Current phase** | **Phases 0–5 + 7 done** (+ TrueView 3D). Only Phase 6 (Supabase) + Phase 8/9 AI remain |
 | **Git branch** | `main` |
-| **Latest code commit** | `afbe3b2` (production export package ZIP) |
+| **Latest code commit** | `af37f26` (TrueView 3D) |
 | **Working tree** | clean |
-| **Tracked files** | 77 |
+| **Tracked files** | 79 |
 | **Location** | `/Users/INDIA/Downloads/EmDesign_Automater` |
 
 ---
@@ -27,11 +27,13 @@
    recolor/rename/reorder → undo/redo → export any format → worksheet PDF. Digitized/lettered objects are
    **editable**: select one, change density/angle/underlay, Apply → server rebuilds the stitches.
    Export to .DST/.PES/.JEF/.EXP/.VP3, convert via API, or download a **full production package ZIP**
-   (machine file + master + worksheet + color card + preview + summary). Verified: **pytest 42/42, vitest 21/21**, e2e via Vite proxy.
+   (machine file + master + worksheet + color card + preview + summary). A **2D/TrueView-3D** toggle shows a
+   lit 3D thread preview. Verified: **pytest 42/42, vitest 25/25**, e2e via Vite proxy (3D paint not eyeballed — §12).
 2. **Chosen scope (by the user):** build **vertically**, one phase at a time ([§14](#-14-full-project-roadmap-phases-010)).
 3. **Next task (pick one):** (a) **Phase 6** — Supabase persistence/auth (apply `db/schema.sql`, wire
-   `designs` CRUD + Storage; **needs user's Supabase keys**); (b) **Phase 7** TrueView 3D; (c) **lettering
-   v1.1** (satin strokes); or (d) **push to GitHub** to exercise the CI config (written but unverified).
+   `designs` CRUD + Storage; **needs user's Supabase keys — blocked**); (b) **thread nearest-match**
+   (`/threads/match`, small self-contained win); (c) **lettering v1.1** (satin strokes); or (d) **push to
+   GitHub** to exercise the CI config (written but unverified).
 4. **⚠️ MANDATORY — every change is logged in THIS FILE.** Before finishing any task: bump **Document
    version** + **Times updated**; update **Last updated** + **Latest code commit**; add a
    [§2](#-2-update-history--changelog) row (**newest on top**); flip [§5](#-5-feature-status-matrix) rows;
@@ -54,9 +56,9 @@
 
 - **Stack:** TypeScript (React + Vite) frontend · Python (FastAPI) backend · PostgreSQL/Supabase (schema written, not applied).
 - **Built:** **Phases 0–5 essentially done**: open/parse, **image auto-digitize** (TATAMI + SATIN + underlay + **holes/counters**), **text lettering**, **object-level editing** (→ server rebuild), Konva render, full color-stop editing, **export any format + convert + full production package ZIP**, worksheet PDF.
-- **Verified:** **pytest 42/42** · **vitest 21/21** · typecheck/build · e2e lettering→digitize→edit→rebuild→export/convert/**package** through the Vite proxy.
+- **Verified:** **pytest 42/42** · **vitest 25/25** · typecheck/build · e2e lettering→digitize→edit→rebuild→export/convert/**package** through the Vite proxy.
 - **Still stubbed:** thread nearest-match, design persistence/auth, TrueView 3D, AI/ML, satin-stroke lettering.
-- **Next:** Phase 6 (Supabase persistence — needs user keys) or Phase 7 (TrueView 3D). *(In-browser event wiring not eyeballed — §12.)*
+- **Next:** Phase 6 (Supabase persistence — **blocked on user keys**), thread nearest-match, or lettering v1.1. *(In-browser event wiring not eyeballed — §12.)*
 
 ---
 
@@ -66,6 +68,7 @@
 
 | # | Date | Author | Type | Summary |
 |---|------|--------|------|---------|
+| 14 | 2026-07-03 | Claude (Fable 5) | ✨ Feature | **Phase 7: TrueView 3D thread preview** — commit `af37f26`. `lib/thread3d.buildThreadScene` (pure, tested) → `TrueView3D` renders TubeGeometry per color run with lighting + fabric plane; drag-rotate + scroll-zoom (no OrbitControls dep); 2D/3D toggle. **vitest 25/25** (+4). ⚠️ 3D **paint not eyeballed** (headless) — geometry math tested, render needs a human. |
 | 13 | 2026-07-02 | Claude (Fable 5) | ✨ Feature | **Phase 5: production export package (ZIP) + brand map** — commit `afbe3b2`. `POST /api/export/package` → ZIP (machine file + master .STIQ JSON + worksheet PDF + color-card PDF + preview PNG + summary); `GET /api/formats` (brand→format table); Toolbar **Package** button. **pytest 42/42**; e2e 6-artifact ZIP via proxy. |
 | 12 | 2026-07-02 | Claude (Fable 5) | ✨ Feature | **Phase 4 lettering + holes + 4 digitizer bug fixes** — commit `d9c8fea`. Text→stitches (PIL render → digitizer) `POST /api/lettering` + Toolbar Text button; `DesignObject.holes` (donut/counter carve via RETR_CCOMP + rebuild). Adversarial review of the diff surfaced 4 bugs (its verifier agents died on a session limit → I confirmed each by reproduction): **phantom color stops** (spurious thread change on every design), **satin rotation crop** (narrow letters half-height), **400→1200px res cap** (wide text collapsed), **empty-result 422**. **pytest 38/38** (+5 regression); e2e via proxy. |
 | 11 | 2026-07-01 | Claude (Fable 5) | ✨ Feature | **Phase 5 start: convert endpoint + export picker + CI config** — commit `b3aaf13`. `POST /api/convert` (base64 any→any, color-loss warnings, 400/415 errors); Toolbar export dropdown (.DST/.PES/.JEF/.EXP/.VP3); `.github/workflows/ci.yml` (**unverified — no remote**). **pytest 28/28**; e2e dst→jef via proxy. |
@@ -158,15 +161,15 @@ db/schema.sql (not applied) · docs/ · STATUS.md · README.md · AI-Embroidery-
 |---|---|---|
 | App shell · api client · types · lib/* | 🟢 | pure libs unit-tested |
 | StitchCanvas · ColorObjectList · ThreadPalette · StitchPlayer · PropertiesPanel | 🟢 | select stops **+ objects** · recolor · rename · reorder · **edit density/angle/underlay → rebuild** · animate |
+| **TrueView3D** + 2D/3D toggle | 🟢 | thread tubes + lighting + fabric; drag-rotate/zoom (**paint unverified — §12**) |
 | designStore | 🟢 | + reorderStop · **selectObject/updateObject/replaceDesign** · undo/redo |
-| Toolbar + Digitize/**Lettering** dialogs | 🟡 | Open/Digitize/**Text**/Export-any-format/Worksheet/Undo/Redo live; manual digitizing tools TBD |
-| TrueView3D | 🔴 | Phase 7 |
+| Toolbar (Digitize/Lettering dialogs) | 🟡 | Open/Digitize/Text/Export-any-format/**Package**/Worksheet/Undo/Redo live; manual digitizing tools TBD |
 
 ### Infrastructure
 | Item | Status | Notes |
 |---|---|---|
 | Monorepo · shared data model | 🟢 | camelCase-on-wire verified |
-| Tests | 🟡 | **pytest 42 + vitest 21**; CI config written (**unverified — no remote**) |
+| Tests | 🟡 | **pytest 42 + vitest 25**; CI config written (**unverified — no remote**) |
 | DB applied · Supabase · deploy · AI/ML · `.STIQ` | 🔴 | Phases 6/8/X |
 
 ---
@@ -225,6 +228,12 @@ StitchPlayer; pytest + vitest suites; everything e2e-verified via the Vite proxy
 16. **Export package ZIP** (§4.8) — `POST /api/export/package` bundles machine file + master .STIQ JSON +
     worksheet PDF + thread color-card PDF + preview PNG (PIL) + summary txt. `GET /api/formats` returns the
     machine-brand format map. Toolbar **Package** button. **pytest 42/42**; e2e 6-artifact ZIP via proxy.
+
+**TrueView 3D — Phase 7 done (Update #14, commit `af37f26`):**
+17. **TrueView 3D** (§4.7) — `lib/thread3d.buildThreadScene` (pure, tested) → `TrueView3D` renders one
+    TubeGeometry per color run with `MeshStandardMaterial` sheen, a fabric plane, ambient + 2 directional
+    lights; drag-rotate + scroll-zoom via local state (no OrbitControls dep). 2D/3D toggle. **vitest 25/25**.
+    ⚠️ The 3D **paint is not eyeballed** (headless) — geometry math tested; render/lighting/camera need a human.
 
 ---
 
@@ -296,7 +305,7 @@ python tests/make_fixtures.py
 | Check | Command | Expected | Result |
 |---|---|---|---|
 | Backend tests | `python -m pytest tests -q` | **42 passed** | ✅ |
-| Frontend tests | `npm test -w apps/frontend` | **vitest 21 passed** | ✅ |
+| Frontend tests | `npm test -w apps/frontend` | **vitest 25 passed** | ✅ |
 | Rebuild e2e | digitize → halve density → `:5173/api/designs/rebuild` | fewer stitches, bounds stable; imported → 422 | ✅ |
 | Underlay e2e | digitize (EDGE_WALK default) → rebuild with NONE | 1011 → 790 stitches | ✅ |
 | Convert e2e | dst→jef via `:5173/api/convert` | valid JEF, threads kept, warning | ✅ |
@@ -311,6 +320,10 @@ python tests/make_fixtures.py
 
 ## 🚧 12. Known Risks / Unverified Claims
 
+- **TrueView 3D paint NOT eyeballed** (headless, no browser): the geometry builder (`lib/thread3d.ts`) is
+  unit-tested, but nobody has confirmed the tubes actually render, the lighting/thread-radius look right, or
+  drag-rotate/zoom feel good. Open `:5173`, load a design, click **TrueView 3D**. Radius/lighting/camera are
+  first-guess — tell me what looks off and I'll tune (one axis at a time).
 - **In-browser event wiring NOT eyeballed:** canvas paint, click-select, recolor, reorder ▲▼, undo, and the
   **Digitize / Text button flows**. Open `:5173`, load a fixture, digitize a PNG logo, and type some text — confirm all three.
 - **Lettering v1 is tatami-filled** (not per-stroke satin — the classic look): fine for chunky text, heavier/blockier
@@ -350,7 +363,7 @@ Entities: `Stitch` · `StitchType`/`UnderlayType`/`ConnectMethod` · `Thread` ·
 | 4 | Lettering & monogramming | 🟢 **Done (v1)** | L | text → tatami-filled stitches ✅ · satin strokes = v1.1 |
 | 5 | Production output & formats | 🟢 **Done** | M | convert + multi-format export + production package ZIP + brand map |
 | 6 | Persistence & accounts (Supabase) | ⬜ | M | save/load, auth, versions, teams |
-| 7 | TrueView 3D simulation | ⬜ | L | realistic preview |
+| 7 | TrueView 3D simulation | 🟢 **Done** | L | lit thread tubes + fabric, drag/zoom (paint unverified) |
 | 8 | AI engine (+ thread match) | ⬜ | XL | neural digitizing, path opt, quality scoring |
 | 9 | Generative & assistant | ⬜ | XL | text-to-design, STITCH-GPT |
 | 10 | Platform & scale | ⬜ | XL | collab, cloud API, mobile |
@@ -365,7 +378,7 @@ types (double-zigzag/parallel/contour) are Phase 8.
 
 ### Phases 4–10 (summaries)
 - **4 Lettering:** 🟢 v1 done — PIL render → digitizer (tatami + underlay + holes); satin strokes = v1.1. **5 Production:** 🟢 done — convert + multi-format export + production package ZIP + brand map (§4.8).
-  **6 Supabase:** apply `db/schema.sql`, auth, CRUD + Storage (**needs user keys**). **7 TrueView 3D:** thread geometry (§4.7).
+  **6 Supabase:** apply `db/schema.sql`, auth, CRUD + Storage (**needs user keys**). **7 TrueView 3D:** 🟢 done — lit thread tubes + fabric, drag/zoom (§4.7; paint unverified).
   **8 AI:** SAM/CNN/RL + quality scoring + Lab k-d thread match (§4.2/§6). **9 Generative:** diffusion + STITCH-GPT (§4.1/§4.11).
   **10 Platform:** collab/cloud API/mobile (§4.12).
 
@@ -392,7 +405,7 @@ types (double-zigzag/parallel/contour) are Phase 8.
 Implemented in `services/embroidery_io.py`, `worksheet_pdf.py`, `threads.py`, `digitizer.py`; routers
 `files`/`digitize`/`export`/`worksheet`/`threads`; frontend `StitchCanvas`, `lib/stitches.ts`, `Toolbar`,
 `StitchPlayer`, panels, `store/designStore`, `api/client`.
-Verify: `pytest -q` (42) + `npm test` (21). Manual: Open `tests/fixtures/sample.dst` **and** Digitize a PNG
+Verify: `pytest -q` (42) + `npm test` (25). Manual: Open `tests/fixtures/sample.dst` **and** Digitize a PNG
 (params dialog appears); click a stop or object, recolor, edit density/underlay → Apply, reorder ▲▼, undo, Export, Worksheet.
 
 ---
