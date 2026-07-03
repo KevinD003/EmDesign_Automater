@@ -42,6 +42,30 @@ EDGE_INSET_MM = 0.6       # edge-walk offset inside the region edge
 
 _MAX_WORK_PX = 1200.0     # cap working resolution (raise = more detail, slower)
 
+# Pull compensation (spec §4.6): widen the top fill/satin to counter fabric pull that
+# narrows stitching. Higher for stretchy fabrics. Applied as a dilation (per side, mm).
+PULL_BY_FABRIC = {
+    "cotton": 0.2, "denim": 0.15, "twill": 0.15, "poplin": 0.15, "canvas": 0.15,
+    "polo/knit": 0.4, "knit": 0.4, "jersey": 0.45, "fleece": 0.5,
+    "cap": 0.3, "towel": 0.5, "terry": 0.5,
+}
+PULL_DEFAULT_MM = 0.25
+
+
+def _default_pull(fabric_type: str) -> float:
+    return PULL_BY_FABRIC.get((fabric_type or "").strip().lower(), PULL_DEFAULT_MM)
+
+
+def _dilate_pull(region, pull_mm: float, mm_per_px: float):
+    """Widen a region mask by ``pull_mm`` per side (pull compensation)."""
+    import cv2
+    import numpy as np
+
+    px = round(max(0.0, pull_mm) / mm_per_px)
+    if px <= 0:
+        return region
+    return cv2.dilate(region, np.ones((2 * px + 1, 2 * px + 1), np.uint8))
+
 
 def _parse_hoop(hoop_size: str) -> tuple[float, float]:
     try:
@@ -151,15 +175,17 @@ def digitize_image(
             l_mm = max(rect[1]) * mm_per_px
             is_satin = SATIN_MIN_W_MM <= w_mm <= SATIN_MAX_W_MM and l_mm / max(w_mm, 0.01) >= SATIN_ASPECT
             under_step_px = max(1, round(UNDERLAY_STEP_MM / mm_per_px))
+            pull_mm = _default_pull(fabric_type)
+            top_region = _dilate_pull(region, pull_mm, mm_per_px)  # pull comp widens the top layer
             if is_satin:
                 satin_step_px = max(1, round(SATIN_SPACING_MM / mm_per_px))
-                under = _center_walk(region, rect, under_step_px, connect_px)
-                pts = _with_underlay(under, _satin_zigzag(region, rect, satin_step_px, connect_px), connect_px)
+                under = _center_walk(region, rect, under_step_px, connect_px)  # underlay on the true shape
+                pts = _with_underlay(under, _satin_zigzag(top_region, rect, satin_step_px, connect_px), connect_px)
                 underlay = UnderlayType.CENTER_WALK
             else:
                 inset_px = max(1, round(EDGE_INSET_MM / mm_per_px))
                 under = _edge_walk(region, inset_px, under_step_px, connect_px)
-                pts = _with_underlay(under, _scanline_fill(region, row_px, max_step_px, connect_px), connect_px)
+                pts = _with_underlay(under, _scanline_fill(top_region, row_px, max_step_px, connect_px), connect_px)
                 underlay = UnderlayType.EDGE_WALK
             if len(pts) < 2:
                 continue
@@ -196,7 +222,7 @@ def digitize_image(
                     density=1.0 / (SATIN_SPACING_MM if is_satin else ROW_SPACING_MM),
                     stitch_angle=round(float(rect[2]), 1) if is_satin else 0.0,
                     underlay_type=underlay,
-                    pull_compensation=0.0,
+                    pull_compensation=round(pull_mm, 2),
                     entry_point=Point(x=pts[0][0] * mm_per_px, y=pts[0][1] * mm_per_px),
                     exit_point=Point(x=pts[-1][0] * mm_per_px, y=pts[-1][1] * mm_per_px),
                     connect_method=ConnectMethod.TRIM,
@@ -475,13 +501,14 @@ def rebuild_design(design: Design) -> Design:
             spacing_mm = 1.0 / max(float(o.density) or 1.0, 0.2)
             spacing_px = max(1, round(spacing_mm / mm_per_px))
             under_step_px = max(1, round(UNDERLAY_STEP_MM / mm_per_px))
+            top = _dilate_pull(mask, float(o.pull_compensation or 0.0), mm_per_px)  # honor edited pull comp
             if st == "SATIN":
                 rect = cv2.minAreaRect(poly)
-                pts = _satin_zigzag(mask, rect, spacing_px, connect_px)
+                pts = _satin_zigzag(top, rect, spacing_px, connect_px)
                 if ut and ut != "NONE":  # any non-NONE underlay → center-walk for satin
                     pts = _with_underlay(_center_walk(mask, rect, under_step_px, connect_px), pts, connect_px)
             else:
-                pts = _scanline_angled(mask, float(o.stitch_angle), spacing_px, max_step_px, connect_px)
+                pts = _scanline_angled(top, float(o.stitch_angle), spacing_px, max_step_px, connect_px)
                 if ut and ut != "NONE":  # any non-NONE underlay → edge-walk for fills
                     inset_px = max(1, round(EDGE_INSET_MM / mm_per_px))
                     pts = _with_underlay(_edge_walk(mask, inset_px, under_step_px, connect_px), pts, connect_px)

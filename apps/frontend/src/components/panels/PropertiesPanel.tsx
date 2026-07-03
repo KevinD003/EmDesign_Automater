@@ -30,14 +30,16 @@ export function PropertiesPanel() {
   const [density, setDensity] = useState('');
   const [angle, setAngle] = useState('');
   const [underlay, setUnderlay] = useState('NONE');
+  const [pull, setPull] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   useEffect(() => {
     setDensity(obj ? String(obj.density) : '');
     setAngle(obj ? String(obj.stitchAngle) : '');
     setUnderlay(obj ? String(obj.underlayType) : 'NONE');
+    setPull(obj ? String(obj.pullCompensation) : '');
     setErr(null);
-  }, [obj?.sequenceOrder, obj?.density, obj?.stitchAngle, obj?.underlayType]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [obj?.sequenceOrder, obj?.density, obj?.stitchAngle, obj?.underlayType, obj?.pullCompensation]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const onApply = async () => {
     if (!design || !obj) return;
@@ -50,11 +52,17 @@ export function PropertiesPanel() {
     setBusy(true);
     setErr(null);
     try {
+      const p = Number(pull);
+      if (!Number.isFinite(p) || p < 0 || p > 2) {
+        setErr('Pull compensation must be 0–2 mm.');
+        setBusy(false);
+        return;
+      }
       const patched = {
         ...design,
         objects: design.objects.map((o) =>
           o.sequenceOrder === obj.sequenceOrder
-            ? { ...o, density: d, stitchAngle: a, underlayType: underlay as typeof o.underlayType }
+            ? { ...o, density: d, stitchAngle: a, underlayType: underlay as typeof o.underlayType, pullCompensation: p }
             : o,
         ),
       };
@@ -104,6 +112,10 @@ export function PropertiesPanel() {
                 <option value="EDGE_WALK">Edge walk</option>
               )}
             </select>
+          </label>
+          <label className="prop-row">
+            <span>Pull comp (mm)</span>
+            <input type="number" step="0.05" min="0" max="2" value={pull} onChange={(e) => setPull(e.target.value)} />
           </label>
           <div className="dialog-actions">
             <button type="button" className="primary" onClick={onApply} disabled={busy || !obj.contour}>
