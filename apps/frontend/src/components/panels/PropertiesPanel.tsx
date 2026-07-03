@@ -31,6 +31,7 @@ export function PropertiesPanel() {
   const [angle, setAngle] = useState('');
   const [underlay, setUnderlay] = useState('NONE');
   const [pull, setPull] = useState('');
+  const [stype, setStype] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   useEffect(() => {
@@ -38,8 +39,12 @@ export function PropertiesPanel() {
     setAngle(obj ? String(obj.stitchAngle) : '');
     setUnderlay(obj ? String(obj.underlayType) : 'NONE');
     setPull(obj ? String(obj.pullCompensation) : '');
+    setStype(obj ? String(obj.stitchType) : '');
     setErr(null);
-  }, [obj?.sequenceOrder, obj?.density, obj?.stitchAngle, obj?.underlayType, obj?.pullCompensation]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [obj?.sequenceOrder, obj?.density, obj?.stitchAngle, obj?.underlayType, obj?.pullCompensation, obj?.stitchType]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Offer the object's fill type + Appliqué; when already appliqué, allow reverting to a fill.
+  const typeOptions = obj ? (obj.stitchType === 'APPLIQUE' ? ['APPLIQUE', 'TATAMI', 'SATIN'] : [obj.stitchType, 'APPLIQUE']) : [];
 
   const onApply = async () => {
     if (!design || !obj) return;
@@ -62,7 +67,14 @@ export function PropertiesPanel() {
         ...design,
         objects: design.objects.map((o) =>
           o.sequenceOrder === obj.sequenceOrder
-            ? { ...o, density: d, stitchAngle: a, underlayType: underlay as typeof o.underlayType, pullCompensation: p }
+            ? {
+                ...o,
+                density: d,
+                stitchAngle: a,
+                underlayType: underlay as typeof o.underlayType,
+                pullCompensation: p,
+                stitchType: stype as typeof o.stitchType,
+              }
             : o,
         ),
       };
@@ -83,10 +95,16 @@ export function PropertiesPanel() {
             <span>Object</span>
             <span className="muted">{obj.name}</span>
           </div>
-          <div className="prop-row">
-            <span>Type</span>
-            <span className="muted">{obj.stitchType}</span>
-          </div>
+          <label className="prop-row">
+            <span>Stitch type</span>
+            <select value={stype} onChange={(e) => setStype(e.target.value)}>
+              {typeOptions.map((t) => (
+                <option key={t} value={t}>
+                  {t === 'APPLIQUE' ? 'Appliqué' : t}
+                </option>
+              ))}
+            </select>
+          </label>
           <label className="prop-row">
             <span>Density (lines/mm)</span>
             <input type="number" step="0.1" min="0.2" max="5" value={density} onChange={(e) => setDensity(e.target.value)} />

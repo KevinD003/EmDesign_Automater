@@ -180,7 +180,7 @@ def digitize_image(
             if is_satin:
                 satin_step_px = max(1, round(SATIN_SPACING_MM / mm_per_px))
                 under = _center_walk(region, rect, under_step_px, connect_px)  # underlay on the true shape
-                pts = _with_underlay(under, _satin_zigzag(top_region, rect, satin_step_px, connect_px), connect_px)
+                pts = _with_underlay(under, _satin_zigzag(top_region, rect, satin_step_px, connect_px, max_step_px), connect_px)
                 underlay = UnderlayType.CENTER_WALK
             else:
                 inset_px = max(1, round(EDGE_INSET_MM / mm_per_px))
@@ -319,41 +319,114 @@ def _warp_fit(region, center, angle_deg: float):
     return rot, cv2.invertAffineTransform(M)
 
 
-def _satin_zigzag(region, rect, step_px: int, connect_px: float):
+def _satin_zigzag(region, rect, step_px: int, connect_px: float, max_step_px: int = 1_000_000):
     """Satin column for a narrow elongated region.
 
     Rotates the mask so the region's long axis is horizontal, walks columns at
     ``step_px``, emits alternating top/bottom edge points (the zigzag), then maps
-    the points back through the inverse rotation. Returns [(x_px, y_px, is_jump)].
+    the points back through the inverse rotation. Cross-width zigs longer than
+    ``max_step_px`` are subdivided so no stitch exceeds the machine limit — this
+    keeps even a mis-classified wide column machine-valid. Returns [(x, y, is_jump)].
     """
-    import cv2
     import numpy as np
 
     (cx, cy), (rw, rh), ang = rect
     if rw < rh:  # normalize: long axis → horizontal
         ang += 90.0
     rot, Minv = _warp_fit(region, (cx, cy), ang)
-    h, w = rot.shape
+    _, w = rot.shape
+
+    def inv(px_: float, py_: float) -> tuple[float, float]:
+        return (
+            float(Minv[0, 0] * px_ + Minv[0, 1] * py_ + Minv[0, 2]),
+            float(Minv[1, 0] * px_ + Minv[1, 1] * py_ + Minv[1, 2]),
+        )
 
     pts: list[tuple[float, float, bool]] = []
+    prev: tuple[float, float] | None = None
     top = True
     for x in range(0, w, step_px):
         rows = np.flatnonzero(rot[:, x])
         if rows.size < 2:
             continue
         y0, y1 = int(rows[0]), int(rows[-1])
-        pair = ((x, y0), (x, y1)) if top else ((x, y1), (x, y0))
-        for i, (px_, py_) in enumerate(pair):
-            X = Minv[0, 0] * px_ + Minv[0, 1] * py_ + Minv[0, 2]
-            Y = Minv[1, 0] * px_ + Minv[1, 1] * py_ + Minv[1, 2]
-            # Jump only on a gap BETWEEN columns (i == 0); the cross-width zig
-            # itself (i == 1) is always a stitch, whatever the column width.
-            jump = i == 0 and bool(pts) and _dist(pts[-1], (X, Y)) > connect_px
-            pts.append((float(X), float(Y), jump))
+        (ax, ay), (bx, by) = ((x, y0), (x, y1)) if top else ((x, y1), (x, y0))
+        a = inv(ax, ay)
+        b = inv(bx, by)
+        jump = prev is not None and _dist(prev, a) > connect_px
+        pts.append((a[0], a[1], jump))
+        prev = a
+        n = max(1, int(np.ceil(_dist(a, b) / max_step_px)))
+        for i in range(1, n + 1):
+            p = (a[0] + (b[0] - a[0]) * i / n, a[1] + (b[1] - a[1]) * i / n)
+            pts.append((p[0], p[1], False))
+            prev = p
         top = not top
     if pts:
         pts[0] = (pts[0][0], pts[0][1], True)  # enter the column with a jump
     return pts
+
+
+def _resample_closed(poly: list[tuple[float, float]], step: float) -> list[tuple[float, float]]:
+    """Arc-length resample of a closed polygon: points spaced ~``step`` along the
+    perimeter (INTERPOLATED, not just vertices — CHAIN_APPROX_SIMPLE gives corners only,
+    so straight edges must be filled in)."""
+    if len(poly) < 2:
+        return list(poly)
+    closed = list(poly) + [poly[0]]
+    out = [closed[0]]
+    since = 0.0
+    for i in range(1, len(closed)):
+        p0, p1 = closed[i - 1], closed[i]
+        seg = _dist(p0, p1)
+        if seg < 1e-9:
+            continue
+        pos = 0.0
+        while since + (seg - pos) >= step:
+            pos += step - since
+            t = pos / seg
+            out.append((p0[0] + (p1[0] - p0[0]) * t, p0[1] + (p1[1] - p0[1]) * t))
+            since = 0.0
+        since += seg - pos
+    return out
+
+
+def _run_along(poly_px, step_px: int, connect_px: float, first_jump: bool = True):
+    """Running stitch around a closed polygon, resampled at ``step_px``. For appliqué
+    placement / tackdown outlines. Returns [(x, y, is_jump)]."""
+    pts_in = [(float(x), float(y)) for x, y in poly_px.reshape(-1, 2)]
+    samples = _resample_closed(pts_in, max(1.0, float(step_px)))
+    if len(samples) < 2:
+        return []
+    return [(samples[0][0], samples[0][1], first_jump)] + [(p[0], p[1], False) for p in samples[1:]]
+
+
+def _satin_border(poly_px, width_px: float, step_px: int, connect_px: float):
+    """Satin border along a closed contour (appliqué edge cover): resample the outline,
+    then at each sample emit ±half-width points along the local normal, alternating to
+    zig-zag across the edge. Returns [(x, y, is_jump)]."""
+    pts_in = [(float(x), float(y)) for x, y in poly_px.reshape(-1, 2)]
+    if len(pts_in) < 3:
+        return []
+    samples = _resample_closed(pts_in, max(1.0, float(step_px)))
+    if len(samples) < 3:
+        return []
+    half = width_px / 2.0
+    out: list[tuple[float, float, bool]] = []
+    top = True
+    n = len(samples)
+    for i, p in enumerate(samples):
+        nxt = samples[(i + 1) % n]
+        dx, dy = nxt[0] - p[0], nxt[1] - p[1]
+        length = (dx * dx + dy * dy) ** 0.5 or 1.0
+        nx, ny = -dy / length, dx / length  # unit normal
+        a = (p[0] + nx * half, p[1] + ny * half)
+        b = (p[0] - nx * half, p[1] - ny * half)
+        pair = (a, b) if top else (b, a)
+        for j, q in enumerate(pair):
+            out.append((float(q[0]), float(q[1]), i == 0 and j == 0))
+        top = not top
+    return out
 
 
 def _edge_walk(region, inset_px: int, step_px: int, connect_px: float):
@@ -502,9 +575,19 @@ def rebuild_design(design: Design) -> Design:
             spacing_px = max(1, round(spacing_mm / mm_per_px))
             under_step_px = max(1, round(UNDERLAY_STEP_MM / mm_per_px))
             top = _dilate_pull(mask, float(o.pull_compensation or 0.0), mm_per_px)  # honor edited pull comp
-            if st == "SATIN":
+            if st == "APPLIQUE":
+                # placement outline → tackdown → satin edge cover (spec §4.3)
+                run_step = max(2, round(2.0 / mm_per_px))
+                border_px = max(2, round(2.0 / mm_per_px))  # 2mm satin border
+                sat_step = max(1, round(SATIN_SPACING_MM / mm_per_px))
+                pts = (
+                    _run_along(poly, run_step, connect_px, True)
+                    + _run_along(poly, run_step, connect_px, False)
+                    + _satin_border(poly, border_px, sat_step, connect_px)
+                )
+            elif st == "SATIN":
                 rect = cv2.minAreaRect(poly)
-                pts = _satin_zigzag(top, rect, spacing_px, connect_px)
+                pts = _satin_zigzag(top, rect, spacing_px, connect_px, max_step_px)
                 if ut and ut != "NONE":  # any non-NONE underlay → center-walk for satin
                     pts = _with_underlay(_center_walk(mask, rect, under_step_px, connect_px), pts, connect_px)
             else:
