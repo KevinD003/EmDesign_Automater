@@ -7,14 +7,14 @@
 | Field | Value |
 |---|---|
 | **Project** | STITCHIQ — AI-powered embroidery design & digitizing platform |
-| **Document version** | **v14** |
-| **Times updated** | **14** |
+| **Document version** | **v15** |
+| **Times updated** | **15** |
 | **Last updated** | 2026-07-03 |
-| **Current phase** | **Phases 0–5 + 7 done** (+ TrueView 3D). Only Phase 6 (Supabase) + Phase 8/9 AI remain |
+| **Current phase** | **Phases 0–5 + 7 done**; threads §4.4 complete (nearest-match). Only Phase 6 (Supabase) + 8/9 AI remain |
 | **Git branch** | `main` |
-| **Latest code commit** | `af37f26` (TrueView 3D) |
+| **Latest code commit** | `c5e942d` (thread nearest-match) |
 | **Working tree** | clean |
-| **Tracked files** | 79 |
+| **Tracked files** | 80 |
 | **Location** | `/Users/INDIA/Downloads/EmDesign_Automater` |
 
 ---
@@ -28,12 +28,12 @@
    **editable**: select one, change density/angle/underlay, Apply → server rebuilds the stitches.
    Export to .DST/.PES/.JEF/.EXP/.VP3, convert via API, or download a **full production package ZIP**
    (machine file + master + worksheet + color card + preview + summary). A **2D/TrueView-3D** toggle shows a
-   lit 3D thread preview. Verified: **pytest 42/42, vitest 25/25**, e2e via Vite proxy (3D paint not eyeballed — §12).
+   lit 3D thread preview; snap any color to the nearest catalog thread. Verified: **pytest 47/47, vitest 25/25**, e2e via Vite proxy (3D paint not eyeballed — §12).
 2. **Chosen scope (by the user):** build **vertically**, one phase at a time ([§14](#-14-full-project-roadmap-phases-010)).
 3. **Next task (pick one):** (a) **Phase 6** — Supabase persistence/auth (apply `db/schema.sql`, wire
-   `designs` CRUD + Storage; **needs user's Supabase keys — blocked**); (b) **thread nearest-match**
-   (`/threads/match`, small self-contained win); (c) **lettering v1.1** (satin strokes); or (d) **push to
-   GitHub** to exercise the CI config (written but unverified).
+   `designs` CRUD + Storage; **needs user's Supabase keys — blocked**); (b) **lettering v1.1** (per-stroke
+   satin); (c) **manual digitizing tools** (draw run/satin/fill on the canvas); or (d) **push to GitHub**
+   to exercise the CI config (written but unverified).
 4. **⚠️ MANDATORY — every change is logged in THIS FILE.** Before finishing any task: bump **Document
    version** + **Times updated**; update **Last updated** + **Latest code commit**; add a
    [§2](#-2-update-history--changelog) row (**newest on top**); flip [§5](#-5-feature-status-matrix) rows;
@@ -56,7 +56,7 @@
 
 - **Stack:** TypeScript (React + Vite) frontend · Python (FastAPI) backend · PostgreSQL/Supabase (schema written, not applied).
 - **Built:** **Phases 0–5 essentially done**: open/parse, **image auto-digitize** (TATAMI + SATIN + underlay + **holes/counters**), **text lettering**, **object-level editing** (→ server rebuild), Konva render, full color-stop editing, **export any format + convert + full production package ZIP**, worksheet PDF.
-- **Verified:** **pytest 42/42** · **vitest 25/25** · typecheck/build · e2e lettering→digitize→edit→rebuild→export/convert/**package** through the Vite proxy.
+- **Verified:** **pytest 47/47** · **vitest 25/25** · typecheck/build · e2e lettering→digitize→edit→rebuild→export/convert/package/**thread-match** through the Vite proxy.
 - **Still stubbed:** thread nearest-match, design persistence/auth, TrueView 3D, AI/ML, satin-stroke lettering.
 - **Next:** Phase 6 (Supabase persistence — **blocked on user keys**), thread nearest-match, or lettering v1.1. *(In-browser event wiring not eyeballed — §12.)*
 
@@ -68,6 +68,7 @@
 
 | # | Date | Author | Type | Summary |
 |---|------|--------|------|---------|
+| 15 | 2026-07-03 | Claude (Fable 5) | ✨ Feature | **Thread nearest-match (§4.4 complete)** — commit `c5e942d`. `hex_to_lab` (pure sRGB→Lab D65) + `nearest_thread` (CIE76 ΔE); `POST /api/threads/match` implemented (was 501), 422 on bad hex; ThreadPalette "nearest catalog thread" button snaps a stop's color to an orderable thread. **pytest 47/47** (+5); e2e via proxy (black→Black, red→Flame, blue→Royal Blue). |
 | 14 | 2026-07-03 | Claude (Fable 5) | ✨ Feature | **Phase 7: TrueView 3D thread preview** — commit `af37f26`. `lib/thread3d.buildThreadScene` (pure, tested) → `TrueView3D` renders TubeGeometry per color run with lighting + fabric plane; drag-rotate + scroll-zoom (no OrbitControls dep); 2D/3D toggle. **vitest 25/25** (+4). ⚠️ 3D **paint not eyeballed** (headless) — geometry math tested, render needs a human. |
 | 13 | 2026-07-02 | Claude (Fable 5) | ✨ Feature | **Phase 5: production export package (ZIP) + brand map** — commit `afbe3b2`. `POST /api/export/package` → ZIP (machine file + master .STIQ JSON + worksheet PDF + color-card PDF + preview PNG + summary); `GET /api/formats` (brand→format table); Toolbar **Package** button. **pytest 42/42**; e2e 6-artifact ZIP via proxy. |
 | 12 | 2026-07-02 | Claude (Fable 5) | ✨ Feature | **Phase 4 lettering + holes + 4 digitizer bug fixes** — commit `d9c8fea`. Text→stitches (PIL render → digitizer) `POST /api/lettering` + Toolbar Text button; `DesignObject.holes` (donut/counter carve via RETR_CCOMP + rebuild). Adversarial review of the diff surfaced 4 bugs (its verifier agents died on a session limit → I confirmed each by reproduction): **phantom color stops** (spurious thread change on every design), **satin rotation crop** (narrow letters half-height), **400→1200px res cap** (wide text collapsed), **empty-result 422**. **pytest 38/38** (+5 regression); e2e via proxy. |
@@ -124,7 +125,7 @@ apps/frontend/src/
   {lib,store}/*.test.ts          vitest (18 tests)
 apps/backend/app/
   main.py  config.py  models/design.py            shared data model (Pydantic)
-  routers/  files · digitize · export · worksheet · convert · threads(list) (live) · designs POST · threads/match (stub)
+  routers/  files · digitize · export(+package) · worksheet · convert · lettering · threads(list+match) (live) · designs POST (stub)
   services/ embroidery_io · digitizer · worksheet_pdf · threads.list_threads (live) · nearest_thread (stub)
   tests/ test_embroidery_io · test_worksheet · test_digitizer · make_fixtures · fixtures/sample.dst,.pes
 db/schema.sql (not applied) · docs/ · STATUS.md · README.md · AI-Embroidery-Software-Prompt.md
@@ -147,14 +148,14 @@ db/schema.sql (not applied) · docs/ · STATUS.md · README.md · AI-Embroidery-
 | **`/lettering`** | 🟢 | **text → Design (PIL render → digitizer); 422 on unsupported glyphs** |
 | **`/export/package`** · **`/formats`** | 🟢 | **production ZIP (6 artifacts)** · brand→format map |
 | `/threads` (GET) | 🟢 | catalog (brand filter) |
-| `/threads/match` · `/designs` POST | 🔴 | 501 |
+| **`/threads/match`** | 🟢 | **nearest catalog thread (CIE Lab); 422 bad hex** |
+| `/designs` POST | 🔴 | 501 (needs Supabase — Phase 6) |
 | `/designs` (GET) | 🟡 | in-memory |
 
 ### Backend services
 | Function | Status |
 |---|---|
-| `read_embroidery`/`write_embroidery` · `build_worksheet`/`render_pdf` · `list_threads` · **`digitize_image`** (holes + satin/underlay, no-crop rotation) · **`rebuild_design`** · **`generate_lettering`** | 🟢 |
-| `nearest_thread` | 🔴 (Phase 8, scipy) |
+| `read_embroidery`/`write_embroidery` · `build_worksheet`/`render_pdf` · `list_threads` · **`nearest_thread`** (CIE Lab) · **`digitize_image`** (holes + satin/underlay, no-crop rotation) · **`rebuild_design`** · **`generate_lettering`** · **`build_package`** | 🟢 |
 
 ### Frontend components
 | Component | Status | Notes |
@@ -169,7 +170,7 @@ db/schema.sql (not applied) · docs/ · STATUS.md · README.md · AI-Embroidery-
 | Item | Status | Notes |
 |---|---|---|
 | Monorepo · shared data model | 🟢 | camelCase-on-wire verified |
-| Tests | 🟡 | **pytest 42 + vitest 25**; CI config written (**unverified — no remote**) |
+| Tests | 🟡 | **pytest 47 + vitest 25**; CI config written (**unverified — no remote**) |
 | DB applied · Supabase · deploy · AI/ML · `.STIQ` | 🔴 | Phases 6/8/X |
 
 ---
@@ -304,7 +305,7 @@ python tests/make_fixtures.py
 ### Baseline (last confirmed 2026-07-01, Update #7)
 | Check | Command | Expected | Result |
 |---|---|---|---|
-| Backend tests | `python -m pytest tests -q` | **42 passed** | ✅ |
+| Backend tests | `python -m pytest tests -q` | **47 passed** | ✅ |
 | Frontend tests | `npm test -w apps/frontend` | **vitest 25 passed** | ✅ |
 | Rebuild e2e | digitize → halve density → `:5173/api/designs/rebuild` | fewer stitches, bounds stable; imported → 422 | ✅ |
 | Underlay e2e | digitize (EDGE_WALK default) → rebuild with NONE | 1011 → 790 stitches | ✅ |
@@ -335,7 +336,7 @@ python tests/make_fixtures.py
   by manual reproduction instead; other lenses (geometry, contract) never completed — a fuller re-review is worthwhile.
 - **Satin threshold is physical mm** (0.8–4mm × aspect ≥2.5) — the same image can digitize as satin at a
   100x100 hoop and tatami at 130x180. By design; verified both ways via proxy.
-- **`/threads/match`, design persistence** unimplemented. **scipy/supabase untested on py3.14.**
+- **Design persistence** unimplemented (needs Supabase). **supabase untested on py3.14.**
 - **CI config unverified** — no GitHub remote; the workflow has never run.
 - **DB schema unvalidated** against live Postgres.
 
@@ -405,7 +406,7 @@ types (double-zigzag/parallel/contour) are Phase 8.
 Implemented in `services/embroidery_io.py`, `worksheet_pdf.py`, `threads.py`, `digitizer.py`; routers
 `files`/`digitize`/`export`/`worksheet`/`threads`; frontend `StitchCanvas`, `lib/stitches.ts`, `Toolbar`,
 `StitchPlayer`, panels, `store/designStore`, `api/client`.
-Verify: `pytest -q` (42) + `npm test` (25). Manual: Open `tests/fixtures/sample.dst` **and** Digitize a PNG
+Verify: `pytest -q` (47) + `npm test` (25). Manual: Open `tests/fixtures/sample.dst` **and** Digitize a PNG
 (params dialog appears); click a stop or object, recolor, edit density/underlay → Apply, reorder ▲▼, undo, Export, Worksheet.
 
 ---
