@@ -7,14 +7,14 @@
 | Field | Value |
 |---|---|
 | **Project** | STITCHIQ — AI-powered embroidery design & digitizing platform |
-| **Document version** | **v12** |
-| **Times updated** | **12** |
+| **Document version** | **v13** |
+| **Times updated** | **13** |
 | **Last updated** | 2026-07-02 |
-| **Current phase** | Phases 0–3 done; **Phase 4 lettering ✅** + **Phase 5 convert ✅**. Next: rest of Phase 5 / Phase 6 |
+| **Current phase** | **Phases 0–5 essentially done** (open/digitize/text/edit/export/**package**). Next: Phase 6 Supabase |
 | **Git branch** | `main` |
-| **Latest code commit** | `d9c8fea` (lettering + holes + digitizer fixes) |
+| **Latest code commit** | `afbe3b2` (production export package ZIP) |
 | **Working tree** | clean |
-| **Tracked files** | 75 |
+| **Tracked files** | 77 |
 | **Location** | `/Users/INDIA/Downloads/EmDesign_Automater` |
 
 ---
@@ -26,11 +26,12 @@
    **real vector objects** (with holes/counters + underlay). Then: render → click-to-select →
    recolor/rename/reorder → undo/redo → export any format → worksheet PDF. Digitized/lettered objects are
    **editable**: select one, change density/angle/underlay, Apply → server rebuilds the stitches.
-   Export to .DST/.PES/.JEF/.EXP/.VP3; convert via API. Verified: **pytest 38/38, vitest 21/21**, e2e via Vite proxy.
+   Export to .DST/.PES/.JEF/.EXP/.VP3, convert via API, or download a **full production package ZIP**
+   (machine file + master + worksheet + color card + preview + summary). Verified: **pytest 42/42, vitest 21/21**, e2e via Vite proxy.
 2. **Chosen scope (by the user):** build **vertically**, one phase at a time ([§14](#-14-full-project-roadmap-phases-010)).
-3. **Next task (pick one):** (a) **rest of Phase 5** — export production-package ZIP (machine file +
-   master JSON + worksheet PDF + color card + preview) + machine-brand format map (§4.8); (b) **Phase 6**
-   Supabase persistence/auth; or (c) **push to GitHub** to exercise the CI config (written but unverified).
+3. **Next task (pick one):** (a) **Phase 6** — Supabase persistence/auth (apply `db/schema.sql`, wire
+   `designs` CRUD + Storage; **needs user's Supabase keys**); (b) **Phase 7** TrueView 3D; (c) **lettering
+   v1.1** (satin strokes); or (d) **push to GitHub** to exercise the CI config (written but unverified).
 4. **⚠️ MANDATORY — every change is logged in THIS FILE.** Before finishing any task: bump **Document
    version** + **Times updated**; update **Last updated** + **Latest code commit**; add a
    [§2](#-2-update-history--changelog) row (**newest on top**); flip [§5](#-5-feature-status-matrix) rows;
@@ -52,10 +53,10 @@
 ## ✅ 1. TL;DR
 
 - **Stack:** TypeScript (React + Vite) frontend · Python (FastAPI) backend · PostgreSQL/Supabase (schema written, not applied).
-- **Built:** **Phases 0–4 + convert**: file open/parse, **image auto-digitize** (TATAMI + SATIN + edge/center-walk underlay + **holes/counters**, params dialog), **text lettering**, **object-level editing** (density/angle/underlay → server rebuild), Konva render, full color-stop editing, **export any format + convert**, worksheet PDF.
-- **Verified:** **pytest 38/38** · **vitest 21/21** · typecheck/build · e2e lettering→digitize→edit→rebuild→export/convert through the Vite proxy.
+- **Built:** **Phases 0–5 essentially done**: open/parse, **image auto-digitize** (TATAMI + SATIN + underlay + **holes/counters**), **text lettering**, **object-level editing** (→ server rebuild), Konva render, full color-stop editing, **export any format + convert + full production package ZIP**, worksheet PDF.
+- **Verified:** **pytest 42/42** · **vitest 21/21** · typecheck/build · e2e lettering→digitize→edit→rebuild→export/convert/**package** through the Vite proxy.
 - **Still stubbed:** thread nearest-match, design persistence/auth, TrueView 3D, AI/ML, satin-stroke lettering.
-- **Next:** rest of Phase 5 (export package ZIP) or Phase 6 (Supabase persistence). *(In-browser event wiring not eyeballed — §12.)*
+- **Next:** Phase 6 (Supabase persistence — needs user keys) or Phase 7 (TrueView 3D). *(In-browser event wiring not eyeballed — §12.)*
 
 ---
 
@@ -65,6 +66,7 @@
 
 | # | Date | Author | Type | Summary |
 |---|------|--------|------|---------|
+| 13 | 2026-07-02 | Claude (Fable 5) | ✨ Feature | **Phase 5: production export package (ZIP) + brand map** — commit `afbe3b2`. `POST /api/export/package` → ZIP (machine file + master .STIQ JSON + worksheet PDF + color-card PDF + preview PNG + summary); `GET /api/formats` (brand→format table); Toolbar **Package** button. **pytest 42/42**; e2e 6-artifact ZIP via proxy. |
 | 12 | 2026-07-02 | Claude (Fable 5) | ✨ Feature | **Phase 4 lettering + holes + 4 digitizer bug fixes** — commit `d9c8fea`. Text→stitches (PIL render → digitizer) `POST /api/lettering` + Toolbar Text button; `DesignObject.holes` (donut/counter carve via RETR_CCOMP + rebuild). Adversarial review of the diff surfaced 4 bugs (its verifier agents died on a session limit → I confirmed each by reproduction): **phantom color stops** (spurious thread change on every design), **satin rotation crop** (narrow letters half-height), **400→1200px res cap** (wide text collapsed), **empty-result 422**. **pytest 38/38** (+5 regression); e2e via proxy. |
 | 11 | 2026-07-01 | Claude (Fable 5) | ✨ Feature | **Phase 5 start: convert endpoint + export picker + CI config** — commit `b3aaf13`. `POST /api/convert` (base64 any→any, color-loss warnings, 400/415 errors); Toolbar export dropdown (.DST/.PES/.JEF/.EXP/.VP3); `.github/workflows/ci.yml` (**unverified — no remote**). **pytest 28/28**; e2e dst→jef via proxy. |
 | 10 | 2026-07-01 | Claude (Fable 5) | ✨ Feature | **Phase 3 complete: underlay generation (§4.6)** — commit `b212b44`. Edge-walk under fills (0.6mm inset, 2mm running stitch), center-walk under satin columns; digitize assigns `underlay_type`, rebuild honors it (toggleable per object); Properties underlay selector. **pytest 24/24**; e2e via proxy: underlay 1011 → NONE 790 stitches. |
@@ -140,6 +142,7 @@ db/schema.sql (not applied) · docs/ · STATUS.md · README.md · AI-Embroidery-
 | **`/designs/rebuild`** | 🟢 | **re-fill objects from contours with edited params (422 if not regenerable)** |
 | **`/convert`** | 🟢 | **base64 any→any + color-loss warnings** |
 | **`/lettering`** | 🟢 | **text → Design (PIL render → digitizer); 422 on unsupported glyphs** |
+| **`/export/package`** · **`/formats`** | 🟢 | **production ZIP (6 artifacts)** · brand→format map |
 | `/threads` (GET) | 🟢 | catalog (brand filter) |
 | `/threads/match` · `/designs` POST | 🔴 | 501 |
 | `/designs` (GET) | 🟡 | in-memory |
@@ -163,7 +166,7 @@ db/schema.sql (not applied) · docs/ · STATUS.md · README.md · AI-Embroidery-
 | Item | Status | Notes |
 |---|---|---|
 | Monorepo · shared data model | 🟢 | camelCase-on-wire verified |
-| Tests | 🟡 | **pytest 38 + vitest 21**; CI config written (**unverified — no remote**) |
+| Tests | 🟡 | **pytest 42 + vitest 21**; CI config written (**unverified — no remote**) |
 | DB applied · Supabase · deploy · AI/ML · `.STIQ` | 🔴 | Phases 6/8/X |
 
 ---
@@ -218,6 +221,11 @@ StitchPlayer; pytest + vitest suites; everything e2e-verified via the Vite proxy
     (every design carried a spurious thread change); satin rotation cropping (narrow letters ~half height);
     resolution cap 400→1200px (wide text collapsed); empty-result → 422. **pytest 38/38** (+5 regression).
 
+**Production package — Phase 5 done (Update #13, commit `afbe3b2`):**
+16. **Export package ZIP** (§4.8) — `POST /api/export/package` bundles machine file + master .STIQ JSON +
+    worksheet PDF + thread color-card PDF + preview PNG (PIL) + summary txt. `GET /api/formats` returns the
+    machine-brand format map. Toolbar **Package** button. **pytest 42/42**; e2e 6-artifact ZIP via proxy.
+
 ---
 
 ## 🔴 7. What's REMAINING
@@ -261,9 +269,8 @@ StitchPlayer; pytest + vitest suites; everything e2e-verified via the Vite proxy
 
 ## 🎯 10. Next Steps (do these IN ORDER)
 
-1. **Rest of Phase 5** — full export production package (ZIP: machine file + master JSON + worksheet PDF
-   + color card + preview PNG, §4.8); machine-brand format decision tree.
-2. **Phase 6** — Supabase persistence/auth (apply `db/schema.sql`, wire `designs` CRUD + Storage; needs user keys).
+1. **Phase 6** — Supabase persistence/auth: apply `db/schema.sql`, wire `designs` CRUD + Storage + auth. **Needs the user's Supabase project URL + keys** (blocked until provided).
+2. **Phase 7** — TrueView 3D preview (Three.js `TrueView3D` real impl).
 3. **Push to GitHub** to exercise the CI config (currently unverified).
 4. **Lettering v1.1** — per-stroke satin (skeletonize glyphs) instead of tatami fill; fix tiny-lowercase dot drop.
 
@@ -288,12 +295,13 @@ python tests/make_fixtures.py
 ### Baseline (last confirmed 2026-07-01, Update #7)
 | Check | Command | Expected | Result |
 |---|---|---|---|
-| Backend tests | `python -m pytest tests -q` | **38 passed** | ✅ |
+| Backend tests | `python -m pytest tests -q` | **42 passed** | ✅ |
 | Frontend tests | `npm test -w apps/frontend` | **vitest 21 passed** | ✅ |
 | Rebuild e2e | digitize → halve density → `:5173/api/designs/rebuild` | fewer stitches, bounds stable; imported → 422 | ✅ |
 | Underlay e2e | digitize (EDGE_WALK default) → rebuild with NONE | 1011 → 790 stitches | ✅ |
 | Convert e2e | dst→jef via `:5173/api/convert` | valid JEF, threads kept, warning | ✅ |
 | Lettering e2e | text → `:5173/api/lettering` → export | 1 stop, objects with holes, valid file | ✅ |
+| Package e2e | design → `:5173/api/export/package` | 6-artifact ZIP (machine/master/2×PDF/PNG/txt) | ✅ |
 | Digitize e2e | PNG → `:5173/api/digitize` → `/api/export?format=dst` → re-read | 200 · objects>0 · valid DST | ✅ |
 | Satin e2e | thin-bar PNG (100x100 hoop) → `:5173/api/digitize` | SATIN object with angle | ✅ |
 | Parse / Export / Worksheet PDF / Threads | curl fixture → endpoints | 200 · `%PDF-` · 5 threads | ✅ |
@@ -340,7 +348,7 @@ Entities: `Stitch` · `StitchType`/`UnderlayType`/`ConnectMethod` · `Thread` ·
 | 2 | Interactive editing | 🟢 Done | L | select/recolor/rename/reorder/undo |
 | 3 | Auto-digitizing v1 (OpenCV) | 🟢 **Done** | XL | TATAMI+SATIN + underlay + dialog + object-edit/rebuild |
 | 4 | Lettering & monogramming | 🟢 **Done (v1)** | L | text → tatami-filled stitches ✅ · satin strokes = v1.1 |
-| **5** | **Production output & formats** | 🟡 **Started** | M | **convert ✅** · export package ZIP, brand map TBD |
+| 5 | Production output & formats | 🟢 **Done** | M | convert + multi-format export + production package ZIP + brand map |
 | 6 | Persistence & accounts (Supabase) | ⬜ | M | save/load, auth, versions, teams |
 | 7 | TrueView 3D simulation | ⬜ | L | realistic preview |
 | 8 | AI engine (+ thread match) | ⬜ | XL | neural digitizing, path opt, quality scoring |
@@ -356,7 +364,7 @@ Quality notes: classical CV baseline (uniform background assumed); neural digiti
 types (double-zigzag/parallel/contour) are Phase 8.
 
 ### Phases 4–10 (summaries)
-- **4 Lettering:** 🟢 v1 done — PIL render → digitizer (tatami + underlay + holes); satin strokes = v1.1. **5 Production:** convert ✅; left: export package ZIP + brand map (§4.8).
+- **4 Lettering:** 🟢 v1 done — PIL render → digitizer (tatami + underlay + holes); satin strokes = v1.1. **5 Production:** 🟢 done — convert + multi-format export + production package ZIP + brand map (§4.8).
   **6 Supabase:** apply `db/schema.sql`, auth, CRUD + Storage (**needs user keys**). **7 TrueView 3D:** thread geometry (§4.7).
   **8 AI:** SAM/CNN/RL + quality scoring + Lab k-d thread match (§4.2/§6). **9 Generative:** diffusion + STITCH-GPT (§4.1/§4.11).
   **10 Platform:** collab/cloud API/mobile (§4.12).
@@ -384,7 +392,7 @@ types (double-zigzag/parallel/contour) are Phase 8.
 Implemented in `services/embroidery_io.py`, `worksheet_pdf.py`, `threads.py`, `digitizer.py`; routers
 `files`/`digitize`/`export`/`worksheet`/`threads`; frontend `StitchCanvas`, `lib/stitches.ts`, `Toolbar`,
 `StitchPlayer`, panels, `store/designStore`, `api/client`.
-Verify: `pytest -q` (38) + `npm test` (21). Manual: Open `tests/fixtures/sample.dst` **and** Digitize a PNG
+Verify: `pytest -q` (42) + `npm test` (21). Manual: Open `tests/fixtures/sample.dst` **and** Digitize a PNG
 (params dialog appears); click a stop or object, recolor, edit density/underlay → Apply, reorder ▲▼, undo, Export, Worksheet.
 
 ---
