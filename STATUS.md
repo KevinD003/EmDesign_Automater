@@ -7,31 +7,30 @@
 | Field | Value |
 |---|---|
 | **Project** | STITCHIQ — AI-powered embroidery design & digitizing platform |
-| **Document version** | **v11** |
-| **Times updated** | **11** |
-| **Last updated** | 2026-07-01 |
-| **Current phase** | Phases 0–3 complete; **Phase 5 started** (convert ✅). Next: Phase 4 lettering / rest of Phase 5 |
+| **Document version** | **v12** |
+| **Times updated** | **12** |
+| **Last updated** | 2026-07-02 |
+| **Current phase** | Phases 0–3 done; **Phase 4 lettering ✅** + **Phase 5 convert ✅**. Next: rest of Phase 5 / Phase 6 |
 | **Git branch** | `main` |
-| **Latest code commit** | `b3aaf13` (convert + format picker + CI config) |
+| **Latest code commit** | `d9c8fea` (lettering + holes + digitizer fixes) |
 | **Working tree** | clean |
-| **Tracked files** | 71 |
+| **Tracked files** | 75 |
 | **Location** | `/Users/INDIA/Downloads/EmDesign_Automater` |
 
 ---
 
 ## 📌 For the next model / session — READ THIS FIRST
 
-1. **Current reality:** The app is a working (minimal) embroidery studio. Two input paths:
-   **Open** a real `.DST`/`.PES` **or Digitize a PNG/JPG image** (classical OpenCV → stitches +
-   **real vector objects**). Then: render → click-to-select → recolor/rename/reorder → undo/redo →
-   export `.DST` → worksheet PDF. Digitized objects are **editable**: select one in the left panel,
-   change density/angle/**underlay**, Apply → server rebuilds the stitches. Fills get edge-walk and
-   satins center-walk underlay by default (§4.6). Export to .DST/.PES/.JEF/.EXP/.VP3; convert via API.
-   Verified: **pytest 28/28, vitest 21/21**, e2e via Vite proxy.
+1. **Current reality:** The app is a working (minimal) embroidery studio. Three input paths:
+   **Open** a real `.DST`/`.PES`, **Digitize a PNG/JPG image**, or **Text** (lettering) — all → stitches +
+   **real vector objects** (with holes/counters + underlay). Then: render → click-to-select →
+   recolor/rename/reorder → undo/redo → export any format → worksheet PDF. Digitized/lettered objects are
+   **editable**: select one, change density/angle/underlay, Apply → server rebuilds the stitches.
+   Export to .DST/.PES/.JEF/.EXP/.VP3; convert via API. Verified: **pytest 38/38, vitest 21/21**, e2e via Vite proxy.
 2. **Chosen scope (by the user):** build **vertically**, one phase at a time ([§14](#-14-full-project-roadmap-phases-010)).
-3. **Next task (pick one):** (a) **Phase 4 lettering** (text → satin/fill glyphs, §4.10); (b) **rest of
-   Phase 5** — export production-package ZIP + machine-brand format map (§4.8); or (c) **push to
-   GitHub** to exercise the CI config (written but unverified).
+3. **Next task (pick one):** (a) **rest of Phase 5** — export production-package ZIP (machine file +
+   master JSON + worksheet PDF + color card + preview) + machine-brand format map (§4.8); (b) **Phase 6**
+   Supabase persistence/auth; or (c) **push to GitHub** to exercise the CI config (written but unverified).
 4. **⚠️ MANDATORY — every change is logged in THIS FILE.** Before finishing any task: bump **Document
    version** + **Times updated**; update **Last updated** + **Latest code commit**; add a
    [§2](#-2-update-history--changelog) row (**newest on top**); flip [§5](#-5-feature-status-matrix) rows;
@@ -53,10 +52,10 @@
 ## ✅ 1. TL;DR
 
 - **Stack:** TypeScript (React + Vite) frontend · Python (FastAPI) backend · PostgreSQL/Supabase (schema written, not applied).
-- **Built:** **Phases 0–3 complete**: file open/parse, **image auto-digitize (TATAMI fills + SATIN columns + edge/center-walk underlay, params dialog)**, **object-level editing (density/angle/underlay → server-side rebuild from stored contours)**, Konva render, full color-stop editing, export machine files, worksheet PDF.
-- **Verified:** **pytest 28/28** · **vitest 21/21** · typecheck/build · e2e digitize→edit→rebuild→export/convert through the Vite proxy.
-- **Still stubbed:** thread nearest-match, design persistence/auth, lettering, TrueView 3D, AI/ML.
-- **Next:** Phase 3 polish (params dialog, object props editing, satin) / Phase 4 lettering / CI. *(In-browser event wiring not eyeballed — §12.)*
+- **Built:** **Phases 0–4 + convert**: file open/parse, **image auto-digitize** (TATAMI + SATIN + edge/center-walk underlay + **holes/counters**, params dialog), **text lettering**, **object-level editing** (density/angle/underlay → server rebuild), Konva render, full color-stop editing, **export any format + convert**, worksheet PDF.
+- **Verified:** **pytest 38/38** · **vitest 21/21** · typecheck/build · e2e lettering→digitize→edit→rebuild→export/convert through the Vite proxy.
+- **Still stubbed:** thread nearest-match, design persistence/auth, TrueView 3D, AI/ML, satin-stroke lettering.
+- **Next:** rest of Phase 5 (export package ZIP) or Phase 6 (Supabase persistence). *(In-browser event wiring not eyeballed — §12.)*
 
 ---
 
@@ -66,6 +65,7 @@
 
 | # | Date | Author | Type | Summary |
 |---|------|--------|------|---------|
+| 12 | 2026-07-02 | Claude (Fable 5) | ✨ Feature | **Phase 4 lettering + holes + 4 digitizer bug fixes** — commit `d9c8fea`. Text→stitches (PIL render → digitizer) `POST /api/lettering` + Toolbar Text button; `DesignObject.holes` (donut/counter carve via RETR_CCOMP + rebuild). Adversarial review of the diff surfaced 4 bugs (its verifier agents died on a session limit → I confirmed each by reproduction): **phantom color stops** (spurious thread change on every design), **satin rotation crop** (narrow letters half-height), **400→1200px res cap** (wide text collapsed), **empty-result 422**. **pytest 38/38** (+5 regression); e2e via proxy. |
 | 11 | 2026-07-01 | Claude (Fable 5) | ✨ Feature | **Phase 5 start: convert endpoint + export picker + CI config** — commit `b3aaf13`. `POST /api/convert` (base64 any→any, color-loss warnings, 400/415 errors); Toolbar export dropdown (.DST/.PES/.JEF/.EXP/.VP3); `.github/workflows/ci.yml` (**unverified — no remote**). **pytest 28/28**; e2e dst→jef via proxy. |
 | 10 | 2026-07-01 | Claude (Fable 5) | ✨ Feature | **Phase 3 complete: underlay generation (§4.6)** — commit `b212b44`. Edge-walk under fills (0.6mm inset, 2mm running stitch), center-walk under satin columns; digitize assigns `underlay_type`, rebuild honors it (toggleable per object); Properties underlay selector. **pytest 24/24**; e2e via proxy: underlay 1011 → NONE 790 stitches. |
 | 9 | 2026-07-01 | Claude (Opus 4.8) | ✨ Feature | **Phase 3: object-level editing + server-side rebuild** — commit `f5ddf89`. `DesignObject.contour` (mm outline, TS⇄Pydantic); `rebuild_design` re-fills every object from its contour with current density/angle (angled tatami via rotate-scan); `POST /api/designs/rebuild`; objects listed under stops; Properties object mode (density/angle → Apply). **pytest 21/21, vitest 21/21**; e2e halve-density 885→309 stitches via proxy; imported designs → 422. |
@@ -139,6 +139,7 @@ db/schema.sql (not applied) · docs/ · STATUS.md · README.md · AI-Embroidery-
 | **`/digitize`** | 🟢 | **image → Design with objects (TATAMI fills + SATIN columns + contours)** |
 | **`/designs/rebuild`** | 🟢 | **re-fill objects from contours with edited params (422 if not regenerable)** |
 | **`/convert`** | 🟢 | **base64 any→any + color-loss warnings** |
+| **`/lettering`** | 🟢 | **text → Design (PIL render → digitizer); 422 on unsupported glyphs** |
 | `/threads` (GET) | 🟢 | catalog (brand filter) |
 | `/threads/match` · `/designs` POST | 🔴 | 501 |
 | `/designs` (GET) | 🟡 | in-memory |
@@ -146,7 +147,7 @@ db/schema.sql (not applied) · docs/ · STATUS.md · README.md · AI-Embroidery-
 ### Backend services
 | Function | Status |
 |---|---|
-| `read_embroidery`/`write_embroidery` · `build_worksheet`/`render_pdf` · `list_threads` · **`digitize_image`** · **`rebuild_design`** | 🟢 |
+| `read_embroidery`/`write_embroidery` · `build_worksheet`/`render_pdf` · `list_threads` · **`digitize_image`** (holes + satin/underlay, no-crop rotation) · **`rebuild_design`** · **`generate_lettering`** | 🟢 |
 | `nearest_thread` | 🔴 (Phase 8, scipy) |
 
 ### Frontend components
@@ -155,14 +156,14 @@ db/schema.sql (not applied) · docs/ · STATUS.md · README.md · AI-Embroidery-
 | App shell · api client · types · lib/* | 🟢 | pure libs unit-tested |
 | StitchCanvas · ColorObjectList · ThreadPalette · StitchPlayer · PropertiesPanel | 🟢 | select stops **+ objects** · recolor · rename · reorder · **edit density/angle/underlay → rebuild** · animate |
 | designStore | 🟢 | + reorderStop · **selectObject/updateObject/replaceDesign** · undo/redo |
-| Toolbar + **DigitizeDialog** | 🟡 | Open/Digitize(+dialog)/**Export any format**/Worksheet/Undo/Redo live; manual digitizing tools TBD |
+| Toolbar + Digitize/**Lettering** dialogs | 🟡 | Open/Digitize/**Text**/Export-any-format/Worksheet/Undo/Redo live; manual digitizing tools TBD |
 | TrueView3D | 🔴 | Phase 7 |
 
 ### Infrastructure
 | Item | Status | Notes |
 |---|---|---|
 | Monorepo · shared data model | 🟢 | camelCase-on-wire verified |
-| Tests | 🟡 | **pytest 28 + vitest 21**; CI config written (**unverified — no remote**) |
+| Tests | 🟡 | **pytest 38 + vitest 21**; CI config written (**unverified — no remote**) |
 | DB applied · Supabase · deploy · AI/ML · `.STIQ` | 🔴 | Phases 6/8/X |
 
 ---
@@ -207,6 +208,16 @@ StitchPlayer; pytest + vitest suites; everything e2e-verified via the Vite proxy
 12. **CI config** — `.github/workflows/ci.yml` (pytest py3.12 + typecheck/vitest/build node22).
     **UNVERIFIED**: repo has no remote; the first GitHub push exercises it.
 
+**Lettering + holes + digitizer fixes (Update #12, commit `d9c8fea`):**
+13. **Lettering** (§4.10) — `POST /api/lettering`: PIL renders text → the digitizer turns it into
+    contoured, editable, rebuildable objects with underlay. Toolbar **Text** + LetteringDialog. v1 = tatami fills.
+14. **Holes/counters** — `DesignObject.holes`; RETR_CCOMP hierarchy carves an 'o'/'O' counter out of the
+    fill (was solid), on both digitize and rebuild.
+15. **4 digitizer bugs fixed** (found by adversarial review of the diff; verified by reproduction since the
+    review's verifier agents hit a session limit): phantom empty color stops + dangling COLOR_CHANGE
+    (every design carried a spurious thread change); satin rotation cropping (narrow letters ~half height);
+    resolution cap 400→1200px (wide text collapsed); empty-result → 422. **pytest 38/38** (+5 regression).
+
 ---
 
 ## 🔴 7. What's REMAINING
@@ -214,7 +225,7 @@ StitchPlayer; pytest + vitest suites; everything e2e-verified via the Vite proxy
 ### A. Phase 3 — ✅ nothing remaining (complete as of Update #10)
 
 ### B. Phases 4–10 & cross-cutting
-- Lettering (4) · export package ZIP + brand map (rest of 5) · Supabase persistence/auth (6) · TrueView 3D (7) ·
+- export package ZIP + brand map (rest of 5) · Supabase persistence/auth (6) · TrueView 3D (7) ·
   AI engine + `nearest_thread` (8) · generative + assistant (9) · collab/API/mobile (10).
 - Cross-cutting: **CI** (pytest + vitest + tsc on push), Dockerfiles/deploy, logging, authz/upload-limits.
 
@@ -250,10 +261,11 @@ StitchPlayer; pytest + vitest suites; everything e2e-verified via the Vite proxy
 
 ## 🎯 10. Next Steps (do these IN ORDER)
 
-1. **Phase 4 lettering** — text → satin/fill glyphs with underlay (§4.10; needs fonttools/freetype).
-2. **Rest of Phase 5** — full export production package (ZIP: machine file + master JSON + worksheet PDF
+1. **Rest of Phase 5** — full export production package (ZIP: machine file + master JSON + worksheet PDF
    + color card + preview PNG, §4.8); machine-brand format decision tree.
+2. **Phase 6** — Supabase persistence/auth (apply `db/schema.sql`, wire `designs` CRUD + Storage; needs user keys).
 3. **Push to GitHub** to exercise the CI config (currently unverified).
+4. **Lettering v1.1** — per-stroke satin (skeletonize glyphs) instead of tatami fill; fix tiny-lowercase dot drop.
 
 > After each step: re-run §11 checks and **update this file** (§2 + §5 + metadata).
 
@@ -276,11 +288,12 @@ python tests/make_fixtures.py
 ### Baseline (last confirmed 2026-07-01, Update #7)
 | Check | Command | Expected | Result |
 |---|---|---|---|
-| Backend tests | `python -m pytest tests -q` | **28 passed** | ✅ |
+| Backend tests | `python -m pytest tests -q` | **38 passed** | ✅ |
 | Frontend tests | `npm test -w apps/frontend` | **vitest 21 passed** | ✅ |
 | Rebuild e2e | digitize → halve density → `:5173/api/designs/rebuild` | fewer stitches, bounds stable; imported → 422 | ✅ |
 | Underlay e2e | digitize (EDGE_WALK default) → rebuild with NONE | 1011 → 790 stitches | ✅ |
 | Convert e2e | dst→jef via `:5173/api/convert` | valid JEF, threads kept, warning | ✅ |
+| Lettering e2e | text → `:5173/api/lettering` → export | 1 stop, objects with holes, valid file | ✅ |
 | Digitize e2e | PNG → `:5173/api/digitize` → `/api/export?format=dst` → re-read | 200 · objects>0 · valid DST | ✅ |
 | Satin e2e | thin-bar PNG (100x100 hoop) → `:5173/api/digitize` | SATIN object with angle | ✅ |
 | Parse / Export / Worksheet PDF / Threads | curl fixture → endpoints | 200 · `%PDF-` · 5 threads | ✅ |
@@ -291,9 +304,14 @@ python tests/make_fixtures.py
 ## 🚧 12. Known Risks / Unverified Claims
 
 - **In-browser event wiring NOT eyeballed:** canvas paint, click-select, recolor, reorder ▲▼, undo, and the
-  **Digitize button flow**. Open `:5173`, load a fixture AND digitize a simple PNG logo, confirm both paths.
+  **Digitize / Text button flows**. Open `:5173`, load a fixture, digitize a PNG logo, and type some text — confirm all three.
+- **Lettering v1 is tatami-filled** (not per-stroke satin — the classic look): fine for chunky text, heavier/blockier
+  than pro satin lettering. Tiny lowercase (~8mm) can drop the dot on 'i'/'j'. Satin strokes = v1.1.
 - **Digitizer quality is approximate** (classical CV): uniform-background assumption, no pull-comp, only
   edge/center-walk underlay — fine for bold logos, poor for photos/gradients. Phase 8 addresses this.
+- **Adversarial review caveat (Update #12):** the workflow that reviewed this diff had its 14 verifier
+  agents die on a session limit, so its `confirmed:[]` was meaningless. The 4 fixed bugs were confirmed
+  by manual reproduction instead; other lenses (geometry, contract) never completed — a fuller re-review is worthwhile.
 - **Satin threshold is physical mm** (0.8–4mm × aspect ≥2.5) — the same image can digitize as satin at a
   100x100 hoop and tatami at 130x180. By design; verified both ways via proxy.
 - **`/threads/match`, design persistence** unimplemented. **scipy/supabase untested on py3.14.**
@@ -321,7 +339,7 @@ Entities: `Stitch` · `StitchType`/`UnderlayType`/`ConnectMethod` · `Thread` ·
 | 1 | File I/O + Canvas | 🟢 Done | L | open/view/export + worksheet PDF |
 | 2 | Interactive editing | 🟢 Done | L | select/recolor/rename/reorder/undo |
 | 3 | Auto-digitizing v1 (OpenCV) | 🟢 **Done** | XL | TATAMI+SATIN + underlay + dialog + object-edit/rebuild |
-| 4 | Lettering & monogramming | ⬜ | L | text → stitches |
+| 4 | Lettering & monogramming | 🟢 **Done (v1)** | L | text → tatami-filled stitches ✅ · satin strokes = v1.1 |
 | **5** | **Production output & formats** | 🟡 **Started** | M | **convert ✅** · export package ZIP, brand map TBD |
 | 6 | Persistence & accounts (Supabase) | ⬜ | M | save/load, auth, versions, teams |
 | 7 | TrueView 3D simulation | ⬜ | L | realistic preview |
@@ -338,7 +356,7 @@ Quality notes: classical CV baseline (uniform background assumed); neural digiti
 types (double-zigzag/parallel/contour) are Phase 8.
 
 ### Phases 4–10 (summaries)
-- **4 Lettering:** glyph → satin/fill + underlay (§4.10). **5 Production:** convert ✅; left: export package ZIP + brand map (§4.8).
+- **4 Lettering:** 🟢 v1 done — PIL render → digitizer (tatami + underlay + holes); satin strokes = v1.1. **5 Production:** convert ✅; left: export package ZIP + brand map (§4.8).
   **6 Supabase:** apply `db/schema.sql`, auth, CRUD + Storage (**needs user keys**). **7 TrueView 3D:** thread geometry (§4.7).
   **8 AI:** SAM/CNN/RL + quality scoring + Lab k-d thread match (§4.2/§6). **9 Generative:** diffusion + STITCH-GPT (§4.1/§4.11).
   **10 Platform:** collab/cloud API/mobile (§4.12).
@@ -366,7 +384,7 @@ types (double-zigzag/parallel/contour) are Phase 8.
 Implemented in `services/embroidery_io.py`, `worksheet_pdf.py`, `threads.py`, `digitizer.py`; routers
 `files`/`digitize`/`export`/`worksheet`/`threads`; frontend `StitchCanvas`, `lib/stitches.ts`, `Toolbar`,
 `StitchPlayer`, panels, `store/designStore`, `api/client`.
-Verify: `pytest -q` (28) + `npm test` (21). Manual: Open `tests/fixtures/sample.dst` **and** Digitize a PNG
+Verify: `pytest -q` (38) + `npm test` (21). Manual: Open `tests/fixtures/sample.dst` **and** Digitize a PNG
 (params dialog appears); click a stop or object, recolor, edit density/underlay → Apply, reorder ▲▼, undo, Export, Worksheet.
 
 ---
