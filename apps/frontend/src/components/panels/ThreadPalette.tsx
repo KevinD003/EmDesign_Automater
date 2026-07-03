@@ -1,12 +1,18 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../api/client';
 import { useDesignStore } from '../../store/designStore';
 import type { Thread } from '../../types/design';
 
-/** Thread palette (spec §4.4). Loads the catalog; click a swatch to apply it to the selected stop. */
+/** Thread palette (spec §4.4). Loads the catalog; click a swatch to apply it to the selected
+ * stop, or snap the stop's current color to the nearest real (orderable) catalog thread. */
 export function ThreadPalette() {
+  const design = useDesignStore((s) => s.design);
   const selectedStop = useDesignStore((s) => s.selectedStop);
   const updateColorStop = useDesignStore((s) => s.updateColorStop);
+  const stop = design?.colorStops.find((c) => c.stopNumber === selectedStop) ?? null;
+  const [busy, setBusy] = useState(false);
+
   const { data: threads = [], isLoading, isError } = useQuery({
     queryKey: ['threads'],
     queryFn: () => api.listThreads(),
@@ -22,6 +28,18 @@ export function ThreadPalette() {
     });
   };
 
+  const matchNearest = async () => {
+    if (!stop) return;
+    setBusy(true);
+    try {
+      apply(await api.matchThread(stop.hex));
+    } catch {
+      /* leave the color as-is on failure */
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <section className="panel">
       <h2 className="panel-title">Thread Palette</h2>
@@ -32,6 +50,11 @@ export function ThreadPalette() {
           <p className="muted small">
             {selectedStop == null ? 'Select a color stop, then click a thread.' : `Applying to stop ${selectedStop}.`}
           </p>
+          {stop && (
+            <button type="button" className="nearest-btn" onClick={matchNearest} disabled={busy}>
+              {busy ? 'Matching…' : `↳ Nearest catalog thread to ${stop.hex}`}
+            </button>
+          )}
           <div className="thread-grid">
             {threads.map((t) => (
               <button

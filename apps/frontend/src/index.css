@@ -297,6 +297,23 @@ code {
   box-shadow: 0 0 0 1px var(--accent) inset;
 }
 
+.nearest-btn {
+  width: 100%;
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  margin-bottom: 4px;
+}
+
+.nearest-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
 .thread-grid {
   display: grid;
   grid-template-columns: repeat(6, 1fr);

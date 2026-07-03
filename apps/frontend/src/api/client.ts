@@ -91,6 +91,10 @@ export const api = {
   listThreads: (brand?: string) =>
     request<Thread[]>(`/api/threads${brand ? `?brand=${encodeURIComponent(brand)}` : ''}`),
 
+  /** Nearest catalog thread to a target hex color (CIE Lab distance). */
+  matchThread: (hex: string) =>
+    request<Thread>(`/api/threads/match?hex=${encodeURIComponent(hex)}`, { method: 'POST' }),
+
   listDesigns: () => request<Design[]>('/api/designs'),
 
   /** Regenerate all stitches from object contours + current params (digitized designs only). */

@@ -17,6 +17,9 @@ async def list_threads(brand: str | None = Query(None)) -> list[Thread]:
 
 
 @router.post("/threads/match", response_model=Thread)
-async def match_thread(hex_color: str = Query(..., alias="hex")) -> Thread:
-    """Nearest catalogue thread by Lab color (spec §4.4). TODO: k-d tree (Phase 8)."""
-    raise HTTPException(status_code=501, detail="threads/match not implemented (Phase 8)")
+async def match_thread(hex_color: str = Query(..., alias="hex"), brand: str | None = Query(None)) -> Thread:
+    """Nearest catalogue thread to a target color, by CIE Lab distance (spec §4.4)."""
+    try:
+        return threads_svc.nearest_thread(hex_color, threads_svc.list_threads(brand))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
