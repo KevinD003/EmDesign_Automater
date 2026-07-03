@@ -57,6 +57,17 @@ export const api = {
     return res.blob();
   },
 
+  /** Build the full production package (ZIP: machine file + master + worksheet + color card + preview + summary). */
+  exportPackage: async (design: Design, format = 'dst'): Promise<Blob> => {
+    const res = await fetch(`${API_BASE}/api/export/package?format=${encodeURIComponent(format)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(design),
+    });
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText} — package`);
+    return res.blob();
+  },
+
   worksheet: (design: Design) =>
     request<Worksheet>('/api/worksheet', { method: 'POST', body: JSON.stringify(design) }),
 

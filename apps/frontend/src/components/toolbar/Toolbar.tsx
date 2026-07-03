@@ -77,6 +77,9 @@ export function Toolbar() {
   const onExport = () =>
     design &&
     run(async () => download(await api.exportDesign(design, exportFormat), `${stem}.${exportFormat}`));
+  const onPackage = () =>
+    design &&
+    run(async () => download(await api.exportPackage(design, exportFormat), `${stem}-package.zip`));
   const onWorksheet = () => design && run(async () => download(await api.worksheetPdf(design), `${stem}-worksheet.pdf`));
 
   return (
@@ -124,6 +127,9 @@ export function Toolbar() {
         </select>
         <button type="button" onClick={onExport} disabled={!design || busy}>
           Export
+        </button>
+        <button type="button" onClick={onPackage} disabled={!design || busy} title="Full production ZIP">
+          Package
         </button>
         <button type="button" onClick={onWorksheet} disabled={!design || busy}>
           Worksheet

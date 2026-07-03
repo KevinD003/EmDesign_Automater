@@ -9,9 +9,36 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
 from app.models.design import Design, ValidationReport
-from app.services import embroidery_io
+from app.services import embroidery_io, package as package_svc
 
 router = APIRouter(tags=["export"])
+
+
+@router.get("/formats")
+async def formats() -> dict[str, object]:
+    """Supported export formats + machine-brand recommendation table (spec §4.8)."""
+    return {
+        "export": ["dst", "pes", "jef", "exp", "vp3", "pec", "xxx", "vip", "csv"],
+        "brands": package_svc.BRAND_FORMATS,
+    }
+
+
+@router.post("/export/package")
+async def export_package(design: Design, format: str = Query("dst")) -> StreamingResponse:
+    """Bundle the full production package (machine file + master + worksheet + color card
+    + preview + summary) as a ZIP (spec §4.8)."""
+    try:
+        data = package_svc.build_package(design, format)
+    except ValueError as exc:
+        raise HTTPException(status_code=415, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"Package build failed: {exc}") from exc
+    stem = package_svc._stem(design.name)
+    return StreamingResponse(
+        io.BytesIO(data),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{stem}-package.zip"'},
+    )
 
 _MAX_STITCH_MM = 12.7  # machine limit (0.5")
 
