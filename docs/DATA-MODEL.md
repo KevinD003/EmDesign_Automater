@@ -17,7 +17,7 @@ interfaces exactly (e.g. Python `width_mm` ⇄ JSON `widthMm` ⇄ TS `widthMm`).
 | `ConnectMethod` | enum: Trim, TravelRun, Jump |
 | `Thread` | brand, productLine, catalogNumber, colorName, hex, lab{l,a,b}, weight, fiberType (§8 `thread_database`) |
 | `ColorStop` | stopNumber, threadBrand, catalogNumber, threadName, hex, stitchCount (§8 `color_stops`) |
-| `DesignObject` | sequenceOrder, name, stitchType, colorStop, density, stitchAngle, underlayType, pullCompensation, entry/exitPoint, connectMethod, stitchCount, **contour?** (§8 `design_objects`). `contour` = region outline in mm, stored by the digitizer; its presence makes the object regenerable via `POST /api/designs/rebuild`. Imported stitch files have no contours. |
+| `DesignObject` | sequenceOrder, name, stitchType, colorStop, density, stitchAngle, underlayType, pullCompensation, entry/exitPoint, connectMethod, stitchCount, **contour?**, **holes?** (§8 `design_objects`). `contour` = region outline in mm, stored by the digitizer; its presence makes the object regenerable via `POST /api/designs/rebuild`. `holes` = interior rings (letter counters, donuts) carved out of the fill on digitize AND rebuild. Imported stitch files have neither. |
 | `Design` | name, width/heightMm, hoopSize, fabricType, stitchCount, colorStops[], objects[], stitches[], version, status, createdAt (§8 `designs`) |
 | `Worksheet` | derived production view (§4.9) |
 | `ValidationReport` | `{ passed, issues[], warnings[] }` (§4.8) |

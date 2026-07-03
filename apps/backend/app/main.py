@@ -16,6 +16,7 @@ from app.routers import (
     digitize,
     export,
     files,
+    lettering,
     threads,
     worksheet,
 )
@@ -41,5 +42,5 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-for module in (files, convert, digitize, worksheet, export, threads, designs):
+for module in (files, convert, digitize, lettering, worksheet, export, threads, designs):
     app.include_router(module.router, prefix="/api")

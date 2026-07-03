@@ -120,6 +120,8 @@ export interface DesignObject {
    * contour makes the object regenerable via POST /api/designs/rebuild.
    */
   contour?: Point[];
+  /** Interior holes (e.g. letter counters like 'o'); carved out of the fill. */
+  holes?: Point[][];
 }
 
 export type DesignStatus = 'draft' | 'digitized' | 'approved' | 'exported';

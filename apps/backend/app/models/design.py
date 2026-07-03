@@ -131,6 +131,8 @@ class DesignObject(CamelModel):
     # contour makes the object REGENERABLE: /api/designs/rebuild can re-fill it with
     # new density/angle. Imported stitch files have no contours (objects empty anyway).
     contour: list[Point] | None = None
+    # Interior holes (e.g. letter counters like 'o'); carved out of the fill.
+    holes: list[list[Point]] | None = None
 
 
 class Design(CamelModel):

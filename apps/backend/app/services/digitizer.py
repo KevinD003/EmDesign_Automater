@@ -40,6 +40,8 @@ SATIN_SPACING_MM = 0.4    # zigzag pitch along the column
 UNDERLAY_STEP_MM = 2.0    # running-stitch length
 EDGE_INSET_MM = 0.6       # edge-walk offset inside the region edge
 
+_MAX_WORK_PX = 1200.0     # cap working resolution (raise = more detail, slower)
+
 
 def _parse_hoop(hoop_size: str) -> tuple[float, float]:
     try:
@@ -75,8 +77,8 @@ def digitize_image(
     ih, iw = img.shape[:2]
     mm_per_px = min(hoop_w / iw, hoop_h / ih) * 0.9  # 90% of hoop
     # Work at a bounded resolution for speed; keep mm scale consistent.
-    if max(iw, ih) > 400:
-        f = 400.0 / max(iw, ih)
+    if max(iw, ih) > _MAX_WORK_PX:
+        f = _MAX_WORK_PX / max(iw, ih)
         img = cv2.resize(img, (int(iw * f), int(ih * f)), interpolation=cv2.INTER_AREA)
         mm_per_px /= f
         ih, iw = img.shape[:2]
@@ -113,23 +115,35 @@ def digitize_image(
     objects: list[DesignObject] = []
     seq = 0
 
-    for stop_no, (_, cluster_idx, center) in enumerate(clusters, start=1):
+    emitted_stop = 0  # actual color-stop count — only clusters that yield objects get one
+    for _, cluster_idx, center in clusters:
         mask = (labels == cluster_idx).astype(np.uint8) * 255
         mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
-        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        # RETR_CCOMP: 2-level hierarchy — top-level outlines + their interior holes
+        # (letter counters, donuts). RETR_EXTERNAL would fill an 'o' solid.
+        contours, hierarchy = cv2.findContours(mask, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
+        hier = hierarchy[0] if hierarchy is not None else []
         b, g, r = (int(v) for v in center)
         hexcol = f"#{r:02x}{g:02x}{b:02x}"
 
-        if stop_no > 1 and stitches:
-            prev = stitches[-1]
-            stitches.append(Stitch(x=prev.x, y=prev.y, command="COLOR_CHANGE"))
-
-        stop_start = len(stitches)
-        for contour in contours:
-            if cv2.contourArea(contour) < min_area_px:
+        this_stop = None  # opened lazily when this cluster's first real object appears
+        stop_start = 0
+        for ci, contour in enumerate(contours):
+            if len(hier) and hier[ci][3] != -1:
+                continue  # a hole — handled with its parent
+            hole_contours = []
+            if len(hier):
+                child = hier[ci][2]
+                while child != -1:
+                    hole_contours.append(contours[child])
+                    child = hier[child][0]
+            net_area = cv2.contourArea(contour) - sum(cv2.contourArea(h) for h in hole_contours)
+            if net_area < min_area_px:
                 continue
             region = np.zeros_like(mask)
             cv2.drawContours(region, [contour], -1, 255, thickness=cv2.FILLED)
+            for h in hole_contours:
+                cv2.drawContours(region, [h], -1, 0, thickness=cv2.FILLED)
 
             # Narrow elongated region → satin column; otherwise tatami fill.
             rect = cv2.minAreaRect(contour)
@@ -149,6 +163,12 @@ def digitize_image(
                 underlay = UnderlayType.EDGE_WALK
             if len(pts) < 2:
                 continue
+            if this_stop is None:  # first real object → open a color stop (deferred COLOR_CHANGE)
+                emitted_stop += 1
+                this_stop = emitted_stop
+                if emitted_stop > 1 and stitches:
+                    stitches.append(Stitch(x=stitches[-1].x, y=stitches[-1].y, command="COLOR_CHANGE"))
+                stop_start = len(stitches)
             obj_start = len(stitches)
             if stitches and stitches[-1].command != "COLOR_CHANGE":
                 stitches.append(Stitch(x=stitches[-1].x, y=stitches[-1].y, command="TRIM"))
@@ -163,12 +183,16 @@ def digitize_image(
                 Point(x=float(px_) * mm_per_px, y=float(py_) * mm_per_px)
                 for px_, py_ in contour.reshape(-1, 2)
             ]
+            hole_outlines = [
+                [Point(x=float(px_) * mm_per_px, y=float(py_) * mm_per_px) for px_, py_ in h.reshape(-1, 2)]
+                for h in hole_contours
+            ] or None
             objects.append(
                 DesignObject(
                     sequence_order=seq,
                     name=f"{'Satin' if is_satin else 'Fill'} {seq} ({hexcol})",
                     stitch_type=StitchType.SATIN if is_satin else StitchType.TATAMI,
-                    color_stop=stop_no,
+                    color_stop=this_stop,
                     density=1.0 / (SATIN_SPACING_MM if is_satin else ROW_SPACING_MM),
                     stitch_angle=round(float(rect[2]), 1) if is_satin else 0.0,
                     underlay_type=underlay,
@@ -178,19 +202,21 @@ def digitize_image(
                     connect_method=ConnectMethod.TRIM,
                     stitch_count=count,
                     contour=outline,
+                    holes=hole_outlines,
                 )
             )
 
-        color_stops.append(
-            ColorStop(
-                stop_number=stop_no,
-                thread_brand="Auto",
-                catalog_number="",
-                thread_name=f"Color {stop_no}",
-                hex=hexcol,
-                stitch_count=len(stitches) - stop_start,
+        if this_stop is not None:  # cluster produced no stitchable objects → no phantom stop
+            color_stops.append(
+                ColorStop(
+                    stop_number=this_stop,
+                    thread_brand="Auto",
+                    catalog_number="",
+                    thread_name=f"Color {this_stop}",
+                    hex=hexcol,
+                    stitch_count=len(stitches) - stop_start,
+                )
             )
-        )
 
     if stitches:
         last = stitches[-1]
@@ -250,6 +276,23 @@ def _dist(p, q) -> float:
     return float(((p[0] - q[0]) ** 2 + (p[1] - q[1]) ** 2) ** 0.5)
 
 
+def _warp_fit(region, center, angle_deg: float):
+    """Rotate a mask into a destination sized to hold the rotated content (NO cropping —
+    a tall-thin shape rotated to horizontal would otherwise be clipped by the original
+    width). Returns (rotated, inverse_affine); the inverse maps rotated px → original px."""
+    import cv2
+
+    M = cv2.getRotationMatrix2D((float(center[0]), float(center[1])), float(angle_deg), 1.0)
+    h, w = region.shape
+    cos, sin = abs(M[0, 0]), abs(M[0, 1])
+    nw = int(h * sin + w * cos) + 1
+    nh = int(h * cos + w * sin) + 1
+    M[0, 2] += (nw - w) / 2.0
+    M[1, 2] += (nh - h) / 2.0
+    rot = cv2.warpAffine(region, M, (nw, nh))
+    return rot, cv2.invertAffineTransform(M)
+
+
 def _satin_zigzag(region, rect, step_px: int, connect_px: float):
     """Satin column for a narrow elongated region.
 
@@ -263,10 +306,8 @@ def _satin_zigzag(region, rect, step_px: int, connect_px: float):
     (cx, cy), (rw, rh), ang = rect
     if rw < rh:  # normalize: long axis → horizontal
         ang += 90.0
-    M = cv2.getRotationMatrix2D((float(cx), float(cy)), ang, 1.0)
-    h, w = region.shape
-    rot = cv2.warpAffine(region, M, (w, h))
-    Minv = cv2.invertAffineTransform(M)
+    rot, Minv = _warp_fit(region, (cx, cy), ang)
+    h, w = rot.shape
 
     pts: list[tuple[float, float, bool]] = []
     top = True
@@ -331,10 +372,8 @@ def _center_walk(region, rect, step_px: int, connect_px: float):
     (cx, cy), (rw, rh), ang = rect
     if rw < rh:
         ang += 90.0
-    M = cv2.getRotationMatrix2D((float(cx), float(cy)), ang, 1.0)
-    h, w = region.shape
-    rot = cv2.warpAffine(region, M, (w, h))
-    Minv = cv2.invertAffineTransform(M)
+    rot, Minv = _warp_fit(region, (cx, cy), ang)
+    h, w = rot.shape
 
     pts: list[tuple[float, float, bool]] = []
     for x in range(0, w, max(1, step_px)):
@@ -369,9 +408,7 @@ def _scanline_angled(region, angle_deg: float, row_px: int, max_step_px: int, co
     if abs(angle_deg) < 0.5:
         return _scanline_fill(region, row_px, max_step_px, connect_px)
     h, w = region.shape
-    M = cv2.getRotationMatrix2D((w / 2.0, h / 2.0), float(angle_deg), 1.0)
-    rot = cv2.warpAffine(region, M, (w, h))
-    Minv = cv2.invertAffineTransform(M)
+    rot, Minv = _warp_fit(region, (w / 2.0, h / 2.0), angle_deg)
     out = []
     for x, y, jump in _scanline_fill(rot, row_px, max_step_px, connect_px):
         X = Minv[0, 0] * x + Minv[0, 1] * y + Minv[0, 2]
@@ -430,6 +467,8 @@ def rebuild_design(design: Design) -> Design:
             mask = np.zeros((ch, cw), np.uint8)
             poly = np.array([to_px(p) for p in o.contour], np.int32)
             cv2.fillPoly(mask, [poly], 255)
+            for hole in o.holes or []:
+                cv2.fillPoly(mask, [np.array([to_px(p) for p in hole], np.int32)], 0)
 
             st = o.stitch_type.value if hasattr(o.stitch_type, "value") else o.stitch_type
             ut = o.underlay_type.value if hasattr(o.underlay_type, "value") else o.underlay_type

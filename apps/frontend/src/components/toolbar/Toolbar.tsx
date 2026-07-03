@@ -4,6 +4,8 @@ import { useDesignStore } from '../../store/designStore';
 import { api } from '../../api/client';
 import { DigitizeDialog } from '../dialogs/DigitizeDialog';
 import type { DigitizeParams } from '../dialogs/DigitizeDialog';
+import { LetteringDialog } from '../dialogs/LetteringDialog';
+import type { LetteringParams } from '../dialogs/LetteringDialog';
 
 const TOOLS = ['Select', 'Run', 'Satin', 'Fill', 'Lettering', 'Appliqué', 'Manual', 'Shape'];
 const ACCEPT = '.dst,.pes,.pec,.jef,.exp,.vp3,.vip,.xxx,.sew,.u01';
@@ -31,6 +33,7 @@ export function Toolbar() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [pendingImage, setPendingImage] = useState<File | null>(null);
+  const [showLettering, setShowLettering] = useState(false);
   const [exportFormat, setExportFormat] = useState('dst');
 
   const run = async (fn: () => Promise<void>) => {
@@ -63,6 +66,11 @@ export function Toolbar() {
     setPendingImage(null);
     if (!file) return;
     run(async () => setDesign(await api.digitize(file, p.fabricType, p.hoopSize, p.maxColors)));
+  };
+
+  const onLetteringConfirm = (p: LetteringParams) => {
+    setShowLettering(false);
+    run(async () => setDesign(await api.lettering(p.text, p.heightMm, p.fabricType)));
   };
 
   const stem = (design?.name || 'design').replace(/\.[^.]+$/, '');
@@ -98,6 +106,9 @@ export function Toolbar() {
         <button type="button" onClick={() => imgRef.current?.click()} disabled={busy} title="Auto-digitize an image (PNG/JPG)">
           Digitize
         </button>
+        <button type="button" onClick={() => setShowLettering(true)} disabled={busy} title="Text → embroidery (§4.10)">
+          Text
+        </button>
         <select
           value={exportFormat}
           onChange={(e) => setExportFormat(e.target.value)}
@@ -129,6 +140,9 @@ export function Toolbar() {
           onCancel={() => setPendingImage(null)}
           onConfirm={onDigitizeConfirm}
         />
+      )}
+      {showLettering && (
+        <LetteringDialog onCancel={() => setShowLettering(false)} onConfirm={onLetteringConfirm} />
       )}
     </header>
   );

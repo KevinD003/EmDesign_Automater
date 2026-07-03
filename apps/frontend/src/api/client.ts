@@ -85,4 +85,11 @@ export const api = {
   /** Regenerate all stitches from object contours + current params (digitized designs only). */
   rebuild: (design: Design) =>
     request<Design>('/api/designs/rebuild', { method: 'POST', body: JSON.stringify(design) }),
+
+  /** Text → embroidery Design (spec §4.10). */
+  lettering: (text: string, heightMm = 20, fabricType = 'cotton') =>
+    request<Design>('/api/lettering', {
+      method: 'POST',
+      body: JSON.stringify({ text, heightMm, fabricType }),
+    }),
 };
