@@ -159,6 +159,7 @@ class WorksheetColorRow(CamelModel):
     hex: str
     objects: str
     stitch_count: int
+    thread_length_mm: float = 0.0  # actual thread consumed by this color (sum of stitch lengths)
 
 
 class Worksheet(CamelModel):

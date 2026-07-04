@@ -18,8 +18,28 @@ def _cmd(stitch) -> str:
     return c.value if hasattr(c, "value") else c
 
 
+def _thread_lengths_mm(design: Design) -> list[float]:
+    """Thread consumed per color block (mm) = sum of consecutive STITCH segment lengths;
+    JUMP/TRIM/COLOR_CHANGE break the run. One entry per block, in stitching order."""
+    lengths = [0.0]
+    prev: tuple[float, float] | None = None
+    for s in design.stitches:
+        c = _cmd(s)
+        if c == "STITCH":
+            if prev is not None:
+                lengths[-1] += ((s.x - prev[0]) ** 2 + (s.y - prev[1]) ** 2) ** 0.5
+            prev = (s.x, s.y)
+        elif c == "COLOR_CHANGE":
+            lengths.append(0.0)
+            prev = None
+        else:  # JUMP / TRIM / STOP / END — thread doesn't span the move
+            prev = None
+    return lengths
+
+
 def build_worksheet(design: Design) -> Worksheet:
     """Derive the worksheet view from a Design (spec §4.9)."""
+    lengths = _thread_lengths_mm(design)
     color_sequence = [
         WorksheetColorRow(
             stop=cs.stop_number,
@@ -29,8 +49,9 @@ def build_worksheet(design: Design) -> Worksheet:
             hex=cs.hex,
             objects="",
             stitch_count=cs.stitch_count,
+            thread_length_mm=round(lengths[i] if i < len(lengths) else 0.0, 1),
         )
-        for cs in design.color_stops
+        for i, cs in enumerate(design.color_stops)
     ]
 
     trims = sum(1 for s in design.stitches if _cmd(s) == "TRIM")
@@ -131,7 +152,7 @@ def render_pdf(worksheet: Worksheet) -> bytes:
         c.drawString(cols["catalog"], y, (row.catalog_number or "")[:12])
         c.drawString(cols["name"], y, (row.color_name or "")[:22])
         c.drawString(cols["hex"], y, row.hex)
-        c.drawRightString(right, y, f"{row.stitch_count:,}")
+        c.drawRightString(right, y, f"{row.stitch_count:,}  ({row.thread_length_mm / 1000:.1f}m)")
         y -= 6 * mm
 
     if worksheet.quality_flags:

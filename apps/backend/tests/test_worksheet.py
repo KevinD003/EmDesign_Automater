@@ -32,6 +32,33 @@ def test_build_worksheet_totals():
     assert len(ws.color_sequence) == 2
 
 
+def test_worksheet_thread_length_per_color():
+    from app.models.design import ColorStop, Design, Stitch
+
+    # two stops; color 1 stitches span 0→10→20mm (10+10=20mm), color 2 spans 0→5 (5mm)
+    d = Design(
+        name="t",
+        stitch_count=5,
+        color_stops=[
+            ColorStop(stop_number=1, thread_brand="M", catalog_number="1", thread_name="A", hex="#111111", stitch_count=3),
+            ColorStop(stop_number=2, thread_brand="M", catalog_number="2", thread_name="B", hex="#222222", stitch_count=2),
+        ],
+        stitches=[
+            Stitch(x=0, y=0, command="STITCH"),
+            Stitch(x=10, y=0, command="STITCH"),
+            Stitch(x=20, y=0, command="STITCH"),
+            Stitch(x=20, y=0, command="COLOR_CHANGE"),
+            Stitch(x=0, y=0, command="JUMP"),  # jump does not count as thread
+            Stitch(x=0, y=0, command="STITCH"),
+            Stitch(x=5, y=0, command="STITCH"),
+            Stitch(x=5, y=0, command="END"),
+        ],
+    )
+    ws = build_worksheet(d)
+    assert ws.color_sequence[0].thread_length_mm == 20.0
+    assert ws.color_sequence[1].thread_length_mm == 5.0
+
+
 def test_list_threads_loads_catalog():
     all_threads = threads_svc.list_threads()
     assert len(all_threads) >= 1

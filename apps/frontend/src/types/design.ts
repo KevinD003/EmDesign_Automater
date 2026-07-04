@@ -152,6 +152,8 @@ export interface WorksheetColorRow {
   hex: string;
   objects: string;
   stitchCount: number;
+  /** Actual thread consumed by this color, mm (sum of stitch-segment lengths). */
+  threadLengthMm: number;
 }
 
 /** Production worksheet — derived view of a Design (spec §4.9). */
