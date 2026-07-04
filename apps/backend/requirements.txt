@@ -4,6 +4,7 @@ uvicorn[standard]>=0.32
 pydantic>=2.9
 pydantic-settings>=2.5
 python-multipart>=0.0.12
+httpx>=0.27          # Supabase persistence (PostgREST + Auth admin) — services/supabase_store.py
 
 # Feature libraries are in requirements-features.txt (installed when implementing
 # the stub endpoints). They are lazy-imported, so the app boots without them.
