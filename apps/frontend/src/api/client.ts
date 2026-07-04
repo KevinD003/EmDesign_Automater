@@ -6,6 +6,8 @@ import type {
   ConvertRequest,
   ConvertResponse,
   Design,
+  OptimizeResult,
+  QualityReport,
   Thread,
   ValidationReport,
   Worksheet,
@@ -143,6 +145,14 @@ export const api = {
   /** Regenerate all stitches from object contours + current params (digitized designs only). */
   rebuild: (design: Design) =>
     request<Design>('/api/designs/rebuild', { method: 'POST', body: JSON.stringify(design) }),
+
+  // ── Phase 8: optimization engine ──
+  /** Reorder objects within each color (nearest-neighbour) to cut travel/jumps. */
+  optimizePath: (design: Design) =>
+    request<OptimizeResult>('/api/optimize/path', { method: 'POST', body: JSON.stringify(design) }),
+  /** Score the design (0..100) + itemized quality findings. */
+  analyzeQuality: (design: Design) =>
+    request<QualityReport>('/api/optimize/quality', { method: 'POST', body: JSON.stringify(design) }),
 
   /** Text → embroidery Design (spec §4.10). */
   lettering: (text: string, heightMm = 20, fabricType = 'cotton') =>

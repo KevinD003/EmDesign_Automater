@@ -3,7 +3,7 @@ import type { ChangeEvent } from 'react';
 import { useDesignStore } from '../../store/designStore';
 import { useAuthStore } from '../../store/authStore';
 import { api } from '../../api/client';
-import type { Design, ValidationReport } from '../../types/design';
+import type { Design, OptimizeReport, QualityReport, ValidationReport } from '../../types/design';
 import { browserKV, deleteDesign, listSaved, loadDesign, saveDesign, type SavedMeta } from '../../lib/storage';
 import { isMasterFilename, parseMasterDesign, serializeMasterDesign } from '../../lib/masterFile';
 import { DigitizeDialog } from '../dialogs/DigitizeDialog';
@@ -28,6 +28,7 @@ function download(blob: Blob, filename: string) {
 export function Toolbar() {
   const design = useDesignStore((s) => s.design);
   const setDesign = useDesignStore((s) => s.setDesign);
+  const replaceDesign = useDesignStore((s) => s.replaceDesign);
   const setDesignId = useDesignStore((s) => s.setDesignId);
   const undo = useDesignStore((s) => s.undo);
   const redo = useDesignStore((s) => s.redo);
@@ -41,6 +42,8 @@ export function Toolbar() {
   const [showLettering, setShowLettering] = useState(false);
   const [exportFormat, setExportFormat] = useState('dst');
   const [report, setReport] = useState<ValidationReport | null>(null);
+  const [optimizeReport, setOptimizeReport] = useState<OptimizeReport | null>(null);
+  const [quality, setQuality] = useState<QualityReport | null>(null);
   const [saved, setSaved] = useState<SavedMeta[]>([]);
   const [showSaved, setShowSaved] = useState(false);
   const session = useAuthStore((s) => s.session);
@@ -102,6 +105,14 @@ export function Toolbar() {
 
   const stem = (design?.name || 'design').replace(/\.[^.]+$/, '');
   const onCheck = () => design && run(async () => setReport(await api.validate(design)));
+  const onOptimize = () =>
+    design &&
+    run(async () => {
+      const result = await api.optimizePath(design);
+      setOptimizeReport(result.report);
+      if (result.report.reordered) replaceDesign(result.design); // keeps undo history
+    });
+  const onQuality = () => design && run(async () => setQuality(await api.analyzeQuality(design)));
   const onExport = () =>
     design &&
     run(async () => {
@@ -234,6 +245,17 @@ export function Toolbar() {
         <button type="button" onClick={onCheck} disabled={!design || busy} title="Pre-export validation">
           Check
         </button>
+        <button type="button" onClick={onQuality} disabled={!design || busy} title="Quality score + findings (§Phase 8)">
+          Quality
+        </button>
+        <button
+          type="button"
+          onClick={onOptimize}
+          disabled={!design || busy}
+          title="Optimize stitch path — cut travel/jumps (§Phase 8)"
+        >
+          Optimize
+        </button>
         <button type="button" onClick={onExport} disabled={!design || busy}>
           Export
         </button>
@@ -301,6 +323,43 @@ export function Toolbar() {
               </button>
             </div>
           ))}
+        </div>
+      )}
+      {optimizeReport && (
+        <div className="validation-report">
+          <button type="button" className="vr-close" onClick={() => setOptimizeReport(null)} aria-label="Dismiss">
+            ×
+          </button>
+          <strong>{optimizeReport.reordered ? '✓ Path optimized' : 'Path already optimal'}</strong>
+          {optimizeReport.reordered ? (
+            <>
+              <div className="vr-ok">
+                Travel {optimizeReport.before.travelMm}mm → {optimizeReport.after.travelMm}mm
+                {' '}(−{optimizeReport.travelSavedMm}mm)
+              </div>
+              {optimizeReport.trimsSaved > 0 && <div className="vr-ok">{optimizeReport.trimsSaved} fewer trims</div>}
+              <div className="muted small">Applied — Undo (↶) reverts.</div>
+            </>
+          ) : (
+            <div className="muted small">{optimizeReport.note}</div>
+          )}
+        </div>
+      )}
+      {quality && (
+        <div className={`validation-report${quality.score < 80 ? ' has-issues' : ''}`}>
+          <button type="button" className="vr-close" onClick={() => setQuality(null)} aria-label="Dismiss">
+            ×
+          </button>
+          <strong>Quality {quality.grade} · {quality.score}/100</strong>
+          {quality.findings.map((f, i) => (
+            <div key={`q${i}`} className={f.severity === 'error' ? 'vr-issue' : f.severity === 'warn' ? 'vr-warn' : 'vr-ok'}>
+              {f.message}
+            </div>
+          ))}
+          <div className="muted small">
+            {quality.metrics.stitchCount.toLocaleString()} st · {quality.metrics.colorChanges} color changes ·{' '}
+            {quality.metrics.jumpCount} jumps
+          </div>
         </div>
       )}
       {report && (

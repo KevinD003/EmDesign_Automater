@@ -196,3 +196,41 @@ export interface ConvertResponse {
   colors: number;
   warnings: string[];
 }
+
+/** Phase 8 — optimization engine (mirrors models/design.py). */
+export interface PathMetrics {
+  stitchCount: number;
+  colorChanges: number;
+  trims: number;
+  jumpCount: number;
+  travelMm: number;
+}
+
+export interface OptimizeReport {
+  reordered: boolean;
+  before: PathMetrics;
+  after: PathMetrics;
+  colorChangesSaved: number;
+  travelSavedMm: number;
+  trimsSaved: number;
+  note?: string | null;
+}
+
+export interface OptimizeResult {
+  design: Design;
+  report: OptimizeReport;
+}
+
+export interface QualityFinding {
+  severity: 'info' | 'warn' | 'error';
+  code: string;
+  message: string;
+  count: number;
+}
+
+export interface QualityReport {
+  score: number;
+  grade: string;
+  metrics: PathMetrics;
+  findings: QualityFinding[];
+}

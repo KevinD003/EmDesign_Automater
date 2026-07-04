@@ -198,3 +198,43 @@ class ConvertResponse(CamelModel):
     stitch_count: int
     colors: int
     warnings: list[str] = Field(default_factory=list)
+
+
+# ── Phase 8: optimization engine (classical baseline; neural methods are future) ──
+
+
+class PathMetrics(CamelModel):
+    stitch_count: int = 0
+    color_changes: int = 0
+    trims: int = 0
+    jump_count: int = 0
+    travel_mm: float = 0.0  # total jump/travel distance between stitches
+
+
+class OptimizeReport(CamelModel):
+    reordered: bool = False
+    before: PathMetrics
+    after: PathMetrics
+    color_changes_saved: int = 0
+    travel_saved_mm: float = 0.0
+    trims_saved: int = 0
+    note: str | None = None
+
+
+class OptimizeResult(CamelModel):
+    design: Design
+    report: OptimizeReport
+
+
+class QualityFinding(CamelModel):
+    severity: str  # 'info' | 'warn' | 'error'
+    code: str
+    message: str
+    count: int = 0
+
+
+class QualityReport(CamelModel):
+    score: int = 100  # 0..100
+    grade: str = "A"  # A/B/C/D/F
+    metrics: PathMetrics
+    findings: list[QualityFinding] = Field(default_factory=list)
