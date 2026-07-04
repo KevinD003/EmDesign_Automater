@@ -19,13 +19,6 @@ import httpx
 from app.config import settings
 from app.models.design import Design
 
-# A single system/owner user backs all cloud designs until per-user auth is wired on
-# the frontend. designs.user_id is NOT NULL -> FK to public.users -> FK to auth.users,
-# so we must have a real auth user; we get-or-create it lazily and cache the uuid.
-_DEV_EMAIL = "studio@stitchiq.local"
-_dev_user_id: str | None = None
-
-
 def is_enabled() -> bool:
     """True when a Supabase URL + service key are configured."""
     return bool(settings.supabase_url and settings.supabase_service_key)
@@ -50,51 +43,25 @@ def _headers(prefer: str | None = None) -> dict[str, str]:
     return h
 
 
-async def _ensure_owner(client: httpx.AsyncClient) -> str:
-    """Get-or-create the system owner user; cache and return its uuid."""
-    global _dev_user_id
-    if _dev_user_id:
-        return _dev_user_id
-
-    # Find an existing auth user with our email.
-    uid: str | None = None
-    r = await client.get(f"{_auth()}/admin/users?per_page=200", headers=_headers())
-    if r.status_code == 200:
-        for u in r.json().get("users", []):
-            if u.get("email") == _DEV_EMAIL:
-                uid = u["id"]
-                break
-
-    # Create it if missing.
-    if uid is None:
-        r = await client.post(
-            f"{_auth()}/admin/users",
-            headers=_headers(),
-            json={"email": _DEV_EMAIL, "email_confirm": True},
-        )
-        r.raise_for_status()
-        uid = r.json()["id"]
-
-    # Mirror into public.users (idempotent — ignore duplicates).
+async def _ensure_user_row(client: httpx.AsyncClient, user_id: str) -> None:
+    """Mirror an authenticated auth.users id into public.users (idempotent)."""
     await client.post(
         f"{_rest()}/users",
         headers=_headers("resolution=merge-duplicates"),
-        json={"id": uid},
+        json={"id": user_id},
     )
-    _dev_user_id = uid
-    return uid
 
 
-async def create_design(design: Design) -> Design:
-    """Persist a design: metadata rows + a full-fidelity snapshot. Returns it with id/createdAt."""
+async def create_design(design: Design, user_id: str) -> Design:
+    """Persist a design for a user: metadata rows + full-fidelity snapshot. Returns it with id/createdAt."""
     async with httpx.AsyncClient(timeout=30) as client:
-        owner = await _ensure_owner(client)
+        await _ensure_user_row(client, user_id)
 
         r = await client.post(
             f"{_rest()}/designs",
             headers=_headers("return=representation"),
             json={
-                "user_id": owner,
+                "user_id": user_id,
                 "name": design.name,
                 "stitch_count": design.stitch_count,
                 "colors": len(design.color_stops),
@@ -167,11 +134,11 @@ async def create_design(design: Design) -> Design:
         return design.model_copy(update={"id": did, "created_at": created.get("created_at")})
 
 
-async def list_designs() -> list[Design]:
-    """Lightweight metadata listing (no stitches/objects), newest first."""
+async def list_designs(user_id: str) -> list[Design]:
+    """Lightweight metadata listing for one user (no stitches/objects), newest first."""
     async with httpx.AsyncClient(timeout=30) as client:
         r = await client.get(
-            f"{_rest()}/designs?select=*&order=created_at.desc",
+            f"{_rest()}/designs?user_id=eq.{user_id}&select=*&order=created_at.desc",
             headers=_headers(),
         )
         r.raise_for_status()
@@ -191,9 +158,20 @@ async def list_designs() -> list[Design]:
         ]
 
 
-async def get_design(design_id: str) -> Design | None:
-    """Fetch the latest full-fidelity snapshot for a design, or None if absent."""
+async def get_design(design_id: str, user_id: str) -> Design | None:
+    """Fetch a user's design at full fidelity, or None if absent / not theirs.
+
+    The service key bypasses RLS, so ownership is enforced here in app code: the
+    snapshot is only returned when the design row belongs to ``user_id``.
+    """
     async with httpx.AsyncClient(timeout=30) as client:
+        owned = await client.get(
+            f"{_rest()}/designs?id=eq.{design_id}&user_id=eq.{user_id}&select=id",
+            headers=_headers(),
+        )
+        owned.raise_for_status()
+        if not owned.json():
+            return None
         r = await client.get(
             f"{_rest()}/design_versions"
             f"?design_id=eq.{design_id}&select=snapshot_json&order=version_number.desc&limit=1",
@@ -206,8 +184,10 @@ async def get_design(design_id: str) -> Design | None:
         return Design.model_validate(rows[0]["snapshot_json"])
 
 
-async def delete_design(design_id: str) -> None:
-    """Delete a design (children cascade via FK)."""
+async def delete_design(design_id: str, user_id: str) -> None:
+    """Delete a user's design (scoped by owner; children cascade via FK)."""
     async with httpx.AsyncClient(timeout=30) as client:
-        r = await client.delete(f"{_rest()}/designs?id=eq.{design_id}", headers=_headers())
+        r = await client.delete(
+            f"{_rest()}/designs?id=eq.{design_id}&user_id=eq.{user_id}", headers=_headers()
+        )
         r.raise_for_status()

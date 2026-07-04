@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ChangeEvent } from 'react';
 import { useDesignStore } from '../../store/designStore';
+import { useAuthStore } from '../../store/authStore';
 import { api } from '../../api/client';
-import type { ValidationReport } from '../../types/design';
+import type { Design, ValidationReport } from '../../types/design';
 import { browserKV, deleteDesign, listSaved, loadDesign, saveDesign, type SavedMeta } from '../../lib/storage';
 import { isMasterFilename, parseMasterDesign, serializeMasterDesign } from '../../lib/masterFile';
 import { DigitizeDialog } from '../dialogs/DigitizeDialog';
@@ -42,6 +43,9 @@ export function Toolbar() {
   const [report, setReport] = useState<ValidationReport | null>(null);
   const [saved, setSaved] = useState<SavedMeta[]>([]);
   const [showSaved, setShowSaved] = useState(false);
+  const session = useAuthStore((s) => s.session);
+  const [cloud, setCloud] = useState<Design[]>([]);
+  const [showCloud, setShowCloud] = useState(false);
 
   const refreshSaved = () => {
     try {
@@ -133,6 +137,29 @@ export function Toolbar() {
     refreshSaved();
   };
 
+  // ── Cloud (Supabase, per-user; requires sign-in) ──
+  const onCloudSave = () =>
+    design &&
+    run(async () => {
+      const saved = await api.createDesign(design);
+      if (saved.id) setDesignId(saved.id);
+    });
+  const openCloudList = () =>
+    run(async () => {
+      setCloud(await api.listDesigns());
+      setShowCloud(true);
+    });
+  const onCloudOpen = (id: string) =>
+    run(async () => {
+      setDesign(await api.getDesign(id));
+      setShowCloud(false);
+    });
+  const onCloudDelete = (id: string) =>
+    run(async () => {
+      await api.deleteCloudDesign(id);
+      setCloud(await api.listDesigns());
+    });
+
   return (
     <header className="toolbar">
       <span className="brand">🧵 STITCHIQ</span>
@@ -185,10 +212,25 @@ export function Toolbar() {
             refreshSaved();
             setShowSaved((v) => !v);
           }}
-          title="Saved designs"
+          title="Saved designs (this browser)"
         >
           Saved ({saved.length})
         </button>
+        {session && (
+          <>
+            <button
+              type="button"
+              onClick={onCloudSave}
+              disabled={!design || busy}
+              title="Save to your cloud account (Supabase)"
+            >
+              ☁ Save
+            </button>
+            <button type="button" onClick={openCloudList} disabled={busy} title="Open a design from your cloud account">
+              ☁ Open
+            </button>
+          </>
+        )}
         <button type="button" onClick={onCheck} disabled={!design || busy} title="Pre-export validation">
           Check
         </button>
@@ -233,6 +275,30 @@ export function Toolbar() {
               <span className="muted saved-meta">{m.stitchCount.toLocaleString()} st</span>
               <button type="button" onClick={() => onLoad(m.id)}>Load</button>
               <button type="button" className="saved-del" onClick={() => onDelete(m.id)} aria-label="Delete">✕</button>
+            </div>
+          ))}
+        </div>
+      )}
+      {showCloud && (
+        <div className="saved-panel cloud-panel">
+          <button type="button" className="vr-close" onClick={() => setShowCloud(false)} aria-label="Close">
+            ×
+          </button>
+          <strong>☁ Cloud designs</strong>
+          {cloud.length === 0 && <div className="muted small">No cloud designs yet — hit ☁ Save.</div>}
+          {cloud.map((d) => (
+            <div key={d.id} className="saved-row">
+              <span className="saved-name" title={d.name}>{d.name}</span>
+              <span className="muted saved-meta">{d.stitchCount.toLocaleString()} st</span>
+              <button type="button" onClick={() => d.id && onCloudOpen(d.id)}>Open</button>
+              <button
+                type="button"
+                className="saved-del"
+                onClick={() => d.id && onCloudDelete(d.id)}
+                aria-label="Delete"
+              >
+                ✕
+              </button>
             </div>
           ))}
         </div>

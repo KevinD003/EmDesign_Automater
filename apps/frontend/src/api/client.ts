@@ -10,17 +10,40 @@ import type {
   ValidationReport,
   Worksheet,
 } from '../types/design';
+import type { Session } from '../lib/auth';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? '';
 
+// Bearer token for authenticated calls (design CRUD, /auth/me). Set on login/logout.
+let authToken: string | null = null;
+export function setAuthToken(token: string | null): void {
+  authToken = token;
+}
+
+function authHeaders(): Record<string, string> {
+  return authToken ? { Authorization: `Bearer ${authToken}` } : {};
+}
+
+/** Extract a useful message from a JSON error body ({detail: ...}) when present. */
+async function errorMessage(res: Response, path: string): Promise<string> {
+  try {
+    const body = await res.json();
+    if (body && typeof body.detail === 'string') return body.detail;
+  } catch {
+    /* no JSON body */
+  }
+  return `${res.status} ${res.statusText} — ${path}`;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
+    headers: { 'Content-Type': 'application/json', ...authHeaders(), ...(init?.headers ?? {}) },
     ...init,
   });
   if (!res.ok) {
-    throw new Error(`${res.status} ${res.statusText} — ${path}`);
+    throw new Error(await errorMessage(res, path));
   }
+  if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
 }
 
@@ -95,7 +118,19 @@ export const api = {
   matchThread: (hex: string) =>
     request<Thread>(`/api/threads/match?hex=${encodeURIComponent(hex)}`, { method: 'POST' }),
 
+  // ── Auth (spec §8) — thin proxy over Supabase GoTrue ──
+  signup: (email: string, password: string) =>
+    request<Session>('/api/auth/signup', { method: 'POST', body: JSON.stringify({ email, password }) }),
+  login: (email: string, password: string) =>
+    request<Session>('/api/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
+
+  // ── Cloud design persistence (authenticated, per-user) ──
   listDesigns: () => request<Design[]>('/api/designs'),
+  getDesign: (id: string) => request<Design>(`/api/designs/${encodeURIComponent(id)}`),
+  createDesign: (design: Design) =>
+    request<Design>('/api/designs', { method: 'POST', body: JSON.stringify(design) }),
+  deleteCloudDesign: (id: string) =>
+    request<void>(`/api/designs/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
   /** Regenerate all stitches from object contours + current params (digitized designs only). */
   rebuild: (design: Design) =>

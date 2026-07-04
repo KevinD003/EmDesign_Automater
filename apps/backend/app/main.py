@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.routers import (
+    auth,
     convert,
     designs,
     digitize,
@@ -42,5 +43,5 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-for module in (files, convert, digitize, lettering, worksheet, export, threads, designs):
+for module in (auth, files, convert, digitize, lettering, worksheet, export, threads, designs):
     app.include_router(module.router, prefix="/api")

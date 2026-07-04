@@ -48,11 +48,100 @@ code {
 
 /* ── Page nav (Studio ⇄ Dashboard) ──────────────────────────── */
 .page-nav {
+  position: relative;
   display: flex;
   justify-content: center;
+  align-items: center;
   padding: 6px 14px;
   background: var(--panel);
   border-bottom: 1px solid var(--line);
+}
+
+/* ── Auth bar (top-right of the page nav) ─────────────────────── */
+.auth-bar {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.auth-user {
+  color: var(--muted);
+  font-size: 13px;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.auth-link {
+  background: transparent;
+  color: var(--accent-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.auth-link:hover {
+  border-color: var(--accent-2);
+}
+.auth-popover {
+  position: absolute;
+  top: 34px;
+  right: 0;
+  z-index: 40;
+  width: 240px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+.auth-popover input {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 7px 9px;
+  font-size: 13px;
+}
+.auth-actions {
+  display: flex;
+  gap: 8px;
+}
+.auth-actions button {
+  flex: 1;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 7px 0;
+  cursor: pointer;
+  font-size: 13px;
+}
+.auth-actions .auth-secondary {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--line);
+}
+.auth-actions button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.auth-err {
+  color: #ff6b6b;
+  font-size: 12px;
+}
+.auth-hint {
+  line-height: 1.35;
+}
+.cloud-panel {
+  top: 92px;
 }
 
 .app-body {

@@ -7,7 +7,9 @@ import { StitchPlayer } from './components/player/StitchPlayer';
 import { StitchCanvas } from './components/canvas/StitchCanvas';
 import { TrueView3D } from './components/trueview/TrueView3D';
 import { Dashboard } from './components/dashboard/Dashboard';
+import { AuthBar } from './components/auth/AuthBar';
 import { useDesignStore } from './store/designStore';
+import { useAuthStore } from './store/authStore';
 
 /**
  * App shell — the Wilcom-style studio layout (spec §3):
@@ -21,6 +23,10 @@ export default function App() {
   const selectStop = useDesignStore((s) => s.selectStop);
   const [view, setView] = useState<'2d' | '3d'>('2d');
   const [page, setPage] = useState<'studio' | 'dashboard'>('studio');
+  const initAuth = useAuthStore((s) => s.init);
+
+  // Restore any persisted cloud session on load (primes the API bearer token).
+  useEffect(initAuth, [initAuth]);
 
   // Global undo/redo shortcuts: Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z, Ctrl+Y.
   useEffect(() => {
@@ -56,6 +62,7 @@ export default function App() {
             Dashboard
           </button>
         </div>
+        <AuthBar />
       </nav>
       {page === 'dashboard' ? (
         <Dashboard />
