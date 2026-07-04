@@ -4,7 +4,7 @@ import { useDesignStore } from '../../store/designStore';
 import { api } from '../../api/client';
 import type { ValidationReport } from '../../types/design';
 import { browserKV, deleteDesign, listSaved, loadDesign, saveDesign, type SavedMeta } from '../../lib/storage';
-import { isMasterFilename, parseMasterDesign } from '../../lib/masterFile';
+import { isMasterFilename, parseMasterDesign, serializeMasterDesign } from '../../lib/masterFile';
 import { DigitizeDialog } from '../dialogs/DigitizeDialog';
 import type { DigitizeParams } from '../dialogs/DigitizeDialog';
 import { LetteringDialog } from '../dialogs/LetteringDialog';
@@ -108,6 +108,11 @@ export function Toolbar() {
     design &&
     run(async () => download(await api.exportPackage(design, exportFormat), `${stem}-package.zip`));
   const onWorksheet = () => design && run(async () => download(await api.worksheetPdf(design), `${stem}-worksheet.pdf`));
+  const onSaveMaster = () =>
+    design &&
+    run(async () =>
+      download(new Blob([serializeMasterDesign(design)], { type: 'application/json' }), `${stem}.stiq.json`),
+    );
 
   const onSave = () =>
     design &&
@@ -195,6 +200,9 @@ export function Toolbar() {
         </button>
         <button type="button" onClick={onWorksheet} disabled={!design || busy}>
           Worksheet
+        </button>
+        <button type="button" onClick={onSaveMaster} disabled={!design || busy} title="Download editable master (.stiq.json)">
+          Master
         </button>
         {err && (
           <span className="toolbar-err" title={err}>

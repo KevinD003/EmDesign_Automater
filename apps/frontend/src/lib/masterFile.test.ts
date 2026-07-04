@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { isMasterFilename, parseMasterDesign } from './masterFile';
+import { isMasterFilename, parseMasterDesign, serializeMasterDesign } from './masterFile';
+import type { Design } from '../types/design';
 
 const validMaster = JSON.stringify({
   name: 'Logo',
@@ -37,6 +38,27 @@ describe('parseMasterDesign', () => {
   it('throws when required arrays are missing', () => {
     expect(() => parseMasterDesign(JSON.stringify({ name: 'x' }))).toThrow(/master/i);
     expect(() => parseMasterDesign(JSON.stringify({ stitches: [], colorStops: {} }))).toThrow();
+  });
+});
+
+describe('serializeMasterDesign', () => {
+  it('round-trips through parseMasterDesign, preserving objects + contours', () => {
+    const original = parseMasterDesign(validMaster);
+    const round = parseMasterDesign(serializeMasterDesign(original));
+    expect(round.name).toBe(original.name);
+    expect(round.stitchCount).toBe(original.stitchCount);
+    expect(round.version).toBe(original.version);
+    expect(round.objects).toEqual(original.objects); // contours, density, etc. preserved
+    expect(round.colorStops).toEqual(original.colorStops);
+    expect(round.stitches).toEqual(original.stitches);
+  });
+
+  it('produces valid parseable JSON for a minimal design', () => {
+    const d: Design = {
+      name: 'X', widthMm: 5, heightMm: 5, stitchCount: 0, version: 1, status: 'draft',
+      colorStops: [], objects: [], stitches: [],
+    };
+    expect(() => parseMasterDesign(serializeMasterDesign(d))).not.toThrow();
   });
 });
 

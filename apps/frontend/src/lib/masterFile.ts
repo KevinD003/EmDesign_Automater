@@ -44,3 +44,8 @@ export function parseMasterDesign(text: string): Design {
 export function isMasterFilename(name: string): boolean {
   return /\.(stiq\.)?json$/i.test(name);
 }
+
+/** Serialize a Design to a master .stiq.json string. Round-trips through parseMasterDesign. */
+export function serializeMasterDesign(design: Design): string {
+  return JSON.stringify(design, null, 2);
+}
