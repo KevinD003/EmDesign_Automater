@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import type { ChangeEvent } from 'react';
 import { useDesignStore } from '../../store/designStore';
 import { api } from '../../api/client';
+import type { ValidationReport } from '../../types/design';
 import { DigitizeDialog } from '../dialogs/DigitizeDialog';
 import type { DigitizeParams } from '../dialogs/DigitizeDialog';
 import { LetteringDialog } from '../dialogs/LetteringDialog';
@@ -35,6 +36,7 @@ export function Toolbar() {
   const [pendingImage, setPendingImage] = useState<File | null>(null);
   const [showLettering, setShowLettering] = useState(false);
   const [exportFormat, setExportFormat] = useState('dst');
+  const [report, setReport] = useState<ValidationReport | null>(null);
 
   const run = async (fn: () => Promise<void>) => {
     setBusy(true);
@@ -74,9 +76,13 @@ export function Toolbar() {
   };
 
   const stem = (design?.name || 'design').replace(/\.[^.]+$/, '');
+  const onCheck = () => design && run(async () => setReport(await api.validate(design)));
   const onExport = () =>
     design &&
-    run(async () => download(await api.exportDesign(design, exportFormat), `${stem}.${exportFormat}`));
+    run(async () => {
+      setReport(await api.validate(design)); // advisory — always show the report, never block
+      download(await api.exportDesign(design, exportFormat), `${stem}.${exportFormat}`);
+    });
   const onPackage = () =>
     design &&
     run(async () => download(await api.exportPackage(design, exportFormat), `${stem}-package.zip`));
@@ -125,6 +131,9 @@ export function Toolbar() {
             </option>
           ))}
         </select>
+        <button type="button" onClick={onCheck} disabled={!design || busy} title="Pre-export validation">
+          Check
+        </button>
         <button type="button" onClick={onExport} disabled={!design || busy}>
           Export
         </button>
@@ -149,6 +158,21 @@ export function Toolbar() {
       )}
       {showLettering && (
         <LetteringDialog onCancel={() => setShowLettering(false)} onConfirm={onLetteringConfirm} />
+      )}
+      {report && (
+        <div className={`validation-report${report.passed ? '' : ' has-issues'}`}>
+          <button type="button" className="vr-close" onClick={() => setReport(null)} aria-label="Dismiss">
+            ×
+          </button>
+          <strong>{report.passed ? '✓ Ready to stitch' : '⛔ Issues found'}</strong>
+          {report.issues.map((m, i) => (
+            <div key={`i${i}`} className="vr-issue">⛔ {m}</div>
+          ))}
+          {report.warnings.map((m, i) => (
+            <div key={`w${i}`} className="vr-warn">⚠ {m}</div>
+          ))}
+          {report.passed && report.warnings.length === 0 && <div className="vr-ok">No problems detected.</div>}
+        </div>
       )}
     </header>
   );

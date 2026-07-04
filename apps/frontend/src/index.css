@@ -259,6 +259,56 @@ code {
   font-size: 13px;
 }
 
+.validation-report {
+  position: absolute;
+  top: 50px;
+  right: 12px;
+  z-index: 30;
+  width: 320px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent-2);
+  border-radius: 8px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.validation-report.has-issues {
+  border-left-color: #f87171;
+}
+
+.validation-report strong {
+  font-size: 13px;
+}
+
+.vr-close {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 16px;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.vr-issue {
+  color: #fca5a5;
+}
+
+.vr-warn {
+  color: #fcd34d;
+}
+
+.vr-ok {
+  color: #86efac;
+}
+
 .toolbar-err {
   color: #fca5a5;
   font-size: 12px;
