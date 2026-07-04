@@ -4,13 +4,14 @@ import { useDesignStore } from '../../store/designStore';
 import { api } from '../../api/client';
 import type { ValidationReport } from '../../types/design';
 import { browserKV, deleteDesign, listSaved, loadDesign, saveDesign, type SavedMeta } from '../../lib/storage';
+import { isMasterFilename, parseMasterDesign } from '../../lib/masterFile';
 import { DigitizeDialog } from '../dialogs/DigitizeDialog';
 import type { DigitizeParams } from '../dialogs/DigitizeDialog';
 import { LetteringDialog } from '../dialogs/LetteringDialog';
 import type { LetteringParams } from '../dialogs/LetteringDialog';
 
 const TOOLS = ['Select', 'Run', 'Satin', 'Fill', 'Lettering', 'Appliqué', 'Manual', 'Shape'];
-const ACCEPT = '.dst,.pes,.pec,.jef,.exp,.vp3,.vip,.xxx,.sew,.u01';
+const ACCEPT = '.dst,.pes,.pec,.jef,.exp,.vp3,.vip,.xxx,.sew,.u01,.json';
 const ACCEPT_IMG = '.png,.jpg,.jpeg,.bmp,.webp';
 
 function download(blob: Blob, filename: string) {
@@ -67,7 +68,14 @@ export function Toolbar() {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
-    run(async () => setDesign(await api.parseFile(file)));
+    run(async () => {
+      // .stiq.json master → local parse (keeps objects/contours); embroidery format → backend.
+      if (isMasterFilename(file.name)) {
+        setDesign(parseMasterDesign(await file.text()));
+      } else {
+        setDesign(await api.parseFile(file));
+      }
+    });
   };
 
   const onPickImage = (e: ChangeEvent<HTMLInputElement>) => {
