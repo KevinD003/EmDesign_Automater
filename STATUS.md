@@ -7,12 +7,12 @@
 | Field | Value |
 |---|---|
 | **Project** | STITCHIQ — AI-powered embroidery design & digitizing platform |
-| **Document version** | **v24** |
-| **Times updated** | **24** |
+| **Document version** | **v25** |
+| **Times updated** | **25** |
 | **Last updated** | 2026-07-04 |
 | **Current phase** | **Phases 0–5 + 7 done** + master re-open/download, stronger validation, thread-length, **Studio dashboard**. Phase 6 = *cloud* sync (**blocked on keys**); 8/9 AI remain |
 | **Git branch** | `main` |
-| **Latest code commit** | `88d00e7` (download master .stiq.json) |
+| **Latest code commit** | `e04a78a` (README rewrite) |
 | **Working tree** | clean |
 | **Tracked files** | 90 |
 | **Location** | `/Users/INDIA/Downloads/EmDesign_Automater` |
@@ -71,6 +71,7 @@
 
 | # | Date | Author | Type | Summary |
 |---|------|--------|------|---------|
+| 25 | 2026-07-04 | Claude (Fable 5) | 📝 Docs | **README rewrite** — commit `e04a78a`. Replaced the stale "scaffold only, no features" README with an accurate description of the working studio (inputs, editing/rebuild, TrueView 3D, validation, export/convert/package, local save, dashboard), real stack, setup/run/test, honest gates. Points to STATUS.md. |
 | 24 | 2026-07-04 | Claude (Fable 5) | ✨ Feature | **Download editable master (.stiq.json)** — commit `88d00e7`. `serializeMasterDesign` + Toolbar **Master** button download; completes the master round-trip (previously the master was only inside the package zip). **vitest 47/47** (+2 serialize→parse fidelity). |
 | 23 | 2026-07-04 | Claude (Opus 4.8) | ✨ Feature | **Studio dashboard page (Phase 6 groundwork)** — commit `7cc6c96`. `lib/dashboard.ts` (pure: formatters + activity derivation + `fetchDashboard`, unit-tested), `components/dashboard/Dashboard.tsx` (loading/error/empty/data states), App **Studio ⇄ Dashboard** nav toggle, dashboard/stat-card/activity CSS. Revenue/users/conversion have **no source yet** → honest "—" (Phase 6); **recent activity is real** from `lib/storage.ts` saved designs. Frontend-only, no backend/data-model change. **vitest 45/45** (+10), typecheck/lint/build clean. |
 | 22 | 2026-07-04 | Claude (Fable 5) | ✨ Feature | **Thread length per color on the worksheet (§4.9)** — commit `b3e977e`. `build_worksheet` computes thread consumed per color (STITCH segment sum; jumps break the run) → `WorksheetColorRow.threadLengthMm` (TS+Pydantic); PDF shows metres. **pytest 63/63** (+1). |
