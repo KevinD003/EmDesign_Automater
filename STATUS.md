@@ -7,14 +7,14 @@
 | Field | Value |
 |---|---|
 | **Project** | STITCHIQ — AI-powered embroidery design & digitizing platform |
-| **Document version** | **v26** |
-| **Times updated** | **26** |
+| **Document version** | **v27** |
+| **Times updated** | **27** |
 | **Last updated** | 2026-07-04 |
-| **Current phase** | Phases 0–5 + 7 done; **in-browser render verified in Chrome**. Phase 6 = *cloud* sync (**blocked on keys**); 8/9 AI remain |
+| **Current phase** | Phases 0–5 + 7 done; render verified in Chrome; **Phase 6 cloud persistence LIVE** (Supabase — designs CRUD, verified end-to-end). Phase 6 auth UI + 8/9 AI remain |
 | **Git branch** | `main` |
-| **Latest code commit** | `e04a78a` (README rewrite) — v26 is docs-only (verification) |
+| **Latest code commit** | `d93696d` (Phase 6 Supabase persistence) |
 | **Working tree** | clean |
-| **Tracked files** | 90 |
+| **Tracked files** | 92 |
 | **Location** | `/Users/INDIA/Downloads/EmDesign_Automater` |
 
 ---
@@ -31,10 +31,13 @@
    lit 3D thread preview; snap any color to the nearest catalog thread; edit density/angle/underlay/**pull-comp**.
    A **Check** button surfaces pre-export validation (hoop-fit blocks); **Save/Saved** persists designs in-browser;
    **Open** re-imports a master `.stiq.json`; the worksheet shows thread length per color; a **Studio ⇄ Dashboard**
-   nav toggle adds a metrics page. Verified: **pytest 63/63, vitest 47/47**, e2e via Vite proxy, **+ in-browser render confirmed in Chrome (§12)**.
+   nav toggle adds a metrics page. **Cloud persistence is now LIVE** — Save/list/open designs to a real
+   Supabase Postgres (schema applied; designs CRUD verified over HTTP). Verified: **pytest 65/65, vitest 47/47**,
+   e2e via Vite proxy, in-browser render confirmed in Chrome (§12), **+ live Supabase round-trip**.
 2. **Chosen scope (by the user):** build **vertically**, one phase at a time ([§14](#-14-full-project-roadmap-phases-010)).
-3. **Next task (pick one):** (a) **Phase 6** — Supabase persistence/auth (apply `db/schema.sql`, wire
-   `designs` CRUD + Storage; **needs user's Supabase keys — blocked**); (b) **lettering v1.1** (per-stroke
+3. **Next task (pick one):** (a) **Phase 6 finish** — backend designs CRUD is **live on Supabase** (schema
+   applied, verified); remaining = per-user **auth/login UI** + a frontend "cloud save/open" button (today the
+   backend attributes all designs to one system user); (b) **lettering v1.1** (per-stroke
    satin); (c) **manual digitizing tools** (draw run/satin/fill on the canvas); or (d) **push to GitHub**
    to exercise the CI config (written but unverified).
 4. **⚠️ MANDATORY — every change is logged in THIS FILE.** Before finishing any task: bump **Document
@@ -57,11 +60,11 @@
 
 ## ✅ 1. TL;DR
 
-- **Stack:** TypeScript (React + Vite) frontend · Python (FastAPI) backend · PostgreSQL/Supabase (schema written, not applied).
+- **Stack:** TypeScript (React + Vite) frontend · Python (FastAPI) backend · PostgreSQL/Supabase (schema **applied & live** — designs CRUD).
 - **Built:** **Phases 0–5 essentially done**: open/parse, **image auto-digitize** (TATAMI + SATIN + underlay + **holes/counters**), **text lettering**, **object-level editing** (→ server rebuild), Konva render, full color-stop editing, **export any format + convert + full production package ZIP**, worksheet PDF.
-- **Verified:** **pytest 63/63** · **vitest 47/47** · typecheck/build · e2e lettering→digitize→edit→rebuild→validate→export/convert/package/thread-match through the Vite proxy.
-- **Still stubbed:** thread nearest-match, design persistence/auth, TrueView 3D, AI/ML, satin-stroke lettering.
-- **Next:** Phase 6 (Supabase persistence — **blocked on user keys**), thread nearest-match, or lettering v1.1. *(In-browser event wiring not eyeballed — §12.)*
+- **Verified:** **pytest 65/65** · **vitest 47/47** · typecheck/build · e2e lettering→digitize→edit→rebuild→validate→export/convert/package/thread-match through the Vite proxy · **live Supabase designs CRUD over HTTP**.
+- **Still stubbed:** per-user auth/login UI (backend persistence is live under one system user), AI/ML, satin-stroke lettering.
+- **Next:** Phase 6 finish (auth + frontend cloud-save button), lettering v1.1, or push to GitHub (CI unverified).
 
 ---
 
@@ -71,6 +74,7 @@
 
 | # | Date | Author | Type | Summary |
 |---|------|--------|------|---------|
+| 27 | 2026-07-04 | Claude (Opus 4.8) | ✨ Feature | **Phase 6 — Supabase cloud persistence (§8)** — commit `d93696d`. User provided real Supabase keys + DB password; **`db/schema.sql` (10 tables) applied to the live project** (via psycopg direct connection). `services/supabase_store.py` (PostgREST + Auth-admin over the service key; get-or-create system owner user for the RLS FK chain) + `designs.py` CRUD now persist to Supabase — create writes designs/design_objects/color_stops + a full-fidelity `design_versions` snapshot; get restores stitches+contours; delete cascades; **graceful in-memory fallback** keeps app + offline pytest running keyless. Seeded `thread_database` (5 threads). **Verified end-to-end over real HTTP against live Supabase**: POST→201 (uuid+ts), list, full-fidelity GET, DELETE→204→404. **pytest 65/65** (+2 `test_designs.py`); httpx→core dep. Secrets in gitignored `apps/backend/.env` only. *(Remaining Phase 6: per-user auth/login UI + frontend "cloud save" wiring — backend attributes to one system user for now.)* |
 | 26 | 2026-07-04 | Claude (Fable 5) | ✅ Verify | **In-browser render VERIFIED** (no code change). Drove the real app in system Chrome via Playwright + screenshots: shell, Open→canvas paints stitches, stop-select→highlight+Properties, TrueView 3D→lit thread tubes, Digitize PNG→correct fill + nested objects, Check→banner. Retires the long-standing "paint not eyeballed" caveat (§12). Only console msg: `/favicon.ico` 404 (cosmetic). |
 | 25 | 2026-07-04 | Claude (Fable 5) | 📝 Docs | **README rewrite** — commit `e04a78a`. Replaced the stale "scaffold only, no features" README with an accurate description of the working studio (inputs, editing/rebuild, TrueView 3D, validation, export/convert/package, local save, dashboard), real stack, setup/run/test, honest gates. Points to STATUS.md. |
 | 24 | 2026-07-04 | Claude (Fable 5) | ✨ Feature | **Download editable master (.stiq.json)** — commit `88d00e7`. `serializeMasterDesign` + Toolbar **Master** button download; completes the master round-trip (previously the master was only inside the package zip). **vitest 47/47** (+2 serialize→parse fidelity). |
@@ -139,10 +143,10 @@ apps/frontend/src/
   {lib,store}/*.test.ts          vitest (18 tests)
 apps/backend/app/
   main.py  config.py  models/design.py            shared data model (Pydantic)
-  routers/  files · digitize · export(+package) · worksheet · convert · lettering · threads(list+match) (live) · designs POST (stub)
-  services/ embroidery_io · digitizer · worksheet_pdf · threads.list_threads (live) · nearest_thread (stub)
-  tests/ test_embroidery_io · test_worksheet · test_digitizer · make_fixtures · fixtures/sample.dst,.pes
-db/schema.sql (not applied) · docs/ · STATUS.md · README.md · AI-Embroidery-Software-Prompt.md
+  routers/  files · digitize · export(+package) · worksheet · convert · lettering · threads(list+match) · designs CRUD (live, Supabase-backed)
+  services/ embroidery_io · digitizer · worksheet_pdf · threads(list+nearest) · supabase_store (PostgREST+Auth) (all live)
+  tests/ test_embroidery_io · test_worksheet · test_digitizer · test_designs · … · make_fixtures · fixtures/sample.dst,.pes
+db/schema.sql (**applied to live Supabase**) · docs/ · STATUS.md · README.md · AI-Embroidery-Software-Prompt.md
 ```
 
 ---
@@ -188,8 +192,9 @@ db/schema.sql (not applied) · docs/ · STATUS.md · README.md · AI-Embroidery-
 | Item | Status | Notes |
 |---|---|---|
 | Monorepo · shared data model | 🟢 | camelCase-on-wire verified |
-| Tests | 🟡 | **pytest 63 + vitest 47**; CI config written (**unverified — no remote**) |
-| DB applied · Supabase · deploy · AI/ML · `.STIQ` | 🔴 | Phases 6/8/X |
+| Tests | 🟡 | **pytest 65 + vitest 47**; CI config written (**unverified — no remote**) |
+| **DB schema applied · Supabase designs CRUD** | 🟢 | 10 tables live; `services/supabase_store.py` create/list/get/delete verified over HTTP (§8) |
+| Per-user auth/login · deploy · AI/ML · `.STIQ` | 🔴 | Phase 6 auth remainder / 8 / X |
 
 ---
 
@@ -337,8 +342,9 @@ python tests/make_fixtures.py
 ### Baseline (last confirmed 2026-07-01, Update #7)
 | Check | Command | Expected | Result |
 |---|---|---|---|
-| Backend tests | `python -m pytest tests -q` | **63 passed** | ✅ |
+| Backend tests | `python -m pytest tests -q` | **65 passed** | ✅ |
 | Frontend tests | `npm test -w apps/frontend` | **vitest 47 passed** | ✅ |
+| Supabase CRUD e2e | POST/GET/DELETE `:8000/api/designs` (live project) | 201 (uuid) · full-fidelity GET · 204→404 | ✅ |
 | Rebuild e2e | digitize → halve density → `:5173/api/designs/rebuild` | fewer stitches, bounds stable; imported → 422 | ✅ |
 | Underlay e2e | digitize (EDGE_WALK default) → rebuild with NONE | 1011 → 790 stitches | ✅ |
 | Convert e2e | dst→jef via `:5173/api/convert` | valid JEF, threads kept, warning | ✅ |
