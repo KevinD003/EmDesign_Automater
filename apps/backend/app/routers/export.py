@@ -48,6 +48,17 @@ def _cmd(stitch) -> str:
     return c.value if hasattr(c, "value") else c
 
 
+def _parse_hoop(hoop_size: str | None) -> tuple[float, float] | None:
+    """Parse a '100x100' / '130x180mm' hoop string → (w, h) mm, or None if unset/bad."""
+    if not hoop_size:
+        return None
+    try:
+        w, h = hoop_size.lower().replace("mm", "").split("x")
+        return float(w), float(h)
+    except (ValueError, AttributeError):
+        return None
+
+
 @router.post("/export")
 async def export_design(design: Design, format: str = Query("dst")) -> StreamingResponse:
     """Encode a Design to a machine file and stream it back."""
@@ -75,8 +86,22 @@ async def validate(design: Design) -> ValidationReport:
 
     if design.stitch_count == 0 and not design.stitches:
         issues.append("Design has no stitches.")
-    if design.width_mm > 200 or design.height_mm > 200:
+
+    # If a hoop is specified, a design that doesn't fit is a BLOCKING issue (it can't be
+    # stitched). Otherwise fall back to a generic 200mm warning.
+    hoop = _parse_hoop(design.hoop_size)
+    if hoop is not None:
+        hw, hh = hoop
+        if design.width_mm > hw or design.height_mm > hh:
+            issues.append(
+                f"Design {design.width_mm}x{design.height_mm}mm does not fit the {design.hoop_size} hoop."
+            )
+    elif design.width_mm > 200 or design.height_mm > 200:
         warnings.append(f"Design {design.width_mm}x{design.height_mm}mm exceeds a typical 200mm hoop.")
+
+    color_changes = sum(1 for s in design.stitches if _cmd(s) == "COLOR_CHANGE")
+    if color_changes > 15:
+        warnings.append(f"{color_changes} color changes — many thread changes will slow production.")
 
     long_stitches = 0
     prev = None
