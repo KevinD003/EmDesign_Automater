@@ -7,14 +7,14 @@
 | Field | Value |
 |---|---|
 | **Project** | STITCHIQ — AI-powered embroidery design & digitizing platform |
-| **Document version** | **v27** |
-| **Times updated** | **27** |
+| **Document version** | **v28** |
+| **Times updated** | **28** |
 | **Last updated** | 2026-07-04 |
-| **Current phase** | Phases 0–5 + 7 done; render verified in Chrome; **Phase 6 cloud persistence LIVE** (Supabase — designs CRUD, verified end-to-end). Phase 6 auth UI + 8/9 AI remain |
+| **Current phase** | Phases 0–5 + 7 done; **Phase 6 essentially COMPLETE** — per-user **auth (signup/login)** + **cloud Save/Open** live on Supabase, verified in Chrome. Phases 8/9 AI remain |
 | **Git branch** | `main` |
-| **Latest code commit** | `d93696d` (Phase 6 Supabase persistence) |
+| **Latest code commit** | `0d96ee8` (Phase 6 auth + cloud UI) |
 | **Working tree** | clean |
-| **Tracked files** | 92 |
+| **Tracked files** | 100 |
 | **Location** | `/Users/INDIA/Downloads/EmDesign_Automater` |
 
 ---
@@ -32,14 +32,15 @@
    A **Check** button surfaces pre-export validation (hoop-fit blocks); **Save/Saved** persists designs in-browser;
    **Open** re-imports a master `.stiq.json`; the worksheet shows thread length per color; a **Studio ⇄ Dashboard**
    nav toggle adds a metrics page. **Cloud persistence is now LIVE** — Save/list/open designs to a real
-   Supabase Postgres (schema applied; designs CRUD verified over HTTP). Verified: **pytest 65/65, vitest 47/47**,
-   e2e via Vite proxy, in-browser render confirmed in Chrome (§12), **+ live Supabase round-trip**.
+   Supabase Postgres with **per-user auth (signup/login)** — cloud Save/Open in the UI. Verified: **pytest 69/69,
+   vitest 52/52**, e2e via Vite proxy, in-browser render confirmed in Chrome (§12), **+ live auth/cloud round-trip
+   with multi-user isolation**.
 2. **Chosen scope (by the user):** build **vertically**, one phase at a time ([§14](#-14-full-project-roadmap-phases-010)).
-3. **Next task (pick one):** (a) **Phase 6 finish** — backend designs CRUD is **live on Supabase** (schema
-   applied, verified); remaining = per-user **auth/login UI** + a frontend "cloud save/open" button (today the
-   backend attributes all designs to one system user); (b) **lettering v1.1** (per-stroke
-   satin); (c) **manual digitizing tools** (draw run/satin/fill on the canvas); or (d) **push to GitHub**
-   to exercise the CI config (written but unverified).
+3. **Next task (pick one):** Phase 6 is **essentially complete** (per-user auth + cloud Save/Open, verified in
+   Chrome). Optional Phase-6 polish: password reset, "cloud open on login" auto-sync, RLS-hardened direct-from-browser
+   reads, Storage-backed master/preview URLs. Otherwise: (a) **lettering v1.1** (per-stroke satin); (b) **manual
+   digitizing tools** (draw run/satin/fill on the canvas); or (c) **push to GitHub** to exercise the CI config
+   (written but unverified).
 4. **⚠️ MANDATORY — every change is logged in THIS FILE.** Before finishing any task: bump **Document
    version** + **Times updated**; update **Last updated** + **Latest code commit**; add a
    [§2](#-2-update-history--changelog) row (**newest on top**); flip [§5](#-5-feature-status-matrix) rows;
@@ -62,9 +63,9 @@
 
 - **Stack:** TypeScript (React + Vite) frontend · Python (FastAPI) backend · PostgreSQL/Supabase (schema **applied & live** — designs CRUD).
 - **Built:** **Phases 0–5 essentially done**: open/parse, **image auto-digitize** (TATAMI + SATIN + underlay + **holes/counters**), **text lettering**, **object-level editing** (→ server rebuild), Konva render, full color-stop editing, **export any format + convert + full production package ZIP**, worksheet PDF.
-- **Verified:** **pytest 65/65** · **vitest 47/47** · typecheck/build · e2e lettering→digitize→edit→rebuild→validate→export/convert/package/thread-match through the Vite proxy · **live Supabase designs CRUD over HTTP**.
-- **Still stubbed:** per-user auth/login UI (backend persistence is live under one system user), AI/ML, satin-stroke lettering.
-- **Next:** Phase 6 finish (auth + frontend cloud-save button), lettering v1.1, or push to GitHub (CI unverified).
+- **Verified:** **pytest 69/69** · **vitest 52/52** · typecheck/build · e2e lettering→digitize→edit→rebuild→validate→export/convert/package/thread-match through the Vite proxy · **live Supabase auth + per-user cloud CRUD (multi-user isolation) verified in Chrome**.
+- **Still stubbed:** neural AI/ML (Phases 8/9), satin-stroke lettering, password reset. (Auth + cloud sync are now live.)
+- **Next:** Phase 6 polish (password reset / Storage URLs), lettering v1.1, or push to GitHub (CI unverified).
 
 ---
 
@@ -74,6 +75,7 @@
 
 | # | Date | Author | Type | Summary |
 |---|------|--------|------|---------|
+| 28 | 2026-07-04 | Claude (Opus 4.8) | ✨ Feature | **Phase 6 — per-user auth + cloud Save/Open UI (§8)** — commit `0d96ee8`. Backend `routers/auth.py` (signup/login/me over Supabase GoTrue; signup admin-creates a confirmed user then logs in) + `deps.current_user` (verifies bearer token → 401 when Supabase on, `local-dev` sentinel when off). `designs` CRUD now **scoped to the acting user** (list/get/delete filter by owner; create attributes to the user + mirrors auth.users→public.users). Frontend `lib/auth` + `store/authStore` + `AuthBar` (sign-in popover / logged-in email + logout) in the top nav; Toolbar **☁ Save / ☁ Open** (per-user cloud) beside local Save; client attaches bearer token, surfaces `{detail}` errors, handles 204. **Verified live in Chrome**: signup→logged-in→Open sample.dst→☁ Save→☁ Open lists it→reload keeps session; **multi-user isolation** over HTTP (B can't see/GET A's designs; unauth/bad-pw→401). **pytest 65→69, vitest 47→52**; typecheck+build clean. Phase 6 now essentially complete. |
 | 27 | 2026-07-04 | Claude (Opus 4.8) | ✨ Feature | **Phase 6 — Supabase cloud persistence (§8)** — commit `d93696d`. User provided real Supabase keys + DB password; **`db/schema.sql` (10 tables) applied to the live project** (via psycopg direct connection). `services/supabase_store.py` (PostgREST + Auth-admin over the service key; get-or-create system owner user for the RLS FK chain) + `designs.py` CRUD now persist to Supabase — create writes designs/design_objects/color_stops + a full-fidelity `design_versions` snapshot; get restores stitches+contours; delete cascades; **graceful in-memory fallback** keeps app + offline pytest running keyless. Seeded `thread_database` (5 threads). **Verified end-to-end over real HTTP against live Supabase**: POST→201 (uuid+ts), list, full-fidelity GET, DELETE→204→404. **pytest 65/65** (+2 `test_designs.py`); httpx→core dep. Secrets in gitignored `apps/backend/.env` only. *(Remaining Phase 6: per-user auth/login UI + frontend "cloud save" wiring — backend attributes to one system user for now.)* |
 | 26 | 2026-07-04 | Claude (Fable 5) | ✅ Verify | **In-browser render VERIFIED** (no code change). Drove the real app in system Chrome via Playwright + screenshots: shell, Open→canvas paints stitches, stop-select→highlight+Properties, TrueView 3D→lit thread tubes, Digitize PNG→correct fill + nested objects, Check→banner. Retires the long-standing "paint not eyeballed" caveat (§12). Only console msg: `/favicon.ico` 404 (cosmetic). |
 | 25 | 2026-07-04 | Claude (Fable 5) | 📝 Docs | **README rewrite** — commit `e04a78a`. Replaced the stale "scaffold only, no features" README with an accurate description of the working studio (inputs, editing/rebuild, TrueView 3D, validation, export/convert/package, local save, dashboard), real stack, setup/run/test, honest gates. Points to STATUS.md. |
@@ -143,8 +145,8 @@ apps/frontend/src/
   {lib,store}/*.test.ts          vitest (18 tests)
 apps/backend/app/
   main.py  config.py  models/design.py            shared data model (Pydantic)
-  routers/  files · digitize · export(+package) · worksheet · convert · lettering · threads(list+match) · designs CRUD (live, Supabase-backed)
-  services/ embroidery_io · digitizer · worksheet_pdf · threads(list+nearest) · supabase_store (PostgREST+Auth) (all live)
+  routers/  auth(signup/login/me) · files · digitize · export(+package) · worksheet · convert · lettering · threads · designs CRUD (all live, Supabase-backed + owner-scoped)
+  services/ embroidery_io · digitizer · worksheet_pdf · threads(list+nearest) · supabase_store · supabase_auth (all live) · deps.current_user (bearer gate)
   tests/ test_embroidery_io · test_worksheet · test_digitizer · test_designs · … · make_fixtures · fixtures/sample.dst,.pes
 db/schema.sql (**applied to live Supabase**) · docs/ · STATUS.md · README.md · AI-Embroidery-Software-Prompt.md
 ```
@@ -167,8 +169,8 @@ db/schema.sql (**applied to live Supabase**) · docs/ · STATUS.md · README.md 
 | **`/export/package`** · **`/formats`** | 🟢 | **production ZIP (6 artifacts)** · brand→format map |
 | `/threads` (GET) | 🟢 | catalog (brand filter) |
 | **`/threads/match`** | 🟢 | **nearest catalog thread (CIE Lab); 422 bad hex** |
-| `/designs` POST | 🔴 | 501 (needs Supabase — Phase 6) |
-| `/designs` (GET) | 🟡 | in-memory |
+| **`/auth/signup`·`/login`·`/me`** | 🟢 | **Supabase GoTrue proxy; bearer-token gate (`deps.current_user`)** |
+| **`/designs` CRUD (POST/GET/GET id/DELETE)** | 🟢 | **owner-scoped Supabase persistence + version snapshot; keyless in-memory fallback** |
 
 ### Backend services
 | Function | Status |
@@ -183,7 +185,8 @@ db/schema.sql (**applied to live Supabase**) · docs/ · STATUS.md · README.md 
 | **TrueView3D** + 2D/3D toggle | 🟢 | thread tubes + lighting + fabric; drag-rotate/zoom (**render verified in Chrome — §12**) |
 | designStore | 🟢 | + reorderStop · **selectObject/updateObject/replaceDesign** · undo/redo |
 | Toolbar (Digitize/Lettering dialogs) | 🟡 | Open (embroidery **+ .stiq master**)/Digitize/Text/Save/Saved/Check/Export/Package/Worksheet/Undo/Redo live; manual digitizing tools TBD |
-| Local persistence (`lib/storage.ts`) | 🟢 | save/load/delete via localStorage (unit-tested); cloud = Phase 6 |
+| Local persistence (`lib/storage.ts`) | 🟢 | save/load/delete via localStorage (unit-tested); **cloud Save/Open now live too** |
+| **Auth + cloud sync (`lib/auth`,`authStore`,`AuthBar`)** | 🟢 | sign-in popover · session persists · ☁ Save/Open per-user (verified in Chrome) |
 | Master file (`lib/masterFile.ts`) | 🟢 | **Open** a `.stiq.json` → editable Design (objects/contours kept) · **Master** button downloads it (round-trip tested) |
 | **Studio Dashboard** + Studio⇄Dashboard nav | 🟢 | metrics page; KPIs honest "—" (no source until Phase 6), recent-activity real from saved designs (parallel session, `7cc6c96`) |
 | **Dashboard** (`lib/dashboard.ts` + `Dashboard.tsx`) | 🟢 | Studio ⇄ Dashboard nav; KPI tiles (revenue/users/conversion → "—", no source until Phase 6) + **real recent activity** from saved designs; loading/error/empty states; pure logic unit-tested |
@@ -192,9 +195,10 @@ db/schema.sql (**applied to live Supabase**) · docs/ · STATUS.md · README.md 
 | Item | Status | Notes |
 |---|---|---|
 | Monorepo · shared data model | 🟢 | camelCase-on-wire verified |
-| Tests | 🟡 | **pytest 65 + vitest 47**; CI config written (**unverified — no remote**) |
+| Tests | 🟡 | **pytest 69 + vitest 52**; CI config written (**unverified — no remote**) |
 | **DB schema applied · Supabase designs CRUD** | 🟢 | 10 tables live; `services/supabase_store.py` create/list/get/delete verified over HTTP (§8) |
-| Per-user auth/login · deploy · AI/ML · `.STIQ` | 🔴 | Phase 6 auth remainder / 8 / X |
+| **Per-user auth (signup/login) + cloud Save/Open** | 🟢 | GoTrue proxy · bearer-token gate · owner-scoped CRUD; verified in Chrome (§8) |
+| Deploy · AI/ML · `.STIQ` binary | 🔴 | Phases 8 / X |
 
 ---
 
@@ -342,8 +346,8 @@ python tests/make_fixtures.py
 ### Baseline (last confirmed 2026-07-01, Update #7)
 | Check | Command | Expected | Result |
 |---|---|---|---|
-| Backend tests | `python -m pytest tests -q` | **65 passed** | ✅ |
-| Frontend tests | `npm test -w apps/frontend` | **vitest 47 passed** | ✅ |
+| Backend tests | `python -m pytest tests -q` | **69 passed** | ✅ |
+| Frontend tests | `npm test -w apps/frontend` | **vitest 52 passed** | ✅ |
 | Supabase CRUD e2e | POST/GET/DELETE `:8000/api/designs` (live project) | 201 (uuid) · full-fidelity GET · 204→404 | ✅ |
 | Rebuild e2e | digitize → halve density → `:5173/api/designs/rebuild` | fewer stitches, bounds stable; imported → 422 | ✅ |
 | Underlay e2e | digitize (EDGE_WALK default) → rebuild with NONE | 1011 → 790 stitches | ✅ |
@@ -401,8 +405,8 @@ Entities: `Stitch` · `StitchType`/`UnderlayType`/`ConnectMethod` · `Thread` ·
 | 3 | Auto-digitizing v1 (OpenCV) | 🟢 **Done** | XL | TATAMI+SATIN + underlay + dialog + object-edit/rebuild |
 | 4 | Lettering & monogramming | 🟢 **Done (v1)** | L | text → tatami-filled stitches ✅ · satin strokes = v1.1 |
 | 5 | Production output & formats | 🟢 **Done** | M | convert + multi-format export + production package ZIP + brand map |
-| 6 | Persistence & accounts (Supabase) | ⬜ | M | save/load, auth, versions, teams |
-| 7 | TrueView 3D simulation | 🟢 **Done** | L | lit thread tubes + fabric, drag/zoom (paint unverified) |
+| 6 | Persistence & accounts (Supabase) | 🟢 **Done (v1)** | M | schema applied · **auth (signup/login)** · owner-scoped cloud CRUD + version snapshots ✅ · teams/password-reset = later |
+| 7 | TrueView 3D simulation | 🟢 **Done** | L | lit thread tubes + fabric, drag/zoom (**render verified in Chrome**) |
 | 8 | AI engine (+ thread match) | ⬜ | XL | neural digitizing, path opt, quality scoring |
 | 9 | Generative & assistant | ⬜ | XL | text-to-design, STITCH-GPT |
 | 10 | Platform & scale | ⬜ | XL | collab, cloud API, mobile |
