@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Stage, Layer, Group, Line } from 'react-konva';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Stage, Layer, Group, Line, Circle, Rect } from 'react-konva';
 import type { KonvaEventObject } from 'konva/lib/Node';
+import type { Group as KonvaGroup } from 'konva/lib/Group';
 import type { ColorStop, Stitch } from '../../types/design';
 import { buildRuns, computeBounds } from '../../lib/stitches';
+import { useDesignStore } from '../../store/designStore';
 
 interface StitchCanvasProps {
   stitches?: Stitch[];
@@ -17,10 +19,13 @@ interface StitchCanvasProps {
   heightPx?: number;
 }
 
+const DEFAULT_HOOP = { minX: 0, minY: 0, maxX: 100, maxY: 100 }; // mm, when drawing on a blank canvas
+
 /**
  * Canvas design editor (spec §3). Renders color-grouped polylines (via the pure
- * `buildRuns`) in a fit-to-view Group; the Stage handles zoom (wheel) and pan (drag).
- * Click a run to select its color stop; click empty canvas to deselect.
+ * `buildRuns`); the Stage handles zoom (wheel) and pan (drag). In a manual-digitizing
+ * tool (Run/Satin/Fill) it switches to DRAW mode: each click drops a point (converted
+ * to design-mm via the fit Group), rendered as a live polyline for the Toolbar to commit.
  */
 export function StitchCanvas({
   stitches = [],
@@ -33,13 +38,20 @@ export function StitchCanvas({
 }: StitchCanvasProps) {
   const [scale, setScale] = useState(1);
   const [pos, setPos] = useState({ x: 0, y: 0 });
+  const groupRef = useRef<KonvaGroup>(null);
+  const activeTool = useDesignStore((s) => s.activeTool);
+  const draft = useDesignStore((s) => s.draft);
+  const addDraftPoint = useDesignStore((s) => s.addDraftPoint);
+  const drawing = activeTool !== 'select';
+  const closed = activeTool === 'fill' || activeTool === 'satin';
 
   useEffect(() => {
     setScale(1);
     setPos({ x: 0, y: 0 });
   }, [stitches]);
 
-  const bounds = useMemo(() => computeBounds(stitches), [stitches]);
+  const hasStitches = stitches.length > 0;
+  const bounds = useMemo(() => (hasStitches ? computeBounds(stitches) : DEFAULT_HOOP), [stitches, hasStitches]);
   const fit = useMemo(() => {
     const w = Math.max(bounds.maxX - bounds.minX, 1);
     const h = Math.max(bounds.maxY - bounds.minY, 1);
@@ -52,13 +64,14 @@ export function StitchCanvas({
   }, [bounds, widthPx, heightPx]);
   const runs = useMemo(() => buildRuns(stitches, colorStops, limit), [stitches, colorStops, limit]);
 
-  if (stitches.length === 0) {
+  // Blank canvas, not drawing → the "load a design" hint.
+  if (!hasStitches && !drawing) {
     return (
       <div className="canvas-wrap">
         <div className="canvas-overlay">
           <p className="canvas-title">No design loaded</p>
           <p className="muted">
-            Click <b>Open</b> in the toolbar to load a .DST / .PES file.
+            Click <b>Open</b> to load a file, <b>Digitize</b> an image, or pick <b>Run/Satin/Fill</b> to draw.
           </p>
         </div>
       </div>
@@ -71,10 +84,18 @@ export function StitchCanvas({
     setScale((s) => Math.max(0.2, Math.min(10, s * factor)));
   };
   const onDragEnd = (e: KonvaEventObject<DragEvent>) => setPos({ x: e.target.x(), y: e.target.y() });
+
   const onStageClick = (e: KonvaEventObject<MouseEvent>) => {
+    if (drawing) {
+      const p = groupRef.current?.getRelativePointerPosition();
+      if (p) addDraftPoint({ x: p.x, y: p.y });
+      return;
+    }
     if (e.target === e.target.getStage()) onSelectStop?.(null);
   };
-  const pxPerMm = fit.scale * scale; // effective px per design-mm, for constant stroke width
+
+  const pxPerMm = fit.scale * scale;
+  const draftPts = draft.flatMap((p) => [p.x, p.y]);
 
   return (
     <div className="canvas-wrap">
@@ -82,7 +103,7 @@ export function StitchCanvas({
         width={widthPx}
         height={heightPx}
         className="stitch-stage"
-        draggable
+        draggable={!drawing}
         scaleX={scale}
         scaleY={scale}
         x={pos.x}
@@ -91,9 +112,23 @@ export function StitchCanvas({
         onDragEnd={onDragEnd}
         onClick={onStageClick}
         onTap={onStageClick}
+        style={{ cursor: drawing ? 'crosshair' : 'default' }}
       >
         <Layer>
-          <Group scaleX={fit.scale} scaleY={fit.scale} x={fit.offsetX} y={fit.offsetY}>
+          <Group ref={groupRef} scaleX={fit.scale} scaleY={fit.scale} x={fit.offsetX} y={fit.offsetY}>
+            {/* Hoop outline when drawing on a blank canvas */}
+            {!hasStitches && (
+              <Rect
+                x={bounds.minX}
+                y={bounds.minY}
+                width={bounds.maxX - bounds.minX}
+                height={bounds.maxY - bounds.minY}
+                stroke="#3a4150"
+                strokeWidth={0.5 / pxPerMm}
+                dash={[2 / pxPerMm, 2 / pxPerMm]}
+                listening={false}
+              />
+            )}
             {runs.map((r, i) => {
               const active = selectedStop == null || r.stop === selectedStop;
               return (
@@ -106,17 +141,38 @@ export function StitchCanvas({
                   lineCap="round"
                   lineJoin="round"
                   hitStrokeWidth={6 / pxPerMm}
-                  onClick={() => onSelectStop?.(r.stop)}
-                  onTap={() => onSelectStop?.(r.stop)}
+                  listening={!drawing}
+                  onClick={() => !drawing && onSelectStop?.(r.stop)}
+                  onTap={() => !drawing && onSelectStop?.(r.stop)}
                 />
               );
             })}
+            {/* Live draft path + vertices */}
+            {draft.length > 0 && (
+              <>
+                <Line
+                  points={draftPts}
+                  stroke="#7c5cff"
+                  strokeWidth={1.5 / pxPerMm}
+                  closed={closed && draft.length >= 3}
+                  fill={closed && draft.length >= 3 ? 'rgba(124,92,255,0.15)' : undefined}
+                  lineCap="round"
+                  lineJoin="round"
+                  dash={[3 / pxPerMm, 2 / pxPerMm]}
+                  listening={false}
+                />
+                {draft.map((p, i) => (
+                  <Circle key={i} x={p.x} y={p.y} radius={2.4 / pxPerMm} fill="#7c5cff" listening={false} />
+                ))}
+              </>
+            )}
           </Group>
         </Layer>
       </Stage>
       <div className="canvas-badge">
-        {stitches.length.toLocaleString()} stitches · {(bounds.maxX - bounds.minX).toFixed(0)}×
-        {(bounds.maxY - bounds.minY).toFixed(0)} mm · click a color · scroll zoom · drag pan
+        {drawing
+          ? `Drawing ${activeTool} — click to add points (${draft.length}), then Finish. Esc cancels.`
+          : `${stitches.length.toLocaleString()} stitches · ${(bounds.maxX - bounds.minX).toFixed(0)}×${(bounds.maxY - bounds.minY).toFixed(0)} mm · click a color · scroll zoom · drag pan`}
       </div>
     </div>
   );

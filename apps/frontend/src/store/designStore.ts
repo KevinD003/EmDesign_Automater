@@ -1,8 +1,11 @@
 import { create } from 'zustand';
-import type { ColorStop, Design, DesignObject } from '../types/design';
+import type { ColorStop, Design, DesignObject, Point } from '../types/design';
 import { reorderColorStop } from '../lib/stitches';
 
 const HISTORY_LIMIT = 50;
+
+/** Manual digitizing tool. 'select' = normal edit/pan; others = draw mode. */
+export type Tool = 'select' | 'run' | 'satin' | 'fill';
 
 interface DesignState {
   design: Design | null;
@@ -12,6 +15,9 @@ interface DesignState {
   selectedObject: number | null;
   /** Render stitches up to this index; null = whole design. Driven by the StitchPlayer. */
   playHead: number | null;
+  /** Active manual-digitizing tool + the points drawn so far (design-mm). */
+  activeTool: Tool;
+  draft: Point[];
   past: Design[];
   future: Design[];
   setDesign: (design: Design | null) => void;
@@ -25,6 +31,10 @@ interface DesignState {
   updateColorStop: (stopNumber: number, patch: Partial<ColorStop>) => void;
   updateObject: (sequenceOrder: number, patch: Partial<DesignObject>) => void;
   reorderStop: (stopNumber: number, direction: 'up' | 'down') => void;
+  setTool: (tool: Tool) => void;
+  addDraftPoint: (p: Point) => void;
+  undoDraftPoint: () => void;
+  clearDraft: () => void;
   undo: () => void;
   redo: () => void;
 }
@@ -37,6 +47,8 @@ export const useDesignStore = create<DesignState>((set) => ({
   selectedStop: null,
   selectedObject: null,
   playHead: null,
+  activeTool: 'select',
+  draft: [],
   past: [],
   future: [],
   setDesign: (design) =>
@@ -86,6 +98,10 @@ export const useDesignStore = create<DesignState>((set) => ({
         future: [],
       };
     }),
+  setTool: (tool) => set({ activeTool: tool, draft: [] }),
+  addDraftPoint: (p) => set((state) => ({ draft: [...state.draft, p] })),
+  undoDraftPoint: () => set((state) => ({ draft: state.draft.slice(0, -1) })),
+  clearDraft: () => set({ draft: [] }),
   undo: () =>
     set((state) => {
       if (!state.past.length || !state.design) return {};

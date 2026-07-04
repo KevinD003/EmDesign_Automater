@@ -401,6 +401,43 @@ def _run_along(poly_px, step_px: int, connect_px: float, first_jump: bool = True
     return [(samples[0][0], samples[0][1], first_jump)] + [(p[0], p[1], False) for p in samples[1:]]
 
 
+def _resample_open(poly: list[tuple[float, float]], step: float) -> list[tuple[float, float]]:
+    """Arc-length resample of an OPEN polyline (path), points spaced ~``step``. Unlike
+    ``_resample_closed`` it does not wrap back to the start. Used for hand-drawn runs."""
+    if len(poly) < 2:
+        return list(poly)
+    out = [poly[0]]
+    since = 0.0
+    for i in range(1, len(poly)):
+        p0, p1 = poly[i - 1], poly[i]
+        seg = _dist(p0, p1)
+        if seg < 1e-9:
+            continue
+        pos = 0.0
+        while since + (seg - pos) >= step:
+            pos += step - since
+            t = pos / seg
+            out.append((p0[0] + (p1[0] - p0[0]) * t, p0[1] + (p1[1] - p0[1]) * t))
+            since = 0.0
+        since += seg - pos
+    if out[-1] != poly[-1]:
+        out.append(poly[-1])
+    return out
+
+
+def _manual_run(poly_px, step_px: int, passes: int = 1):
+    """Running stitch ALONG an open drawn path, resampled at ``step_px``, ``passes`` times
+    (single/double/triple; even passes retrace backward). Returns [(x, y, is_jump)]."""
+    pts_in = [(float(x), float(y)) for x, y in poly_px.reshape(-1, 2)]
+    base = _resample_open(pts_in, max(1.0, float(step_px)))
+    if len(base) < 2:
+        return []
+    seq: list[tuple[float, float]] = []
+    for i in range(max(1, passes)):
+        seq += base if i % 2 == 0 else list(reversed(base))
+    return [(seq[0][0], seq[0][1], True)] + [(p[0], p[1], False) for p in seq[1:]]
+
+
 def _satin_border(poly_px, width_px: float, step_px: int, connect_px: float):
     """Satin border along a closed contour (appliqué edge cover): resample the outline,
     then at each sample emit ±half-width points along the local normal, alternating to
@@ -590,6 +627,10 @@ def rebuild_design(design: Design) -> Design:
                 pts = _satin_zigzag(top, rect, spacing_px, connect_px, max_step_px)
                 if ut and ut != "NONE":  # any non-NONE underlay → center-walk for satin
                     pts = _with_underlay(_center_walk(mask, rect, under_step_px, connect_px), pts, connect_px)
+            elif st in ("RUNNING_SINGLE", "RUNNING_DOUBLE", "RUNNING_TRIPLE", "BACKSTITCH", "REDWORK", "MANUAL"):
+                # Running stitch ALONG the drawn path (open polyline), not an area fill.
+                passes = {"RUNNING_DOUBLE": 2, "BACKSTITCH": 2, "RUNNING_TRIPLE": 3}.get(st, 1)
+                pts = _manual_run(poly, max_step_px, passes)
             else:
                 pts = _scanline_angled(top, float(o.stitch_angle), spacing_px, max_step_px, connect_px)
                 if ut and ut != "NONE":  # any non-NONE underlay → edge-walk for fills

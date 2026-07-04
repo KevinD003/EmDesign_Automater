@@ -31,6 +31,10 @@ export default function App() {
   // Global undo/redo shortcuts: Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z, Ctrl+Y.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && useDesignStore.getState().activeTool !== 'select') {
+        useDesignStore.getState().setTool('select'); // cancel manual drawing
+        return;
+      }
       if (!(e.metaKey || e.ctrlKey)) return;
       const k = e.key.toLowerCase();
       if (k === 'z') {

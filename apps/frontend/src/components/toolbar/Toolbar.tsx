@@ -6,12 +6,19 @@ import { api } from '../../api/client';
 import type { Design, OptimizeReport, QualityReport, ValidationReport } from '../../types/design';
 import { browserKV, deleteDesign, listSaved, loadDesign, saveDesign, type SavedMeta } from '../../lib/storage';
 import { isMasterFilename, parseMasterDesign, serializeMasterDesign } from '../../lib/masterFile';
+import { buildManualDesign, isImportedNotEditable, minPointsFor, type ManualTool } from '../../lib/manual';
 import { DigitizeDialog } from '../dialogs/DigitizeDialog';
 import type { DigitizeParams } from '../dialogs/DigitizeDialog';
 import { LetteringDialog } from '../dialogs/LetteringDialog';
 import type { LetteringParams } from '../dialogs/LetteringDialog';
 
-const TOOLS = ['Select', 'Run', 'Satin', 'Fill', 'Lettering', 'Appliqué', 'Manual', 'Shape'];
+// Manual-digitizing tools that are wired to draw mode; the rest are still stubs.
+const DRAW_TOOLS: { label: string; tool: ManualTool }[] = [
+  { label: 'Run', tool: 'run' },
+  { label: 'Satin', tool: 'satin' },
+  { label: 'Fill', tool: 'fill' },
+];
+const STUB_TOOLS = ['Lettering', 'Appliqué', 'Shape'];
 const ACCEPT = '.dst,.pes,.pec,.jef,.exp,.vp3,.vip,.xxx,.sew,.u01,.json';
 const ACCEPT_IMG = '.png,.jpg,.jpeg,.bmp,.webp';
 
@@ -34,6 +41,11 @@ export function Toolbar() {
   const redo = useDesignStore((s) => s.redo);
   const canUndo = useDesignStore((s) => s.past.length > 0);
   const canRedo = useDesignStore((s) => s.future.length > 0);
+  const activeTool = useDesignStore((s) => s.activeTool);
+  const draft = useDesignStore((s) => s.draft);
+  const setTool = useDesignStore((s) => s.setTool);
+  const undoDraftPoint = useDesignStore((s) => s.undoDraftPoint);
+  const selectedStop = useDesignStore((s) => s.selectedStop);
   const fileRef = useRef<HTMLInputElement>(null);
   const imgRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
@@ -113,6 +125,27 @@ export function Toolbar() {
       if (result.report.reordered) replaceDesign(result.design); // keeps undo history
     });
   const onQuality = () => design && run(async () => setQuality(await api.analyzeQuality(design)));
+
+  // ── Manual digitizing: draw a Run/Satin/Fill, commit via server rebuild ──
+  const startTool = (tool: ManualTool) => {
+    if (isImportedNotEditable(design)) {
+      setErr('Manual tools need a blank or digitized canvas — imported files aren’t editable object-by-object.');
+      return;
+    }
+    setErr(null);
+    setTool(activeTool === tool ? 'select' : tool);
+  };
+  const canFinish = activeTool !== 'select' && draft.length >= minPointsFor(activeTool as ManualTool);
+  const onFinishDraw = () =>
+    run(async () => {
+      const tool = activeTool as ManualTool;
+      const built = buildManualDesign(design, tool, draft, selectedStop);
+      const rebuilt = await api.rebuild(built);
+      if (design) replaceDesign(rebuilt);
+      else setDesign(rebuilt);
+      setTool('select');
+    });
+  const onCancelDraw = () => setTool('select');
   const onExport = () =>
     design &&
     run(async () => {
@@ -183,7 +216,45 @@ export function Toolbar() {
         </button>
       </div>
       <nav className="tools">
-        {TOOLS.map((tool) => (
+        <button
+          type="button"
+          className={`tool-btn${activeTool === 'select' ? ' active' : ''}`}
+          onClick={() => setTool('select')}
+          title="Select / pan"
+        >
+          Select
+        </button>
+        {DRAW_TOOLS.map(({ label, tool }) => (
+          <button
+            key={tool}
+            type="button"
+            className={`tool-btn${activeTool === tool ? ' active' : ''}`}
+            onClick={() => startTool(tool)}
+            title={`Draw a ${label} object on the canvas`}
+          >
+            {label}
+          </button>
+        ))}
+        {activeTool !== 'select' && (
+          <>
+            <button type="button" className="tool-btn primary" onClick={onFinishDraw} disabled={!canFinish || busy}>
+              Finish ✓
+            </button>
+            <button
+              type="button"
+              className="tool-btn"
+              onClick={undoDraftPoint}
+              disabled={draft.length === 0}
+              title="Undo last point"
+            >
+              ⌫
+            </button>
+            <button type="button" className="tool-btn" onClick={onCancelDraw} title="Cancel drawing">
+              Cancel
+            </button>
+          </>
+        )}
+        {STUB_TOOLS.map((tool) => (
           <button key={tool} type="button" className="tool-btn" disabled title="Coming in a later phase">
             {tool}
           </button>
