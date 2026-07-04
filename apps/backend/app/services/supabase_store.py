@@ -158,6 +158,32 @@ async def list_designs(user_id: str) -> list[Design]:
         ]
 
 
+async def design_stats(user_id: str) -> dict:
+    """Aggregate a user's designs for the dashboard: counts + a recent list."""
+    async with httpx.AsyncClient(timeout=30) as client:
+        r = await client.get(
+            f"{_rest()}/designs?user_id=eq.{user_id}"
+            "&select=id,name,stitch_count,colors,created_at&order=created_at.desc",
+            headers=_headers(),
+        )
+        r.raise_for_status()
+        rows = r.json()
+        return {
+            "designCount": len(rows),
+            "totalStitches": sum(int(row.get("stitch_count") or 0) for row in rows),
+            "totalColors": sum(int(row.get("colors") or 0) for row in rows),
+            "recent": [
+                {
+                    "id": row["id"],
+                    "name": row.get("name") or "Untitled",
+                    "stitchCount": int(row.get("stitch_count") or 0),
+                    "savedAt": row.get("created_at") or "",
+                }
+                for row in rows[:8]
+            ],
+        }
+
+
 async def get_design(design_id: str, user_id: str) -> Design | None:
     """Fetch a user's design at full fidelity, or None if absent / not theirs.
 

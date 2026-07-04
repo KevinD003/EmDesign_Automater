@@ -59,3 +59,15 @@ def test_create_list_get_delete_roundtrip():
 
 def test_get_missing_returns_404():
     assert client.get("/api/designs/does-not-exist").status_code == 404
+
+
+def test_stats_reflects_saved_designs():
+    empty = client.get("/api/designs/stats").json()
+    assert empty == {"designCount": 0, "totalStitches": 0, "totalColors": 0, "recent": []}
+
+    client.post("/api/designs", json=_design("A"))
+    client.post("/api/designs", json=_design("B"))
+    stats = client.get("/api/designs/stats").json()
+    assert stats["designCount"] == 2
+    assert stats["totalStitches"] == 4  # 2 stitches each
+    assert {r["name"] for r in stats["recent"]} == {"A", "B"}

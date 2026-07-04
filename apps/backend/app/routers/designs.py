@@ -12,10 +12,24 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.deps import current_user
-from app.models.design import Design
+from app.models.design import CamelModel, Design
 from app.services import digitizer, supabase_store
 
 router = APIRouter(tags=["designs"])
+
+
+class ActivityItem(CamelModel):
+    id: str
+    name: str
+    stitch_count: int = 0
+    saved_at: str = ""
+
+
+class DesignStats(CamelModel):
+    design_count: int = 0
+    total_stitches: int = 0
+    total_colors: int = 0
+    recent: list[ActivityItem] = []
 
 
 @router.post("/designs/rebuild", response_model=Design)
@@ -45,6 +59,25 @@ async def list_designs(user_id: str = Depends(current_user)) -> list[Design]:
         except httpx.HTTPError as exc:
             raise HTTPException(status_code=502, detail=f"Supabase error: {exc}") from exc
     return [d for (uid, _), d in _DESIGNS.items() if uid == user_id]
+
+
+@router.get("/designs/stats", response_model=DesignStats)
+async def stats(user_id: str = Depends(current_user)) -> DesignStats:
+    """Dashboard aggregates for the caller (design count, total stitches/colors, recent)."""
+    if supabase_store.is_enabled():
+        try:
+            return DesignStats.model_validate(await supabase_store.design_stats(user_id))
+        except httpx.HTTPError as exc:
+            raise HTTPException(status_code=502, detail=f"Supabase error: {exc}") from exc
+    designs = [d for (uid, _), d in _DESIGNS.items() if uid == user_id]
+    return DesignStats(
+        design_count=len(designs),
+        total_stitches=sum(d.stitch_count for d in designs),
+        total_colors=sum(len(d.color_stops) for d in designs),
+        recent=[
+            ActivityItem(id=d.id or "", name=d.name, stitch_count=d.stitch_count) for d in designs[:8]
+        ],
+    )
 
 
 @router.get("/designs/{design_id}", response_model=Design)

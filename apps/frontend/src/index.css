@@ -44,6 +44,7 @@ code {
   grid-template-rows: auto auto 1fr auto;
   height: 100%;
   min-height: 0;
+  overflow-x: hidden; /* the button-heavy toolbar scrolls itself, never the page */
 }
 
 /* ── Page nav (Studio ⇄ Dashboard) ──────────────────────────── */
@@ -158,6 +159,8 @@ code {
   padding: 8px 14px;
   background: var(--panel);
   border-bottom: 1px solid var(--line);
+  min-width: 0;
+  flex-wrap: wrap; /* button-heavy toolbar wraps to a 2nd row instead of overflowing the page */
 }
 
 .brand {

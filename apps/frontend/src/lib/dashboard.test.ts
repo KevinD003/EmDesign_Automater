@@ -59,38 +59,46 @@ describe('activity + cards + empty', () => {
     expect(act).toEqual([{ id: 'Logo', name: 'Logo', savedAt: '2026-07-04T10:00:00Z', stitchCount: 42 }]);
   });
 
-  it('builds three KPI cards, "—" when the value has no source', () => {
-    const data: DashboardData = { revenueCents: null, users: null, conversionRate: null, activity: [] };
+  it('builds three studio KPI cards; colors "—" with no local source', () => {
+    const data: DashboardData = {
+      designCount: 3,
+      totalStitches: 1500,
+      totalColors: null,
+      activity: [],
+      source: 'local',
+    };
     const cards = buildStatCards(data);
-    expect(cards.map((c) => c.key)).toEqual(['revenue', 'users', 'conversion']);
-    expect(cards.every((c) => c.value === '—')).toBe(true);
+    expect(cards.map((c) => c.key)).toEqual(['designs', 'stitches', 'colors']);
+    expect(cards.map((c) => c.value)).toEqual(['3', '1,500', '—']);
+    expect(cards[2].hint).toMatch(/sign in/i);
   });
 
-  it('reports empty only when every KPI is null and there is no activity', () => {
-    expect(isDashboardEmpty({ revenueCents: null, users: null, conversionRate: null, activity: [] })).toBe(true);
-    expect(
-      isDashboardEmpty({ revenueCents: null, users: null, conversionRate: null, activity: [meta('a', 'x')] }),
-    ).toBe(false);
-    expect(isDashboardEmpty({ revenueCents: 100, users: null, conversionRate: null, activity: [] })).toBe(false);
+  it('reports empty only when there are no designs and no activity', () => {
+    const base = { totalStitches: null, totalColors: null, source: 'local' as const };
+    expect(isDashboardEmpty({ designCount: 0, activity: [], ...base })).toBe(true);
+    expect(isDashboardEmpty({ designCount: null, activity: [], ...base })).toBe(true);
+    expect(isDashboardEmpty({ designCount: 0, activity: [meta('a', 'x')], ...base })).toBe(false);
+    expect(isDashboardEmpty({ designCount: 2, activity: [], ...base })).toBe(false);
   });
 });
 
-describe('fetchDashboard', () => {
-  it('returns null KPIs and activity derived from saved designs', async () => {
+describe('fetchDashboard (signed out → local)', () => {
+  it('derives counts + activity from saved designs; colors have no local source', async () => {
     const kv = fakeKV();
     kv.setItem(
       'stitchiq:index',
       JSON.stringify([meta('Recent', '2026-07-04T10:00:00Z', 5), meta('Older', '2026-07-01T10:00:00Z', 8)]),
     );
-    const data = await fetchDashboard(kv);
-    expect(data.revenueCents).toBeNull();
-    expect(data.users).toBeNull();
-    expect(data.conversionRate).toBeNull();
+    const data = await fetchDashboard({ loggedIn: false, kv });
+    expect(data.source).toBe('local');
+    expect(data.designCount).toBe(2);
+    expect(data.totalStitches).toBe(13);
+    expect(data.totalColors).toBeNull();
     expect(data.activity.map((a) => a.name)).toEqual(['Recent', 'Older']); // newest first
   });
 
   it('yields an empty dashboard when nothing is saved', async () => {
-    const data = await fetchDashboard(fakeKV());
+    const data = await fetchDashboard({ loggedIn: false, kv: fakeKV() });
     expect(isDashboardEmpty(data)).toBe(true);
   });
 });

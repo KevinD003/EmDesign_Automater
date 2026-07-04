@@ -1,16 +1,19 @@
 import { useQuery } from '@tanstack/react-query';
 import { buildStatCards, fetchDashboard, isDashboardEmpty, relativeTime } from '../../lib/dashboard';
+import { useAuthStore } from '../../store/authStore';
 
 /**
- * Studio dashboard (Phase 6 groundwork): revenue / users / conversion KPI tiles + recent activity.
- * KPIs have no source yet → they render "—" (never a fake 0); recent activity is real, read from
- * the locally saved designs. Loading / error / empty states all handled. All values flow through
- * `lib/dashboard.ts` — no hardcoded metrics here.
+ * Studio dashboard: the signed-in user's real metrics — My designs / Total stitches / Colors
+ * used — pulled live from their Supabase cloud account. Signed out, it falls back to designs
+ * saved in this browser (colors have no local source → "—"). Recent activity is real either way.
+ * Loading / error / empty states handled. All values flow through `lib/dashboard.ts`.
  */
 export function Dashboard() {
+  const session = useAuthStore((s) => s.session);
+  const loggedIn = !!session;
   const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ['dashboard'],
-    queryFn: () => fetchDashboard(),
+    queryKey: ['dashboard', session?.userId ?? 'local'],
+    queryFn: () => fetchDashboard({ loggedIn }),
   });
 
   if (isLoading) {
@@ -40,9 +43,18 @@ export function Dashboard() {
   return (
     <section className="dashboard">
       <h1 className="dashboard-title">Dashboard</h1>
+      <p className="muted small dashboard-source">
+        {data.source === 'cloud'
+          ? `☁ ${session?.email ?? 'your cloud account'}`
+          : 'Local (this browser) — sign in to see your cloud designs'}
+      </p>
 
       {empty ? (
-        <p className="muted">No data yet — save a design to start tracking activity.</p>
+        <p className="muted">
+          {loggedIn
+            ? 'No cloud designs yet — hit ☁ Save in the studio to start tracking.'
+            : 'No designs saved in this browser yet — save one, or sign in for cloud stats.'}
+        </p>
       ) : (
         <>
           <div className="dashboard-grid">

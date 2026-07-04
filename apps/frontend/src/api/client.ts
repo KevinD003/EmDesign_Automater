@@ -12,6 +12,13 @@ import type {
 } from '../types/design';
 import type { Session } from '../lib/auth';
 
+export interface DesignStats {
+  designCount: number;
+  totalStitches: number;
+  totalColors: number;
+  recent: { id: string; name: string; stitchCount: number; savedAt: string }[];
+}
+
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? '';
 
 // Bearer token for authenticated calls (design CRUD, /auth/me). Set on login/logout.
@@ -126,6 +133,7 @@ export const api = {
 
   // ── Cloud design persistence (authenticated, per-user) ──
   listDesigns: () => request<Design[]>('/api/designs'),
+  designStats: () => request<DesignStats>('/api/designs/stats'),
   getDesign: (id: string) => request<Design>(`/api/designs/${encodeURIComponent(id)}`),
   createDesign: (design: Design) =>
     request<Design>('/api/designs', { method: 'POST', body: JSON.stringify(design) }),
