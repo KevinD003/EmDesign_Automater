@@ -7,12 +7,12 @@
 | Field | Value |
 |---|---|
 | **Project** | STITCHIQ — AI-powered embroidery design & digitizing platform |
-| **Document version** | **v25** |
-| **Times updated** | **25** |
+| **Document version** | **v26** |
+| **Times updated** | **26** |
 | **Last updated** | 2026-07-04 |
-| **Current phase** | **Phases 0–5 + 7 done** + master re-open/download, stronger validation, thread-length, **Studio dashboard**. Phase 6 = *cloud* sync (**blocked on keys**); 8/9 AI remain |
+| **Current phase** | Phases 0–5 + 7 done; **in-browser render verified in Chrome**. Phase 6 = *cloud* sync (**blocked on keys**); 8/9 AI remain |
 | **Git branch** | `main` |
-| **Latest code commit** | `e04a78a` (README rewrite) |
+| **Latest code commit** | `e04a78a` (README rewrite) — v26 is docs-only (verification) |
 | **Working tree** | clean |
 | **Tracked files** | 90 |
 | **Location** | `/Users/INDIA/Downloads/EmDesign_Automater` |
@@ -31,7 +31,7 @@
    lit 3D thread preview; snap any color to the nearest catalog thread; edit density/angle/underlay/**pull-comp**.
    A **Check** button surfaces pre-export validation (hoop-fit blocks); **Save/Saved** persists designs in-browser;
    **Open** re-imports a master `.stiq.json`; the worksheet shows thread length per color; a **Studio ⇄ Dashboard**
-   nav toggle adds a metrics page. Verified: **pytest 63/63, vitest 47/47**, e2e via Vite proxy (3D paint not eyeballed — §12).
+   nav toggle adds a metrics page. Verified: **pytest 63/63, vitest 47/47**, e2e via Vite proxy, **+ in-browser render confirmed in Chrome (§12)**.
 2. **Chosen scope (by the user):** build **vertically**, one phase at a time ([§14](#-14-full-project-roadmap-phases-010)).
 3. **Next task (pick one):** (a) **Phase 6** — Supabase persistence/auth (apply `db/schema.sql`, wire
    `designs` CRUD + Storage; **needs user's Supabase keys — blocked**); (b) **lettering v1.1** (per-stroke
@@ -71,6 +71,7 @@
 
 | # | Date | Author | Type | Summary |
 |---|------|--------|------|---------|
+| 26 | 2026-07-04 | Claude (Fable 5) | ✅ Verify | **In-browser render VERIFIED** (no code change). Drove the real app in system Chrome via Playwright + screenshots: shell, Open→canvas paints stitches, stop-select→highlight+Properties, TrueView 3D→lit thread tubes, Digitize PNG→correct fill + nested objects, Check→banner. Retires the long-standing "paint not eyeballed" caveat (§12). Only console msg: `/favicon.ico` 404 (cosmetic). |
 | 25 | 2026-07-04 | Claude (Fable 5) | 📝 Docs | **README rewrite** — commit `e04a78a`. Replaced the stale "scaffold only, no features" README with an accurate description of the working studio (inputs, editing/rebuild, TrueView 3D, validation, export/convert/package, local save, dashboard), real stack, setup/run/test, honest gates. Points to STATUS.md. |
 | 24 | 2026-07-04 | Claude (Fable 5) | ✨ Feature | **Download editable master (.stiq.json)** — commit `88d00e7`. `serializeMasterDesign` + Toolbar **Master** button download; completes the master round-trip (previously the master was only inside the package zip). **vitest 47/47** (+2 serialize→parse fidelity). |
 | 23 | 2026-07-04 | Claude (Opus 4.8) | ✨ Feature | **Studio dashboard page (Phase 6 groundwork)** — commit `7cc6c96`. `lib/dashboard.ts` (pure: formatters + activity derivation + `fetchDashboard`, unit-tested), `components/dashboard/Dashboard.tsx` (loading/error/empty/data states), App **Studio ⇄ Dashboard** nav toggle, dashboard/stat-card/activity CSS. Revenue/users/conversion have **no source yet** → honest "—" (Phase 6); **recent activity is real** from `lib/storage.ts` saved designs. Frontend-only, no backend/data-model change. **vitest 45/45** (+10), typecheck/lint/build clean. |
@@ -175,7 +176,7 @@ db/schema.sql (not applied) · docs/ · STATUS.md · README.md · AI-Embroidery-
 |---|---|---|
 | App shell · api client · types · lib/* | 🟢 | pure libs unit-tested |
 | StitchCanvas · ColorObjectList · ThreadPalette · StitchPlayer · PropertiesPanel | 🟢 | select stops **+ objects** · recolor · rename · reorder · nearest-match · **edit stitch-type(+appliqué)/density/angle/underlay/pull-comp → rebuild** · animate |
-| **TrueView3D** + 2D/3D toggle | 🟢 | thread tubes + lighting + fabric; drag-rotate/zoom (**paint unverified — §12**) |
+| **TrueView3D** + 2D/3D toggle | 🟢 | thread tubes + lighting + fabric; drag-rotate/zoom (**render verified in Chrome — §12**) |
 | designStore | 🟢 | + reorderStop · **selectObject/updateObject/replaceDesign** · undo/redo |
 | Toolbar (Digitize/Lettering dialogs) | 🟡 | Open (embroidery **+ .stiq master**)/Digitize/Text/Save/Saved/Check/Export/Package/Worksheet/Undo/Redo live; manual digitizing tools TBD |
 | Local persistence (`lib/storage.ts`) | 🟢 | save/load/delete via localStorage (unit-tested); cloud = Phase 6 |
@@ -352,12 +353,12 @@ python tests/make_fixtures.py
 
 ## 🚧 12. Known Risks / Unverified Claims
 
-- **TrueView 3D paint NOT eyeballed** (headless, no browser): the geometry builder (`lib/thread3d.ts`) is
-  unit-tested, but nobody has confirmed the tubes actually render, the lighting/thread-radius look right, or
-  drag-rotate/zoom feel good. Open `:5173`, load a design, click **TrueView 3D**. Radius/lighting/camera are
-  first-guess — tell me what looks off and I'll tune (one axis at a time).
-- **In-browser event wiring NOT eyeballed:** canvas paint, click-select, recolor, reorder ▲▼, undo, and the
-  **Digitize / Text button flows**. Open `:5173`, load a fixture, digitize a PNG logo, and type some text — confirm all three.
+- ✅ **In-browser rendering VERIFIED (2026-07-04, Playwright + system Chrome).** Drove the real app at `:5173`
+  and captured screenshots: studio shell renders; **Open sample.dst → stitches paint on the Konva canvas**
+  + color list populates (87 st, 40×40mm); **click a stop → highlights + Properties editor opens**; **TrueView 3D
+  → lit thread tubes on a fabric plane in perspective**; **Digitize a PNG → correct tatami-filled circle+square,
+  nested object list, 935 st**; **Check → "✓ Ready to stitch" banner**. Only console msg: one `/favicon.ico` 404 (cosmetic).
+  (Remaining unverified: fine-grained interactions like drag-pan/undo-keys and PDF/zip *download* file contents, though their logic is tested.)
 - **Lettering v1 is tatami-filled** (not per-stroke satin — the classic look): fine for chunky text, heavier/blockier
   than pro satin lettering. Tiny lowercase (~8mm) can drop the dot on 'i'/'j'. Satin strokes = v1.1.
 - **Digitizer quality is approximate** (classical CV): uniform-background assumption, no pull-comp, only
