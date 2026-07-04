@@ -7,12 +7,12 @@
 | Field | Value |
 |---|---|
 | **Project** | STITCHIQ — AI-powered embroidery design & digitizing platform |
-| **Document version** | **v28** |
-| **Times updated** | **28** |
+| **Document version** | **v29** |
+| **Times updated** | **29** |
 | **Last updated** | 2026-07-04 |
-| **Current phase** | Phases 0–5 + 7 done; **Phase 6 essentially COMPLETE** — per-user **auth (signup/login)** + **cloud Save/Open** live on Supabase, verified in Chrome. Phases 8/9 AI remain |
+| **Current phase** | Phases 0–7 done incl. **Phase 6** (auth + cloud Save/Open + **real per-user Dashboard**), all verified in Chrome. Phases 8/9 AI remain |
 | **Git branch** | `main` |
-| **Latest code commit** | `0d96ee8` (Phase 6 auth + cloud UI) |
+| **Latest code commit** | `09a74ac` (real Dashboard from cloud data) |
 | **Working tree** | clean |
 | **Tracked files** | 100 |
 | **Location** | `/Users/INDIA/Downloads/EmDesign_Automater` |
@@ -31,8 +31,9 @@
    lit 3D thread preview; snap any color to the nearest catalog thread; edit density/angle/underlay/**pull-comp**.
    A **Check** button surfaces pre-export validation (hoop-fit blocks); **Save/Saved** persists designs in-browser;
    **Open** re-imports a master `.stiq.json`; the worksheet shows thread length per color; a **Studio ⇄ Dashboard**
-   nav toggle adds a metrics page. **Cloud persistence is now LIVE** — Save/list/open designs to a real
-   Supabase Postgres with **per-user auth (signup/login)** — cloud Save/Open in the UI. Verified: **pytest 69/69,
+   nav toggle adds a **real metrics page** (My designs / stitches / colors from the signed-in cloud account).
+   **Cloud persistence is LIVE** — Save/list/open designs to a real Supabase Postgres with **per-user auth
+   (signup/login)** — cloud Save/Open in the UI. Verified: **pytest 70/70,
    vitest 52/52**, e2e via Vite proxy, in-browser render confirmed in Chrome (§12), **+ live auth/cloud round-trip
    with multi-user isolation**.
 2. **Chosen scope (by the user):** build **vertically**, one phase at a time ([§14](#-14-full-project-roadmap-phases-010)).
@@ -63,7 +64,7 @@
 
 - **Stack:** TypeScript (React + Vite) frontend · Python (FastAPI) backend · PostgreSQL/Supabase (schema **applied & live** — designs CRUD).
 - **Built:** **Phases 0–5 essentially done**: open/parse, **image auto-digitize** (TATAMI + SATIN + underlay + **holes/counters**), **text lettering**, **object-level editing** (→ server rebuild), Konva render, full color-stop editing, **export any format + convert + full production package ZIP**, worksheet PDF.
-- **Verified:** **pytest 69/69** · **vitest 52/52** · typecheck/build · e2e lettering→digitize→edit→rebuild→validate→export/convert/package/thread-match through the Vite proxy · **live Supabase auth + per-user cloud CRUD (multi-user isolation) verified in Chrome**.
+- **Verified:** **pytest 70/70** · **vitest 52/52** · typecheck/build · e2e lettering→digitize→edit→rebuild→validate→export/convert/package/thread-match through the Vite proxy · **live Supabase auth + per-user cloud CRUD + real Dashboard (multi-user isolation) verified in Chrome**.
 - **Still stubbed:** neural AI/ML (Phases 8/9), satin-stroke lettering, password reset. (Auth + cloud sync are now live.)
 - **Next:** Phase 6 polish (password reset / Storage URLs), lettering v1.1, or push to GitHub (CI unverified).
 
@@ -75,6 +76,7 @@
 
 | # | Date | Author | Type | Summary |
 |---|------|--------|------|---------|
+| 29 | 2026-07-04 | Claude (Opus 4.8) | ✨ Feature | **Real per-user Dashboard from cloud data + toolbar wrap** — commit `09a74ac`. New `GET /api/designs/stats` (owner-scoped aggregate: design count, summed stitches/colors, recent list) → `services/supabase_store.design_stats`. `lib/dashboard.ts` rewritten: signed-in shows **real cloud metrics** (My designs / Total stitches / Colors used), signed-out falls back to this-browser saved designs (colors = "—", no local source); refetches on login/logout. Retires the placeholder revenue/users/conversion KPIs. Also fixed: the button-heavy toolbar now **flex-wraps** to a 2nd row instead of overflowing the page (the ☁ buttons had widened it past 1280px). **Verified in Chrome**: sign up → Open sample.dst → ☁ Save → Dashboard shows *My designs 1 · Total stitches 87 · Colors used 2* from cloud + recent activity. **pytest 69→70, vitest 52** (dashboard tests rewritten for the new shape); typecheck+build clean. |
 | 28 | 2026-07-04 | Claude (Opus 4.8) | ✨ Feature | **Phase 6 — per-user auth + cloud Save/Open UI (§8)** — commit `0d96ee8`. Backend `routers/auth.py` (signup/login/me over Supabase GoTrue; signup admin-creates a confirmed user then logs in) + `deps.current_user` (verifies bearer token → 401 when Supabase on, `local-dev` sentinel when off). `designs` CRUD now **scoped to the acting user** (list/get/delete filter by owner; create attributes to the user + mirrors auth.users→public.users). Frontend `lib/auth` + `store/authStore` + `AuthBar` (sign-in popover / logged-in email + logout) in the top nav; Toolbar **☁ Save / ☁ Open** (per-user cloud) beside local Save; client attaches bearer token, surfaces `{detail}` errors, handles 204. **Verified live in Chrome**: signup→logged-in→Open sample.dst→☁ Save→☁ Open lists it→reload keeps session; **multi-user isolation** over HTTP (B can't see/GET A's designs; unauth/bad-pw→401). **pytest 65→69, vitest 47→52**; typecheck+build clean. Phase 6 now essentially complete. |
 | 27 | 2026-07-04 | Claude (Opus 4.8) | ✨ Feature | **Phase 6 — Supabase cloud persistence (§8)** — commit `d93696d`. User provided real Supabase keys + DB password; **`db/schema.sql` (10 tables) applied to the live project** (via psycopg direct connection). `services/supabase_store.py` (PostgREST + Auth-admin over the service key; get-or-create system owner user for the RLS FK chain) + `designs.py` CRUD now persist to Supabase — create writes designs/design_objects/color_stops + a full-fidelity `design_versions` snapshot; get restores stitches+contours; delete cascades; **graceful in-memory fallback** keeps app + offline pytest running keyless. Seeded `thread_database` (5 threads). **Verified end-to-end over real HTTP against live Supabase**: POST→201 (uuid+ts), list, full-fidelity GET, DELETE→204→404. **pytest 65/65** (+2 `test_designs.py`); httpx→core dep. Secrets in gitignored `apps/backend/.env` only. *(Remaining Phase 6: per-user auth/login UI + frontend "cloud save" wiring — backend attributes to one system user for now.)* |
 | 26 | 2026-07-04 | Claude (Fable 5) | ✅ Verify | **In-browser render VERIFIED** (no code change). Drove the real app in system Chrome via Playwright + screenshots: shell, Open→canvas paints stitches, stop-select→highlight+Properties, TrueView 3D→lit thread tubes, Digitize PNG→correct fill + nested objects, Check→banner. Retires the long-standing "paint not eyeballed" caveat (§12). Only console msg: `/favicon.ico` 404 (cosmetic). |
@@ -171,6 +173,7 @@ db/schema.sql (**applied to live Supabase**) · docs/ · STATUS.md · README.md 
 | **`/threads/match`** | 🟢 | **nearest catalog thread (CIE Lab); 422 bad hex** |
 | **`/auth/signup`·`/login`·`/me`** | 🟢 | **Supabase GoTrue proxy; bearer-token gate (`deps.current_user`)** |
 | **`/designs` CRUD (POST/GET/GET id/DELETE)** | 🟢 | **owner-scoped Supabase persistence + version snapshot; keyless in-memory fallback** |
+| **`/designs/stats`** | 🟢 | **per-user aggregate (count · stitches · colors · recent) for the Dashboard** |
 
 ### Backend services
 | Function | Status |
@@ -188,14 +191,14 @@ db/schema.sql (**applied to live Supabase**) · docs/ · STATUS.md · README.md 
 | Local persistence (`lib/storage.ts`) | 🟢 | save/load/delete via localStorage (unit-tested); **cloud Save/Open now live too** |
 | **Auth + cloud sync (`lib/auth`,`authStore`,`AuthBar`)** | 🟢 | sign-in popover · session persists · ☁ Save/Open per-user (verified in Chrome) |
 | Master file (`lib/masterFile.ts`) | 🟢 | **Open** a `.stiq.json` → editable Design (objects/contours kept) · **Master** button downloads it (round-trip tested) |
-| **Studio Dashboard** + Studio⇄Dashboard nav | 🟢 | metrics page; KPIs honest "—" (no source until Phase 6), recent-activity real from saved designs (parallel session, `7cc6c96`) |
-| **Dashboard** (`lib/dashboard.ts` + `Dashboard.tsx`) | 🟢 | Studio ⇄ Dashboard nav; KPI tiles (revenue/users/conversion → "—", no source until Phase 6) + **real recent activity** from saved designs; loading/error/empty states; pure logic unit-tested |
+| **Studio Dashboard** + Studio⇄Dashboard nav | 🟢 | **real per-user metrics** (My designs / stitches / colors) from cloud `/api/designs/stats` when signed in; local fallback when not |
+| **Dashboard** (`lib/dashboard.ts` + `Dashboard.tsx`) | 🟢 | signed-in → **real cloud KPIs** + recent activity; signed-out → this-browser saved designs (colors "—"); refetches on login/logout; loading/error/empty states; pure logic unit-tested |
 
 ### Infrastructure
 | Item | Status | Notes |
 |---|---|---|
 | Monorepo · shared data model | 🟢 | camelCase-on-wire verified |
-| Tests | 🟡 | **pytest 69 + vitest 52**; CI config written (**unverified — no remote**) |
+| Tests | 🟡 | **pytest 70 + vitest 52**; CI config written (**unverified — no remote**) |
 | **DB schema applied · Supabase designs CRUD** | 🟢 | 10 tables live; `services/supabase_store.py` create/list/get/delete verified over HTTP (§8) |
 | **Per-user auth (signup/login) + cloud Save/Open** | 🟢 | GoTrue proxy · bearer-token gate · owner-scoped CRUD; verified in Chrome (§8) |
 | Deploy · AI/ML · `.STIQ` binary | 🔴 | Phases 8 / X |
@@ -346,7 +349,7 @@ python tests/make_fixtures.py
 ### Baseline (last confirmed 2026-07-01, Update #7)
 | Check | Command | Expected | Result |
 |---|---|---|---|
-| Backend tests | `python -m pytest tests -q` | **69 passed** | ✅ |
+| Backend tests | `python -m pytest tests -q` | **70 passed** | ✅ |
 | Frontend tests | `npm test -w apps/frontend` | **vitest 52 passed** | ✅ |
 | Supabase CRUD e2e | POST/GET/DELETE `:8000/api/designs` (live project) | 201 (uuid) · full-fidelity GET · 204→404 | ✅ |
 | Rebuild e2e | digitize → halve density → `:5173/api/designs/rebuild` | fewer stitches, bounds stable; imported → 422 | ✅ |
