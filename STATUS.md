@@ -7,14 +7,14 @@
 | Field | Value |
 |---|---|
 | **Project** | STITCHIQ — AI-powered embroidery design & digitizing platform |
-| **Document version** | **v18** |
-| **Times updated** | **18** |
+| **Document version** | **v19** |
+| **Times updated** | **19** |
 | **Last updated** | 2026-07-04 |
-| **Current phase** | **Phases 0–5 + 7 done**; §4.3/§4.4/§4.6/§4.8-validate complete. Only Phase 6 (Supabase) + 8/9 AI remain |
+| **Current phase** | **Phases 0–5 + 7 done**; local save/load added. Phase 6 = *cloud* sync (Supabase); 8/9 AI remain |
 | **Git branch** | `main` |
-| **Latest code commit** | `9dae09e` (pre-export validation UI) |
+| **Latest code commit** | `e7ba3d3` (local design persistence) |
 | **Working tree** | clean |
-| **Tracked files** | 83 |
+| **Tracked files** | 85 |
 | **Location** | `/Users/INDIA/Downloads/EmDesign_Automater` |
 
 ---
@@ -29,7 +29,7 @@
    Export to .DST/.PES/.JEF/.EXP/.VP3, convert via API, or download a **full production package ZIP**
    (machine file + master + worksheet + color card + preview + summary). A **2D/TrueView-3D** toggle shows a
    lit 3D thread preview; snap any color to the nearest catalog thread; edit density/angle/underlay/**pull-comp**.
-   A **Check** button surfaces pre-export validation. Verified: **pytest 59/59, vitest 25/25**, e2e via Vite proxy (3D paint not eyeballed — §12).
+   A **Check** button surfaces pre-export validation; **Save/Saved** persists designs in-browser. Verified: **pytest 59/59, vitest 30/30**, e2e via Vite proxy (3D paint not eyeballed — §12).
 2. **Chosen scope (by the user):** build **vertically**, one phase at a time ([§14](#-14-full-project-roadmap-phases-010)).
 3. **Next task (pick one):** (a) **Phase 6** — Supabase persistence/auth (apply `db/schema.sql`, wire
    `designs` CRUD + Storage; **needs user's Supabase keys — blocked**); (b) **lettering v1.1** (per-stroke
@@ -57,7 +57,7 @@
 
 - **Stack:** TypeScript (React + Vite) frontend · Python (FastAPI) backend · PostgreSQL/Supabase (schema written, not applied).
 - **Built:** **Phases 0–5 essentially done**: open/parse, **image auto-digitize** (TATAMI + SATIN + underlay + **holes/counters**), **text lettering**, **object-level editing** (→ server rebuild), Konva render, full color-stop editing, **export any format + convert + full production package ZIP**, worksheet PDF.
-- **Verified:** **pytest 59/59** · **vitest 25/25** · typecheck/build · e2e lettering→digitize→edit→rebuild→validate→export/convert/package/thread-match through the Vite proxy.
+- **Verified:** **pytest 59/59** · **vitest 30/30** · typecheck/build · e2e lettering→digitize→edit→rebuild→validate→export/convert/package/thread-match through the Vite proxy.
 - **Still stubbed:** thread nearest-match, design persistence/auth, TrueView 3D, AI/ML, satin-stroke lettering.
 - **Next:** Phase 6 (Supabase persistence — **blocked on user keys**), thread nearest-match, or lettering v1.1. *(In-browser event wiring not eyeballed — §12.)*
 
@@ -69,6 +69,7 @@
 
 | # | Date | Author | Type | Summary |
 |---|------|--------|------|---------|
+| 19 | 2026-07-04 | Claude (Fable 5) | ✨ Feature | **Local design persistence (save/load in-browser)** — commit `e7ba3d3`. `lib/storage.ts` (localStorage save/list/load/delete, injectable KV → unit-tested); store `setDesignId`; Toolbar **Save** + **Saved (n)** popover (load/delete). Closes "lose your work on refresh" without keys; cloud sync stays Phase 6. **vitest 30/30** (+5). |
 | 18 | 2026-07-04 | Claude (Fable 5) | ✨ Feature | **Pre-export validation surfaced in the UI (§4.8)** — commit `9dae09e`. Toolbar **Check** button + validate-before-Export; dismissible report banner (blocking issues vs warnings vs all-clear). `/api/export/validate` existed since Phase 1 but was untested/unwired — now `test_validate.py` (empty/ok/oversize/long-stitch). **pytest 59/59** (+4); e2e via proxy. |
 | 17 | 2026-07-03 | Claude (Fable 5) | ✨ Feature | **Appliqué stitch type (§4.3) + satin hardening** — commit `b1a6c35`. rebuild APPLIQUE branch = placement outline → tackdown → 2mm satin border (`_run_along`/`_satin_border`/`_resample_closed`); `_satin_zigzag` subdivides cross-width zigs so wide columns stay ≤12.7mm; PropertiesPanel stitch-type selector. **pytest 55/55** (+4); e2e: 2 objs→APPLIQUE→1220 st, max 2.0mm, exports PES. |
 | 16 | 2026-07-03 | Claude (Fable 5) | ✨ Feature | **Pull compensation (§4.6)** — commit `407a327`. Wires up the dead `DesignObject.pull_compensation` field: digitizer assigns a fabric-dependent default (knit 0.4–0.5, woven 0.15–0.2mm) and dilates the top fill/satin to counter fabric pull; rebuild honors edits; PropertiesPanel pull-comp input. **pytest 51/51** (+4); e2e: pull 0→1mm widens 71.5→72.25mm. v1 = uniform dilation (directional is future). |
@@ -168,13 +169,14 @@ db/schema.sql (not applied) · docs/ · STATUS.md · README.md · AI-Embroidery-
 | StitchCanvas · ColorObjectList · ThreadPalette · StitchPlayer · PropertiesPanel | 🟢 | select stops **+ objects** · recolor · rename · reorder · nearest-match · **edit stitch-type(+appliqué)/density/angle/underlay/pull-comp → rebuild** · animate |
 | **TrueView3D** + 2D/3D toggle | 🟢 | thread tubes + lighting + fabric; drag-rotate/zoom (**paint unverified — §12**) |
 | designStore | 🟢 | + reorderStop · **selectObject/updateObject/replaceDesign** · undo/redo |
-| Toolbar (Digitize/Lettering dialogs) | 🟡 | Open/Digitize/Text/**Check**/Export/Package/Worksheet/Undo/Redo live; manual digitizing tools TBD |
+| Toolbar (Digitize/Lettering dialogs) | 🟡 | Open/Digitize/Text/**Save/Saved**/Check/Export/Package/Worksheet/Undo/Redo live; manual digitizing tools TBD |
+| Local persistence (`lib/storage.ts`) | 🟢 | save/load/delete via localStorage (unit-tested); cloud = Phase 6 |
 
 ### Infrastructure
 | Item | Status | Notes |
 |---|---|---|
 | Monorepo · shared data model | 🟢 | camelCase-on-wire verified |
-| Tests | 🟡 | **pytest 59 + vitest 25**; CI config written (**unverified — no remote**) |
+| Tests | 🟡 | **pytest 59 + vitest 30**; CI config written (**unverified — no remote**) |
 | DB applied · Supabase · deploy · AI/ML · `.STIQ` | 🔴 | Phases 6/8/X |
 
 ---
@@ -324,7 +326,7 @@ python tests/make_fixtures.py
 | Check | Command | Expected | Result |
 |---|---|---|---|
 | Backend tests | `python -m pytest tests -q` | **59 passed** | ✅ |
-| Frontend tests | `npm test -w apps/frontend` | **vitest 25 passed** | ✅ |
+| Frontend tests | `npm test -w apps/frontend` | **vitest 30 passed** | ✅ |
 | Rebuild e2e | digitize → halve density → `:5173/api/designs/rebuild` | fewer stitches, bounds stable; imported → 422 | ✅ |
 | Underlay e2e | digitize (EDGE_WALK default) → rebuild with NONE | 1011 → 790 stitches | ✅ |
 | Convert e2e | dst→jef via `:5173/api/convert` | valid JEF, threads kept, warning | ✅ |
@@ -424,7 +426,7 @@ types (double-zigzag/parallel/contour) are Phase 8.
 Implemented in `services/embroidery_io.py`, `worksheet_pdf.py`, `threads.py`, `digitizer.py`; routers
 `files`/`digitize`/`export`/`worksheet`/`threads`; frontend `StitchCanvas`, `lib/stitches.ts`, `Toolbar`,
 `StitchPlayer`, panels, `store/designStore`, `api/client`.
-Verify: `pytest -q` (59) + `npm test` (25). Manual: Open `tests/fixtures/sample.dst` **and** Digitize a PNG
+Verify: `pytest -q` (59) + `npm test` (30). Manual: Open `tests/fixtures/sample.dst` **and** Digitize a PNG
 (params dialog appears); click a stop or object, recolor, edit density/underlay → Apply, reorder ▲▼, undo, Export, Worksheet.
 
 ---
