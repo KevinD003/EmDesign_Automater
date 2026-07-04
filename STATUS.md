@@ -7,14 +7,14 @@
 | Field | Value |
 |---|---|
 | **Project** | STITCHIQ — AI-powered embroidery design & digitizing platform |
-| **Document version** | **v29** |
-| **Times updated** | **29** |
+| **Document version** | **v30** |
+| **Times updated** | **30** |
 | **Last updated** | 2026-07-04 |
-| **Current phase** | Phases 0–7 done incl. **Phase 6** (auth + cloud Save/Open + **real per-user Dashboard**), all verified in Chrome. Phases 8/9 AI remain |
+| **Current phase** | Phases 0–7 done + **Phase 8 v1** (path optimization + quality analysis, classical baseline), all verified in Chrome. Phase 8/9 *neural* AI remains (needs GPU/data) |
 | **Git branch** | `main` |
-| **Latest code commit** | `09a74ac` (real Dashboard from cloud data) |
+| **Latest code commit** | `fe2482d` (Phase 8 optimization engine) |
 | **Working tree** | clean |
-| **Tracked files** | 100 |
+| **Tracked files** | 103 |
 | **Location** | `/Users/INDIA/Downloads/EmDesign_Automater` |
 
 ---
@@ -33,7 +33,8 @@
    **Open** re-imports a master `.stiq.json`; the worksheet shows thread length per color; a **Studio ⇄ Dashboard**
    nav toggle adds a **real metrics page** (My designs / stitches / colors from the signed-in cloud account).
    **Cloud persistence is LIVE** — Save/list/open designs to a real Supabase Postgres with **per-user auth
-   (signup/login)** — cloud Save/Open in the UI. Verified: **pytest 70/70,
+   (signup/login)** — cloud Save/Open in the UI. **Phase 8 v1**: **Optimize** (cut stitch-path travel) +
+   **Quality** (score + findings) buttons. Verified: **pytest 75/75,
    vitest 52/52**, e2e via Vite proxy, in-browser render confirmed in Chrome (§12), **+ live auth/cloud round-trip
    with multi-user isolation**.
 2. **Chosen scope (by the user):** build **vertically**, one phase at a time ([§14](#-14-full-project-roadmap-phases-010)).
@@ -64,8 +65,8 @@
 
 - **Stack:** TypeScript (React + Vite) frontend · Python (FastAPI) backend · PostgreSQL/Supabase (schema **applied & live** — designs CRUD).
 - **Built:** **Phases 0–5 essentially done**: open/parse, **image auto-digitize** (TATAMI + SATIN + underlay + **holes/counters**), **text lettering**, **object-level editing** (→ server rebuild), Konva render, full color-stop editing, **export any format + convert + full production package ZIP**, worksheet PDF.
-- **Verified:** **pytest 70/70** · **vitest 52/52** · typecheck/build · e2e lettering→digitize→edit→rebuild→validate→export/convert/package/thread-match through the Vite proxy · **live Supabase auth + per-user cloud CRUD + real Dashboard (multi-user isolation) verified in Chrome**.
-- **Still stubbed:** neural AI/ML (Phases 8/9), satin-stroke lettering, password reset. (Auth + cloud sync are now live.)
+- **Verified:** **pytest 75/75** · **vitest 52/52** · typecheck/build · e2e lettering→digitize→edit→rebuild→validate→export/convert/package/thread-match/**optimize+quality** through the Vite proxy · **live Supabase auth + per-user cloud CRUD + real Dashboard + Phase 8 path-opt (multi-user isolation) verified in Chrome**.
+- **Still stubbed:** *neural* AI/ML (learned digitizing, text-to-design — Phases 8/9, need GPU/data), satin-stroke lettering, password reset. (Auth, cloud sync, path-opt + quality scoring are live.)
 - **Next:** Phase 6 polish (password reset / Storage URLs), lettering v1.1, or push to GitHub (CI unverified).
 
 ---
@@ -76,6 +77,7 @@
 
 | # | Date | Author | Type | Summary |
 |---|------|--------|------|---------|
+| 30 | 2026-07-04 | Claude (Opus 4.8) | ✨ Feature | **Phase 8 v1 — optimization engine (path opt + quality)** — commit `fe2482d`. Classical/deterministic baseline (neural digitizing & text-to-design need GPU/data → future). `services/optimizer.py`: **`optimize_path`** — since `rebuild_design` already groups objects by color, the win is a **nearest-neighbour tour within each color** to cut needle travel/jumps → reassign sequence_order + rebuild; returns before/after metrics; no-op when not regenerable or no gain. **`analyze_quality`** — 0–100 score + grade + findings (over-long >12.7mm stitches, sub-0.5mm stitches, excessive color changes/jumps). New `POST /api/optimize/{path,quality}` + models (PathMetrics/OptimizeReport/OptimizeResult/QualityFinding/QualityReport, TS mirror). Toolbar **Quality** + **Optimize** buttons with report banners; Optimize uses `replaceDesign` (Undo reverts). **Verified in Chrome**: digitize 8-object logo → Quality **A·100/100** → Optimize cut travel **328.8→272.9mm (−55.9mm)**, objects renumbered, Undo works. **pytest 70→75** (+5); vitest 52; typecheck+build clean. |
 | 29 | 2026-07-04 | Claude (Opus 4.8) | ✨ Feature | **Real per-user Dashboard from cloud data + toolbar wrap** — commit `09a74ac`. New `GET /api/designs/stats` (owner-scoped aggregate: design count, summed stitches/colors, recent list) → `services/supabase_store.design_stats`. `lib/dashboard.ts` rewritten: signed-in shows **real cloud metrics** (My designs / Total stitches / Colors used), signed-out falls back to this-browser saved designs (colors = "—", no local source); refetches on login/logout. Retires the placeholder revenue/users/conversion KPIs. Also fixed: the button-heavy toolbar now **flex-wraps** to a 2nd row instead of overflowing the page (the ☁ buttons had widened it past 1280px). **Verified in Chrome**: sign up → Open sample.dst → ☁ Save → Dashboard shows *My designs 1 · Total stitches 87 · Colors used 2* from cloud + recent activity. **pytest 69→70, vitest 52** (dashboard tests rewritten for the new shape); typecheck+build clean. |
 | 28 | 2026-07-04 | Claude (Opus 4.8) | ✨ Feature | **Phase 6 — per-user auth + cloud Save/Open UI (§8)** — commit `0d96ee8`. Backend `routers/auth.py` (signup/login/me over Supabase GoTrue; signup admin-creates a confirmed user then logs in) + `deps.current_user` (verifies bearer token → 401 when Supabase on, `local-dev` sentinel when off). `designs` CRUD now **scoped to the acting user** (list/get/delete filter by owner; create attributes to the user + mirrors auth.users→public.users). Frontend `lib/auth` + `store/authStore` + `AuthBar` (sign-in popover / logged-in email + logout) in the top nav; Toolbar **☁ Save / ☁ Open** (per-user cloud) beside local Save; client attaches bearer token, surfaces `{detail}` errors, handles 204. **Verified live in Chrome**: signup→logged-in→Open sample.dst→☁ Save→☁ Open lists it→reload keeps session; **multi-user isolation** over HTTP (B can't see/GET A's designs; unauth/bad-pw→401). **pytest 65→69, vitest 47→52**; typecheck+build clean. Phase 6 now essentially complete. |
 | 27 | 2026-07-04 | Claude (Opus 4.8) | ✨ Feature | **Phase 6 — Supabase cloud persistence (§8)** — commit `d93696d`. User provided real Supabase keys + DB password; **`db/schema.sql` (10 tables) applied to the live project** (via psycopg direct connection). `services/supabase_store.py` (PostgREST + Auth-admin over the service key; get-or-create system owner user for the RLS FK chain) + `designs.py` CRUD now persist to Supabase — create writes designs/design_objects/color_stops + a full-fidelity `design_versions` snapshot; get restores stitches+contours; delete cascades; **graceful in-memory fallback** keeps app + offline pytest running keyless. Seeded `thread_database` (5 threads). **Verified end-to-end over real HTTP against live Supabase**: POST→201 (uuid+ts), list, full-fidelity GET, DELETE→204→404. **pytest 65/65** (+2 `test_designs.py`); httpx→core dep. Secrets in gitignored `apps/backend/.env` only. *(Remaining Phase 6: per-user auth/login UI + frontend "cloud save" wiring — backend attributes to one system user for now.)* |
@@ -174,6 +176,7 @@ db/schema.sql (**applied to live Supabase**) · docs/ · STATUS.md · README.md 
 | **`/auth/signup`·`/login`·`/me`** | 🟢 | **Supabase GoTrue proxy; bearer-token gate (`deps.current_user`)** |
 | **`/designs` CRUD (POST/GET/GET id/DELETE)** | 🟢 | **owner-scoped Supabase persistence + version snapshot; keyless in-memory fallback** |
 | **`/designs/stats`** | 🟢 | **per-user aggregate (count · stitches · colors · recent) for the Dashboard** |
+| **`/optimize/path`** · **`/optimize/quality`** | 🟢 | **Phase 8: nearest-neighbour path opt (cut travel/jumps) · 0–100 quality score + findings** |
 
 ### Backend services
 | Function | Status |
@@ -198,7 +201,7 @@ db/schema.sql (**applied to live Supabase**) · docs/ · STATUS.md · README.md 
 | Item | Status | Notes |
 |---|---|---|
 | Monorepo · shared data model | 🟢 | camelCase-on-wire verified |
-| Tests | 🟡 | **pytest 70 + vitest 52**; CI config written (**unverified — no remote**) |
+| Tests | 🟡 | **pytest 75 + vitest 52**; CI config written (**unverified — no remote**) |
 | **DB schema applied · Supabase designs CRUD** | 🟢 | 10 tables live; `services/supabase_store.py` create/list/get/delete verified over HTTP (§8) |
 | **Per-user auth (signup/login) + cloud Save/Open** | 🟢 | GoTrue proxy · bearer-token gate · owner-scoped CRUD; verified in Chrome (§8) |
 | Deploy · AI/ML · `.STIQ` binary | 🔴 | Phases 8 / X |
@@ -349,7 +352,7 @@ python tests/make_fixtures.py
 ### Baseline (last confirmed 2026-07-01, Update #7)
 | Check | Command | Expected | Result |
 |---|---|---|---|
-| Backend tests | `python -m pytest tests -q` | **70 passed** | ✅ |
+| Backend tests | `python -m pytest tests -q` | **75 passed** | ✅ |
 | Frontend tests | `npm test -w apps/frontend` | **vitest 52 passed** | ✅ |
 | Supabase CRUD e2e | POST/GET/DELETE `:8000/api/designs` (live project) | 201 (uuid) · full-fidelity GET · 204→404 | ✅ |
 | Rebuild e2e | digitize → halve density → `:5173/api/designs/rebuild` | fewer stitches, bounds stable; imported → 422 | ✅ |
@@ -410,7 +413,7 @@ Entities: `Stitch` · `StitchType`/`UnderlayType`/`ConnectMethod` · `Thread` ·
 | 5 | Production output & formats | 🟢 **Done** | M | convert + multi-format export + production package ZIP + brand map |
 | 6 | Persistence & accounts (Supabase) | 🟢 **Done (v1)** | M | schema applied · **auth (signup/login)** · owner-scoped cloud CRUD + version snapshots ✅ · teams/password-reset = later |
 | 7 | TrueView 3D simulation | 🟢 **Done** | L | lit thread tubes + fabric, drag/zoom (**render verified in Chrome**) |
-| 8 | AI engine (+ thread match) | ⬜ | XL | neural digitizing, path opt, quality scoring |
+| 8 | AI engine (+ thread match) | 🟡 **v1** | XL | ✅ thread match · ✅ **path optimization** · ✅ **quality scoring** (classical); neural digitizing = future (GPU/data) |
 | 9 | Generative & assistant | ⬜ | XL | text-to-design, STITCH-GPT |
 | 10 | Platform & scale | ⬜ | XL | collab, cloud API, mobile |
 | X | Cross-cutting (tests/CI/deploy/security) | 🟡 Ongoing | — | ships everything safely |
