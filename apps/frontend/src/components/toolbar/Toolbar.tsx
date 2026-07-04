@@ -1,8 +1,9 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ChangeEvent } from 'react';
 import { useDesignStore } from '../../store/designStore';
 import { api } from '../../api/client';
 import type { ValidationReport } from '../../types/design';
+import { browserKV, deleteDesign, listSaved, loadDesign, saveDesign, type SavedMeta } from '../../lib/storage';
 import { DigitizeDialog } from '../dialogs/DigitizeDialog';
 import type { DigitizeParams } from '../dialogs/DigitizeDialog';
 import { LetteringDialog } from '../dialogs/LetteringDialog';
@@ -25,6 +26,7 @@ function download(blob: Blob, filename: string) {
 export function Toolbar() {
   const design = useDesignStore((s) => s.design);
   const setDesign = useDesignStore((s) => s.setDesign);
+  const setDesignId = useDesignStore((s) => s.setDesignId);
   const undo = useDesignStore((s) => s.undo);
   const redo = useDesignStore((s) => s.redo);
   const canUndo = useDesignStore((s) => s.past.length > 0);
@@ -37,6 +39,17 @@ export function Toolbar() {
   const [showLettering, setShowLettering] = useState(false);
   const [exportFormat, setExportFormat] = useState('dst');
   const [report, setReport] = useState<ValidationReport | null>(null);
+  const [saved, setSaved] = useState<SavedMeta[]>([]);
+  const [showSaved, setShowSaved] = useState(false);
+
+  const refreshSaved = () => {
+    try {
+      setSaved(listSaved(browserKV()));
+    } catch {
+      /* localStorage unavailable */
+    }
+  };
+  useEffect(refreshSaved, []);
 
   const run = async (fn: () => Promise<void>) => {
     setBusy(true);
@@ -88,6 +101,25 @@ export function Toolbar() {
     run(async () => download(await api.exportPackage(design, exportFormat), `${stem}-package.zip`));
   const onWorksheet = () => design && run(async () => download(await api.worksheetPdf(design), `${stem}-worksheet.pdf`));
 
+  const onSave = () =>
+    design &&
+    run(async () => {
+      const meta = saveDesign(design, browserKV());
+      setDesignId(meta.id); // subsequent saves overwrite (no history churn)
+      refreshSaved();
+    });
+  const onLoad = (id: string) => {
+    const d = loadDesign(id, browserKV());
+    if (d) {
+      setDesign(d);
+      setShowSaved(false);
+    }
+  };
+  const onDelete = (id: string) => {
+    deleteDesign(id, browserKV());
+    refreshSaved();
+  };
+
   return (
     <header className="toolbar">
       <span className="brand">🧵 STITCHIQ</span>
@@ -131,6 +163,19 @@ export function Toolbar() {
             </option>
           ))}
         </select>
+        <button type="button" onClick={onSave} disabled={!design || busy} title="Save to this browser">
+          Save
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            refreshSaved();
+            setShowSaved((v) => !v);
+          }}
+          title="Saved designs"
+        >
+          Saved ({saved.length})
+        </button>
         <button type="button" onClick={onCheck} disabled={!design || busy} title="Pre-export validation">
           Check
         </button>
@@ -158,6 +203,23 @@ export function Toolbar() {
       )}
       {showLettering && (
         <LetteringDialog onCancel={() => setShowLettering(false)} onConfirm={onLetteringConfirm} />
+      )}
+      {showSaved && (
+        <div className="saved-panel">
+          <button type="button" className="vr-close" onClick={() => setShowSaved(false)} aria-label="Close">
+            ×
+          </button>
+          <strong>Saved designs</strong>
+          {saved.length === 0 && <div className="muted small">Nothing saved in this browser yet.</div>}
+          {saved.map((m) => (
+            <div key={m.id} className="saved-row">
+              <span className="saved-name" title={m.name}>{m.name}</span>
+              <span className="muted saved-meta">{m.stitchCount.toLocaleString()} st</span>
+              <button type="button" onClick={() => onLoad(m.id)}>Load</button>
+              <button type="button" className="saved-del" onClick={() => onDelete(m.id)} aria-label="Delete">✕</button>
+            </div>
+          ))}
+        </div>
       )}
       {report && (
         <div className={`validation-report${report.passed ? '' : ' has-issues'}`}>

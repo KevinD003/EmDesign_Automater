@@ -15,6 +15,8 @@ interface DesignState {
   past: Design[];
   future: Design[];
   setDesign: (design: Design | null) => void;
+  /** Set the current design's id (after a local save) WITHOUT touching undo history. */
+  setDesignId: (id: string) => void;
   /** Swap in a server-modified design (e.g. after /designs/rebuild), KEEPING selection + history. */
   replaceDesign: (design: Design) => void;
   selectStop: (stopNumber: number | null) => void;
@@ -39,6 +41,7 @@ export const useDesignStore = create<DesignState>((set) => ({
   future: [],
   setDesign: (design) =>
     set({ design, playHead: null, selectedStop: null, selectedObject: null, past: [], future: [] }),
+  setDesignId: (id) => set((state) => (state.design ? { design: { ...state.design, id } } : {})),
   replaceDesign: (design) =>
     set((state) => (state.design ? { design, past: push(state.past, state.design), future: [] } : { design })),
   selectStop: (stopNumber) => set({ selectedStop: stopNumber, selectedObject: null }),
