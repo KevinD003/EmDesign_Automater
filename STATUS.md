@@ -7,14 +7,14 @@
 | Field | Value |
 |---|---|
 | **Project** | STITCHIQ — AI-powered embroidery design & digitizing platform |
-| **Document version** | **v20** |
-| **Times updated** | **20** |
+| **Document version** | **v23** |
+| **Times updated** | **23** |
 | **Last updated** | 2026-07-04 |
-| **Current phase** | **Phases 0–5 + 7 done**; local save/load + Studio dashboard added. Phase 6 = *cloud* sync (Supabase); 8/9 AI remain |
+| **Current phase** | **Phases 0–5 + 7 done** + master re-open, stronger validation, thread-length, **Studio dashboard**. Phase 6 = *cloud* sync (**blocked on keys**); 8/9 AI remain |
 | **Git branch** | `main` |
-| **Latest code commit** | `e7ba3d3` (local design persistence) — dashboard uncommitted |
-| **Working tree** | dashboard feature (uncommitted) |
-| **Tracked files** | 85 |
+| **Latest code commit** | `7cc6c96` (Studio dashboard) |
+| **Working tree** | clean |
+| **Tracked files** | 90 |
 | **Location** | `/Users/INDIA/Downloads/EmDesign_Automater` |
 
 ---
@@ -29,7 +29,9 @@
    Export to .DST/.PES/.JEF/.EXP/.VP3, convert via API, or download a **full production package ZIP**
    (machine file + master + worksheet + color card + preview + summary). A **2D/TrueView-3D** toggle shows a
    lit 3D thread preview; snap any color to the nearest catalog thread; edit density/angle/underlay/**pull-comp**.
-   A **Check** button surfaces pre-export validation; **Save/Saved** persists designs in-browser. Verified: **pytest 59/59, vitest 30/30**, e2e via Vite proxy (3D paint not eyeballed — §12).
+   A **Check** button surfaces pre-export validation (hoop-fit blocks); **Save/Saved** persists designs in-browser;
+   **Open** re-imports a master `.stiq.json`; the worksheet shows thread length per color; a **Studio ⇄ Dashboard**
+   nav toggle adds a metrics page. Verified: **pytest 63/63, vitest 45/45**, e2e via Vite proxy (3D paint not eyeballed — §12).
 2. **Chosen scope (by the user):** build **vertically**, one phase at a time ([§14](#-14-full-project-roadmap-phases-010)).
 3. **Next task (pick one):** (a) **Phase 6** — Supabase persistence/auth (apply `db/schema.sql`, wire
    `designs` CRUD + Storage; **needs user's Supabase keys — blocked**); (b) **lettering v1.1** (per-stroke
@@ -57,7 +59,7 @@
 
 - **Stack:** TypeScript (React + Vite) frontend · Python (FastAPI) backend · PostgreSQL/Supabase (schema written, not applied).
 - **Built:** **Phases 0–5 essentially done**: open/parse, **image auto-digitize** (TATAMI + SATIN + underlay + **holes/counters**), **text lettering**, **object-level editing** (→ server rebuild), Konva render, full color-stop editing, **export any format + convert + full production package ZIP**, worksheet PDF.
-- **Verified:** **pytest 59/59** · **vitest 30/30** · typecheck/build · e2e lettering→digitize→edit→rebuild→validate→export/convert/package/thread-match through the Vite proxy.
+- **Verified:** **pytest 63/63** · **vitest 45/45** · typecheck/build · e2e lettering→digitize→edit→rebuild→validate→export/convert/package/thread-match through the Vite proxy.
 - **Still stubbed:** thread nearest-match, design persistence/auth, TrueView 3D, AI/ML, satin-stroke lettering.
 - **Next:** Phase 6 (Supabase persistence — **blocked on user keys**), thread nearest-match, or lettering v1.1. *(In-browser event wiring not eyeballed — §12.)*
 
@@ -69,7 +71,10 @@
 
 | # | Date | Author | Type | Summary |
 |---|------|--------|------|---------|
-| 20 | 2026-07-04 | Claude (Opus 4.8) | ✨ Feature | **Studio dashboard page (Phase 6 groundwork)** — uncommitted. `lib/dashboard.ts` (pure: formatters + activity derivation + `fetchDashboard`, unit-tested), `components/dashboard/Dashboard.tsx` (loading/error/empty/data states), App **Studio ⇄ Dashboard** nav toggle, dashboard/stat-card/activity CSS. Revenue/users/conversion have **no source yet** → honest "—" (Phase 6); **recent activity is real** from `lib/storage.ts` saved designs. Frontend-only, no backend/data-model change. **vitest 45/45** (+10), typecheck/lint/build clean. |
+| 23 | 2026-07-04 | Claude (Opus 4.8) | ✨ Feature | **Studio dashboard page (Phase 6 groundwork)** — commit `7cc6c96`. `lib/dashboard.ts` (pure: formatters + activity derivation + `fetchDashboard`, unit-tested), `components/dashboard/Dashboard.tsx` (loading/error/empty/data states), App **Studio ⇄ Dashboard** nav toggle, dashboard/stat-card/activity CSS. Revenue/users/conversion have **no source yet** → honest "—" (Phase 6); **recent activity is real** from `lib/storage.ts` saved designs. Frontend-only, no backend/data-model change. **vitest 45/45** (+10), typecheck/lint/build clean. |
+| 22 | 2026-07-04 | Claude (Fable 5) | ✨ Feature | **Thread length per color on the worksheet (§4.9)** — commit `b3e977e`. `build_worksheet` computes thread consumed per color (STITCH segment sum; jumps break the run) → `WorksheetColorRow.threadLengthMm` (TS+Pydantic); PDF shows metres. **pytest 63/63** (+1). |
+| 21 | 2026-07-04 | Claude (Fable 5) | ✨ Feature | **Stronger pre-export validation (§4.8)** — commit `5e4f06f`. Hoop-fit is now a blocking issue (design bigger than its hoop can't be stitched); >15 color changes warns. **pytest 62/62** (+3). |
+| 20 | 2026-07-04 | Claude (Fable 5) | ✨ Feature | **Re-open master .stiq.json** — commit `d23c24e`. `lib/masterFile.ts` parseMasterDesign (JSON → validated Design, keeps objects/contours) + isMasterFilename; Toolbar Open routes .json → local parse, embroidery → backend. Closes the export→edit→re-open loop. **vitest 35/35** (+5); export→import contract verified vs a real package zip. |
 | 19 | 2026-07-04 | Claude (Fable 5) | ✨ Feature | **Local design persistence (save/load in-browser)** — commit `e7ba3d3`. `lib/storage.ts` (localStorage save/list/load/delete, injectable KV → unit-tested); store `setDesignId`; Toolbar **Save** + **Saved (n)** popover (load/delete). Closes "lose your work on refresh" without keys; cloud sync stays Phase 6. **vitest 30/30** (+5). |
 | 18 | 2026-07-04 | Claude (Fable 5) | ✨ Feature | **Pre-export validation surfaced in the UI (§4.8)** — commit `9dae09e`. Toolbar **Check** button + validate-before-Export; dismissible report banner (blocking issues vs warnings vs all-clear). `/api/export/validate` existed since Phase 1 but was untested/unwired — now `test_validate.py` (empty/ok/oversize/long-stitch). **pytest 59/59** (+4); e2e via proxy. |
 | 17 | 2026-07-03 | Claude (Fable 5) | ✨ Feature | **Appliqué stitch type (§4.3) + satin hardening** — commit `b1a6c35`. rebuild APPLIQUE branch = placement outline → tackdown → 2mm satin border (`_run_along`/`_satin_border`/`_resample_closed`); `_satin_zigzag` subdivides cross-width zigs so wide columns stay ≤12.7mm; PropertiesPanel stitch-type selector. **pytest 55/55** (+4); e2e: 2 objs→APPLIQUE→1220 st, max 2.0mm, exports PES. |
@@ -170,15 +175,17 @@ db/schema.sql (not applied) · docs/ · STATUS.md · README.md · AI-Embroidery-
 | StitchCanvas · ColorObjectList · ThreadPalette · StitchPlayer · PropertiesPanel | 🟢 | select stops **+ objects** · recolor · rename · reorder · nearest-match · **edit stitch-type(+appliqué)/density/angle/underlay/pull-comp → rebuild** · animate |
 | **TrueView3D** + 2D/3D toggle | 🟢 | thread tubes + lighting + fabric; drag-rotate/zoom (**paint unverified — §12**) |
 | designStore | 🟢 | + reorderStop · **selectObject/updateObject/replaceDesign** · undo/redo |
-| Toolbar (Digitize/Lettering dialogs) | 🟡 | Open/Digitize/Text/**Save/Saved**/Check/Export/Package/Worksheet/Undo/Redo live; manual digitizing tools TBD |
+| Toolbar (Digitize/Lettering dialogs) | 🟡 | Open (embroidery **+ .stiq master**)/Digitize/Text/Save/Saved/Check/Export/Package/Worksheet/Undo/Redo live; manual digitizing tools TBD |
 | Local persistence (`lib/storage.ts`) | 🟢 | save/load/delete via localStorage (unit-tested); cloud = Phase 6 |
+| Master re-import (`lib/masterFile.ts`) | 🟢 | Open a `.stiq.json` → full editable Design (objects/contours kept) |
+| **Studio Dashboard** + Studio⇄Dashboard nav | 🟢 | metrics page; KPIs honest "—" (no source until Phase 6), recent-activity real from saved designs (parallel session, `7cc6c96`) |
 | **Dashboard** (`lib/dashboard.ts` + `Dashboard.tsx`) | 🟢 | Studio ⇄ Dashboard nav; KPI tiles (revenue/users/conversion → "—", no source until Phase 6) + **real recent activity** from saved designs; loading/error/empty states; pure logic unit-tested |
 
 ### Infrastructure
 | Item | Status | Notes |
 |---|---|---|
 | Monorepo · shared data model | 🟢 | camelCase-on-wire verified |
-| Tests | 🟡 | **pytest 59 + vitest 30**; CI config written (**unverified — no remote**) |
+| Tests | 🟡 | **pytest 63 + vitest 45**; CI config written (**unverified — no remote**) |
 | DB applied · Supabase · deploy · AI/ML · `.STIQ` | 🔴 | Phases 6/8/X |
 
 ---
@@ -327,8 +334,8 @@ python tests/make_fixtures.py
 ### Baseline (last confirmed 2026-07-01, Update #7)
 | Check | Command | Expected | Result |
 |---|---|---|---|
-| Backend tests | `python -m pytest tests -q` | **59 passed** | ✅ |
-| Frontend tests | `npm test -w apps/frontend` | **vitest 30 passed** | ✅ |
+| Backend tests | `python -m pytest tests -q` | **63 passed** | ✅ |
+| Frontend tests | `npm test -w apps/frontend` | **vitest 45 passed** | ✅ |
 | Rebuild e2e | digitize → halve density → `:5173/api/designs/rebuild` | fewer stitches, bounds stable; imported → 422 | ✅ |
 | Underlay e2e | digitize (EDGE_WALK default) → rebuild with NONE | 1011 → 790 stitches | ✅ |
 | Convert e2e | dst→jef via `:5173/api/convert` | valid JEF, threads kept, warning | ✅ |
@@ -428,7 +435,7 @@ types (double-zigzag/parallel/contour) are Phase 8.
 Implemented in `services/embroidery_io.py`, `worksheet_pdf.py`, `threads.py`, `digitizer.py`; routers
 `files`/`digitize`/`export`/`worksheet`/`threads`; frontend `StitchCanvas`, `lib/stitches.ts`, `Toolbar`,
 `StitchPlayer`, panels, `store/designStore`, `api/client`.
-Verify: `pytest -q` (59) + `npm test` (30). Manual: Open `tests/fixtures/sample.dst` **and** Digitize a PNG
+Verify: `pytest -q` (63) + `npm test` (45). Manual: Open `tests/fixtures/sample.dst` **and** Digitize a PNG
 (params dialog appears); click a stop or object, recolor, edit density/underlay → Apply, reorder ▲▼, undo, Export, Worksheet.
 
 ---
