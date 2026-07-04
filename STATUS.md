@@ -7,13 +7,13 @@
 | Field | Value |
 |---|---|
 | **Project** | STITCHIQ — AI-powered embroidery design & digitizing platform |
-| **Document version** | **v19** |
-| **Times updated** | **19** |
+| **Document version** | **v20** |
+| **Times updated** | **20** |
 | **Last updated** | 2026-07-04 |
-| **Current phase** | **Phases 0–5 + 7 done**; local save/load added. Phase 6 = *cloud* sync (Supabase); 8/9 AI remain |
+| **Current phase** | **Phases 0–5 + 7 done**; local save/load + Studio dashboard added. Phase 6 = *cloud* sync (Supabase); 8/9 AI remain |
 | **Git branch** | `main` |
-| **Latest code commit** | `e7ba3d3` (local design persistence) |
-| **Working tree** | clean |
+| **Latest code commit** | `e7ba3d3` (local design persistence) — dashboard uncommitted |
+| **Working tree** | dashboard feature (uncommitted) |
 | **Tracked files** | 85 |
 | **Location** | `/Users/INDIA/Downloads/EmDesign_Automater` |
 
@@ -69,6 +69,7 @@
 
 | # | Date | Author | Type | Summary |
 |---|------|--------|------|---------|
+| 20 | 2026-07-04 | Claude (Opus 4.8) | ✨ Feature | **Studio dashboard page (Phase 6 groundwork)** — uncommitted. `lib/dashboard.ts` (pure: formatters + activity derivation + `fetchDashboard`, unit-tested), `components/dashboard/Dashboard.tsx` (loading/error/empty/data states), App **Studio ⇄ Dashboard** nav toggle, dashboard/stat-card/activity CSS. Revenue/users/conversion have **no source yet** → honest "—" (Phase 6); **recent activity is real** from `lib/storage.ts` saved designs. Frontend-only, no backend/data-model change. **vitest 45/45** (+10), typecheck/lint/build clean. |
 | 19 | 2026-07-04 | Claude (Fable 5) | ✨ Feature | **Local design persistence (save/load in-browser)** — commit `e7ba3d3`. `lib/storage.ts` (localStorage save/list/load/delete, injectable KV → unit-tested); store `setDesignId`; Toolbar **Save** + **Saved (n)** popover (load/delete). Closes "lose your work on refresh" without keys; cloud sync stays Phase 6. **vitest 30/30** (+5). |
 | 18 | 2026-07-04 | Claude (Fable 5) | ✨ Feature | **Pre-export validation surfaced in the UI (§4.8)** — commit `9dae09e`. Toolbar **Check** button + validate-before-Export; dismissible report banner (blocking issues vs warnings vs all-clear). `/api/export/validate` existed since Phase 1 but was untested/unwired — now `test_validate.py` (empty/ok/oversize/long-stitch). **pytest 59/59** (+4); e2e via proxy. |
 | 17 | 2026-07-03 | Claude (Fable 5) | ✨ Feature | **Appliqué stitch type (§4.3) + satin hardening** — commit `b1a6c35`. rebuild APPLIQUE branch = placement outline → tackdown → 2mm satin border (`_run_along`/`_satin_border`/`_resample_closed`); `_satin_zigzag` subdivides cross-width zigs so wide columns stay ≤12.7mm; PropertiesPanel stitch-type selector. **pytest 55/55** (+4); e2e: 2 objs→APPLIQUE→1220 st, max 2.0mm, exports PES. |
@@ -171,6 +172,7 @@ db/schema.sql (not applied) · docs/ · STATUS.md · README.md · AI-Embroidery-
 | designStore | 🟢 | + reorderStop · **selectObject/updateObject/replaceDesign** · undo/redo |
 | Toolbar (Digitize/Lettering dialogs) | 🟡 | Open/Digitize/Text/**Save/Saved**/Check/Export/Package/Worksheet/Undo/Redo live; manual digitizing tools TBD |
 | Local persistence (`lib/storage.ts`) | 🟢 | save/load/delete via localStorage (unit-tested); cloud = Phase 6 |
+| **Dashboard** (`lib/dashboard.ts` + `Dashboard.tsx`) | 🟢 | Studio ⇄ Dashboard nav; KPI tiles (revenue/users/conversion → "—", no source until Phase 6) + **real recent activity** from saved designs; loading/error/empty states; pure logic unit-tested |
 
 ### Infrastructure
 | Item | Status | Notes |

@@ -41,8 +41,18 @@ code {
 /* ── App shell grid ─────────────────────────────────────────── */
 .app-shell {
   display: grid;
-  grid-template-rows: auto 1fr auto;
+  grid-template-rows: auto auto 1fr auto;
   height: 100%;
+  min-height: 0;
+}
+
+/* ── Page nav (Studio ⇄ Dashboard) ──────────────────────────── */
+.page-nav {
+  display: flex;
+  justify-content: center;
+  padding: 6px 14px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
 }
 
 .app-body {
@@ -585,4 +595,95 @@ code {
   border-radius: 6px;
   font-size: 12px;
   pointer-events: none;
+}
+
+/* ── Dashboard ──────────────────────────────────────────────── */
+.dashboard {
+  min-height: 0;
+  overflow: auto;
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.dashboard-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+}
+
+.stat-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.stat-label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--muted);
+}
+
+.stat-value {
+  font-size: 26px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.stat-hint {
+  font-size: 11px;
+}
+
+.dashboard-activity {
+  border-left: none;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: visible;
+}
+
+.activity-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.activity-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 13px;
+}
+
+.activity-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.activity-meta {
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  flex: none;
 }

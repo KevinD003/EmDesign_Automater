@@ -6,6 +6,7 @@ import { PropertiesPanel } from './components/panels/PropertiesPanel';
 import { StitchPlayer } from './components/player/StitchPlayer';
 import { StitchCanvas } from './components/canvas/StitchCanvas';
 import { TrueView3D } from './components/trueview/TrueView3D';
+import { Dashboard } from './components/dashboard/Dashboard';
 import { useDesignStore } from './store/designStore';
 
 /**
@@ -19,6 +20,7 @@ export default function App() {
   const selectedStop = useDesignStore((s) => s.selectedStop);
   const selectStop = useDesignStore((s) => s.selectStop);
   const [view, setView] = useState<'2d' | '3d'>('2d');
+  const [page, setPage] = useState<'studio' | 'dashboard'>('studio');
 
   // Global undo/redo shortcuts: Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z, Ctrl+Y.
   useEffect(() => {
@@ -41,35 +43,55 @@ export default function App() {
   return (
     <div className="app-shell">
       <Toolbar />
-      <div className="app-body">
-        <ColorObjectList />
-        <main className="canvas-area">
-          <div className="view-toggle">
-            <button type="button" className={view === '2d' ? 'active' : ''} onClick={() => setView('2d')}>
-              2D
-            </button>
-            <button type="button" className={view === '3d' ? 'active' : ''} onClick={() => setView('3d')}>
-              TrueView 3D
-            </button>
-          </div>
-          {view === '2d' ? (
-            <StitchCanvas
-              stitches={design?.stitches ?? []}
-              colorStops={design?.colorStops ?? []}
-              limit={playHead}
-              selectedStop={selectedStop}
-              onSelectStop={selectStop}
-            />
-          ) : (
-            <TrueView3D stitches={design?.stitches ?? []} colorStops={design?.colorStops ?? []} />
-          )}
-        </main>
-        <div className="panel-right">
-          <ThreadPalette />
-          <PropertiesPanel />
+      <nav className="page-nav">
+        <div className="view-toggle">
+          <button type="button" className={page === 'studio' ? 'active' : ''} onClick={() => setPage('studio')}>
+            Studio
+          </button>
+          <button
+            type="button"
+            className={page === 'dashboard' ? 'active' : ''}
+            onClick={() => setPage('dashboard')}
+          >
+            Dashboard
+          </button>
         </div>
-      </div>
-      <StitchPlayer />
+      </nav>
+      {page === 'dashboard' ? (
+        <Dashboard />
+      ) : (
+        <>
+          <div className="app-body">
+            <ColorObjectList />
+            <main className="canvas-area">
+              <div className="view-toggle">
+                <button type="button" className={view === '2d' ? 'active' : ''} onClick={() => setView('2d')}>
+                  2D
+                </button>
+                <button type="button" className={view === '3d' ? 'active' : ''} onClick={() => setView('3d')}>
+                  TrueView 3D
+                </button>
+              </div>
+              {view === '2d' ? (
+                <StitchCanvas
+                  stitches={design?.stitches ?? []}
+                  colorStops={design?.colorStops ?? []}
+                  limit={playHead}
+                  selectedStop={selectedStop}
+                  onSelectStop={selectStop}
+                />
+              ) : (
+                <TrueView3D stitches={design?.stitches ?? []} colorStops={design?.colorStops ?? []} />
+              )}
+            </main>
+            <div className="panel-right">
+              <ThreadPalette />
+              <PropertiesPanel />
+            </div>
+          </div>
+          <StitchPlayer />
+        </>
+      )}
     </div>
   );
 }
