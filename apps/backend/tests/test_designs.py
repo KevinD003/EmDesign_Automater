@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.routers import designs as designs_router
-from app.services import supabase_store
+from app.services import supabase_auth, supabase_store
 
 client = TestClient(app)
 
@@ -59,6 +59,33 @@ def test_create_list_get_delete_roundtrip():
 
 def test_get_missing_returns_404():
     assert client.get("/api/designs/does-not-exist").status_code == 404
+
+
+def test_inmemory_ids_not_reused_after_delete():
+    """Regression: a delete must not let the next create collide with a live id."""
+    a = client.post("/api/designs", json=_design("A")).json()["id"]
+    b = client.post("/api/designs", json=_design("B")).json()["id"]
+    client.delete(f"/api/designs/{a}")
+    c = client.post("/api/designs", json=_design("C")).json()["id"]
+    assert c != b  # C did NOT reuse B's id
+    assert client.get(f"/api/designs/{b}").json()["name"] == "B"  # B intact
+    assert client.get(f"/api/designs/{c}").json()["name"] == "C"
+
+
+def test_malformed_design_id_returns_404_not_502(monkeypatch):
+    """Cloud path: a non-uuid id 404s (never a 502) and never hits PostgREST."""
+    monkeypatch.setattr(supabase_store, "is_enabled", lambda: True)
+
+    async def _user(_token):
+        return {"id": "11111111-1111-1111-1111-111111111111"}
+
+    async def _boom(*_a, **_k):  # would raise if the store were ever reached
+        raise AssertionError("store should not be called for a malformed id")
+
+    monkeypatch.setattr(supabase_auth, "verify_token", _user)
+    monkeypatch.setattr(supabase_store, "get_design", _boom)
+    r = client.get("/api/designs/not-a-uuid", headers={"Authorization": "Bearer x"})
+    assert r.status_code == 404
 
 
 def test_stats_reflects_saved_designs():

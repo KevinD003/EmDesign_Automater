@@ -60,6 +60,14 @@ def test_manual_run_stitch_length_capped():
     assert gaps and max(gaps) <= 7.0
 
 
+def test_double_run_has_no_zero_length_turnaround():
+    """Regression: RUNNING_DOUBLE must not duplicate the turnaround vertex (0-length stitch)."""
+    out = rebuild_design(_design([_obj("RUNNING_DOUBLE", [Point(x=0, y=0), Point(x=30, y=0)])]))
+    pts = [(s.x, s.y) for s in out.stitches if s.command == "STITCH"]
+    gaps = [((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2) ** 0.5 for a, b in zip(pts, pts[1:])]
+    assert gaps and min(gaps) > 1e-6, "no zero-length stitch at the pass junction"
+
+
 def test_mixed_run_and_fill_rebuild():
     run = _obj("RUNNING_DOUBLE", [Point(x=5, y=5), Point(x=45, y=5)], seq=1)
     fill = _obj("TATAMI", [Point(x=50, y=50), Point(x=80, y=50), Point(x=80, y=80), Point(x=50, y=80)],

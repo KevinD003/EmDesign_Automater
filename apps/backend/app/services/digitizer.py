@@ -434,7 +434,10 @@ def _manual_run(poly_px, step_px: int, passes: int = 1):
         return []
     seq: list[tuple[float, float]] = []
     for i in range(max(1, passes)):
-        seq += base if i % 2 == 0 else list(reversed(base))
+        seg = base if i % 2 == 0 else list(reversed(base))
+        # Each pass ends where the next begins; drop that coincident junction point so
+        # double/triple runs don't emit a zero-length stitch at the turnaround.
+        seq += seg if i == 0 else seg[1:]
     return [(seq[0][0], seq[0][1], True)] + [(p[0], p[1], False) for p in seq[1:]]
 
 

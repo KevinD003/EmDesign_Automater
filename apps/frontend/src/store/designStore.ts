@@ -52,7 +52,18 @@ export const useDesignStore = create<DesignState>((set) => ({
   past: [],
   future: [],
   setDesign: (design) =>
-    set({ design, playHead: null, selectedStop: null, selectedObject: null, past: [], future: [] }),
+    // Also drop any in-progress manual draw — a stale tool/draft must never leak onto a
+    // freshly loaded design (Open/Load/Digitize/CloudOpen all route through here).
+    set({
+      design,
+      playHead: null,
+      selectedStop: null,
+      selectedObject: null,
+      activeTool: 'select',
+      draft: [],
+      past: [],
+      future: [],
+    }),
   setDesignId: (id) => set((state) => (state.design ? { design: { ...state.design, id } } : {})),
   replaceDesign: (design) =>
     set((state) => (state.design ? { design, past: push(state.past, state.design), future: [] } : { design })),

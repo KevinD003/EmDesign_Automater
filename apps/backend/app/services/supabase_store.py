@@ -76,72 +76,104 @@ async def create_design(design: Design, user_id: str) -> Design:
         created = r.json()[0]
         did = created["id"]
 
-        if design.objects:
-            await client.post(
-                f"{_rest()}/design_objects",
-                headers=_headers(),
-                json=[
-                    {
-                        "design_id": did,
-                        "sequence_order": o.sequence_order,
-                        "object_name": o.name,
-                        "stitch_type": o.stitch_type,
-                        "color_stop": o.color_stop,
-                        "density": o.density,
-                        "stitch_angle": o.stitch_angle,
-                        "underlay_type": o.underlay_type,
-                        "pull_compensation": o.pull_compensation,
-                        "entry_point": o.entry_point.model_dump() if o.entry_point else None,
-                        "exit_point": o.exit_point.model_dump() if o.exit_point else None,
-                        "connect_method": o.connect_method,
-                        "stitch_count": o.stitch_count,
-                    }
-                    for o in design.objects
-                ],
-            )
+        # PostgREST has no cross-table transaction. The full-fidelity design lives ONLY
+        # in design_versions.snapshot_json (get_design reads from there), so if any child
+        # write — especially the snapshot — fails, we must NOT leave a phantom designs row
+        # that lists but 404s on open. Check every write; compensate by deleting the row.
+        try:
+            if design.objects:
+                resp = await client.post(
+                    f"{_rest()}/design_objects",
+                    headers=_headers(),
+                    json=[
+                        {
+                            "design_id": did,
+                            "sequence_order": o.sequence_order,
+                            "object_name": o.name,
+                            "stitch_type": o.stitch_type,
+                            "color_stop": o.color_stop,
+                            "density": o.density,
+                            "stitch_angle": o.stitch_angle,
+                            "underlay_type": o.underlay_type,
+                            "pull_compensation": o.pull_compensation,
+                            "entry_point": o.entry_point.model_dump() if o.entry_point else None,
+                            "exit_point": o.exit_point.model_dump() if o.exit_point else None,
+                            "connect_method": o.connect_method,
+                            "stitch_count": o.stitch_count,
+                        }
+                        for o in design.objects
+                    ],
+                )
+                resp.raise_for_status()
 
-        if design.color_stops:
-            await client.post(
-                f"{_rest()}/color_stops",
-                headers=_headers(),
-                json=[
-                    {
-                        "design_id": did,
-                        "stop_number": c.stop_number,
-                        "thread_brand": c.thread_brand,
-                        "catalog_number": c.catalog_number,
-                        "thread_name": c.thread_name,
-                        "hex_color": c.hex,
-                        "stitch_count": c.stitch_count,
-                    }
-                    for c in design.color_stops
-                ],
-            )
+            if design.color_stops:
+                resp = await client.post(
+                    f"{_rest()}/color_stops",
+                    headers=_headers(),
+                    json=[
+                        {
+                            "design_id": did,
+                            "stop_number": c.stop_number,
+                            "thread_brand": c.thread_brand,
+                            "catalog_number": c.catalog_number,
+                            "thread_name": c.thread_name,
+                            "hex_color": c.hex,
+                            "stitch_count": c.stitch_count,
+                        }
+                        for c in design.color_stops
+                    ],
+                )
+                resp.raise_for_status()
 
-        snapshot = design.model_dump(by_alias=True)
-        snapshot["id"] = did
-        await client.post(
-            f"{_rest()}/design_versions",
-            headers=_headers(),
-            json={
-                "design_id": did,
-                "version_number": design.version,
-                "snapshot_json": snapshot,
-                "change_summary": "cloud save",
-            },
-        )
+            snapshot = design.model_dump(by_alias=True)
+            snapshot["id"] = did
+            resp = await client.post(
+                f"{_rest()}/design_versions",
+                headers=_headers(),
+                json={
+                    "design_id": did,
+                    "version_number": design.version,
+                    "snapshot_json": snapshot,
+                    "change_summary": "cloud save",
+                },
+            )
+            resp.raise_for_status()
+        except httpx.HTTPError:
+            # Roll back the orphaned designs row so the client sees a real error, not a
+            # phantom 201. Best-effort — ignore delete failures, re-raise the original.
+            try:
+                await client.delete(f"{_rest()}/designs?id=eq.{did}", headers=_headers())
+            except httpx.HTTPError:
+                pass
+            raise
 
         return design.model_copy(update={"id": did, "created_at": created.get("created_at")})
+
+
+_PAGE = 1000  # Supabase/PostgREST caps a plain GET at ~1000 rows; page past it explicitly.
+
+
+async def _get_all(client: httpx.AsyncClient, query: str) -> list[dict]:
+    """Fetch ALL rows for a PostgREST query (``query`` already contains ``?...``),
+    paging in blocks of _PAGE so users with >1000 designs aren't silently truncated."""
+    rows: list[dict] = []
+    offset = 0
+    while True:
+        r = await client.get(f"{query}&limit={_PAGE}&offset={offset}", headers=_headers())
+        r.raise_for_status()
+        page = r.json()
+        rows.extend(page)
+        if len(page) < _PAGE:
+            return rows
+        offset += _PAGE
 
 
 async def list_designs(user_id: str) -> list[Design]:
     """Lightweight metadata listing for one user (no stitches/objects), newest first."""
     async with httpx.AsyncClient(timeout=30) as client:
-        r = await client.get(
-            f"{_rest()}/designs?user_id=eq.{user_id}&select=*&order=created_at.desc",
-            headers=_headers(),
+        all_rows = await _get_all(
+            client, f"{_rest()}/designs?user_id=eq.{user_id}&select=*&order=created_at.desc"
         )
-        r.raise_for_status()
         return [
             Design(
                 id=row["id"],
@@ -154,20 +186,18 @@ async def list_designs(user_id: str) -> list[Design]:
                 status=row.get("status") or "draft",
                 created_at=row.get("created_at"),
             )
-            for row in r.json()
+            for row in all_rows
         ]
 
 
 async def design_stats(user_id: str) -> dict:
     """Aggregate a user's designs for the dashboard: counts + a recent list."""
     async with httpx.AsyncClient(timeout=30) as client:
-        r = await client.get(
+        rows = await _get_all(
+            client,
             f"{_rest()}/designs?user_id=eq.{user_id}"
             "&select=id,name,stitch_count,colors,created_at&order=created_at.desc",
-            headers=_headers(),
         )
-        r.raise_for_status()
-        rows = r.json()
         return {
             "designCount": len(rows),
             "totalStitches": sum(int(row.get("stitch_count") or 0) for row in rows),

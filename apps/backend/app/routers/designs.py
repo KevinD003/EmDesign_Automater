@@ -8,6 +8,10 @@ wired, so the app and the offline test suite still run keyless.
 
 from __future__ import annotations
 
+import itertools
+import logging
+import uuid
+
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -16,6 +20,21 @@ from app.models.design import CamelModel, Design
 from app.services import digitizer, supabase_store
 
 router = APIRouter(tags=["designs"])
+logger = logging.getLogger("stitchiq.designs")
+
+
+def _storage_error(exc: Exception) -> HTTPException:
+    """502 without leaking the internal URL / query / uuids in the response body."""
+    logger.warning("supabase storage error: %s", exc)
+    return HTTPException(status_code=502, detail="storage backend error")
+
+
+def _is_uuid(value: str) -> bool:
+    try:
+        uuid.UUID(value)
+        return True
+    except (ValueError, AttributeError, TypeError):
+        return False
 
 
 class ActivityItem(CamelModel):
@@ -48,6 +67,9 @@ async def rebuild(design: Design) -> Design:
 # In-memory fallback for when Supabase isn't configured (offline dev / CI).
 # Keyed by user so scoping semantics match the cloud path.
 _DESIGNS: dict[tuple[str, str], Design] = {}
+# Monotonic id source — NEVER derive ids from len(_DESIGNS) (a delete would let the next
+# create collide with a still-live id and clobber it).
+_MEM_SEQ = itertools.count(1)
 
 
 @router.get("/designs", response_model=list[Design])
@@ -57,7 +79,7 @@ async def list_designs(user_id: str = Depends(current_user)) -> list[Design]:
         try:
             return await supabase_store.list_designs(user_id)
         except httpx.HTTPError as exc:
-            raise HTTPException(status_code=502, detail=f"Supabase error: {exc}") from exc
+            raise _storage_error(exc) from exc
     return [d for (uid, _), d in _DESIGNS.items() if uid == user_id]
 
 
@@ -68,7 +90,7 @@ async def stats(user_id: str = Depends(current_user)) -> DesignStats:
         try:
             return DesignStats.model_validate(await supabase_store.design_stats(user_id))
         except httpx.HTTPError as exc:
-            raise HTTPException(status_code=502, detail=f"Supabase error: {exc}") from exc
+            raise _storage_error(exc) from exc
     designs = [d for (uid, _), d in _DESIGNS.items() if uid == user_id]
     return DesignStats(
         design_count=len(designs),
@@ -83,10 +105,14 @@ async def stats(user_id: str = Depends(current_user)) -> DesignStats:
 @router.get("/designs/{design_id}", response_model=Design)
 async def get_design(design_id: str, user_id: str = Depends(current_user)) -> Design:
     if supabase_store.is_enabled():
+        # Cloud ids are uuids; a non-uuid path can't exist → 404 (and avoids a PostgREST
+        # 400 that would otherwise surface as a 502).
+        if not _is_uuid(design_id):
+            raise HTTPException(status_code=404, detail="design not found")
         try:
             design = await supabase_store.get_design(design_id, user_id)
         except httpx.HTTPError as exc:
-            raise HTTPException(status_code=502, detail=f"Supabase error: {exc}") from exc
+            raise _storage_error(exc) from exc
     else:
         design = _DESIGNS.get((user_id, design_id))
     if design is None:
@@ -101,9 +127,9 @@ async def create_design(design: Design, user_id: str = Depends(current_user)) ->
         try:
             return await supabase_store.create_design(design, user_id)
         except httpx.HTTPError as exc:
-            raise HTTPException(status_code=502, detail=f"Supabase error: {exc}") from exc
-    # In-memory fallback: synthesize an id.
-    new_id = design.id or f"mem-{len(_DESIGNS) + 1}"
+            raise _storage_error(exc) from exc
+    # In-memory fallback: synthesize a monotonic id (never reused after a delete).
+    new_id = design.id or f"mem-{next(_MEM_SEQ)}"
     stored = design.model_copy(update={"id": new_id})
     _DESIGNS[(user_id, new_id)] = stored
     return stored
@@ -112,9 +138,11 @@ async def create_design(design: Design, user_id: str = Depends(current_user)) ->
 @router.delete("/designs/{design_id}", status_code=204)
 async def delete_design(design_id: str, user_id: str = Depends(current_user)) -> None:
     if supabase_store.is_enabled():
+        if not _is_uuid(design_id):
+            return  # nothing to delete; a non-uuid id can't exist in the cloud store
         try:
             await supabase_store.delete_design(design_id, user_id)
         except httpx.HTTPError as exc:
-            raise HTTPException(status_code=502, detail=f"Supabase error: {exc}") from exc
+            raise _storage_error(exc) from exc
     else:
         _DESIGNS.pop((user_id, design_id), None)

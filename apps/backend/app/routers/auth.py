@@ -61,7 +61,7 @@ async def signup(creds: Credentials) -> Session:
     try:
         session, error = await supabase_auth.signup(creds.email, creds.password)
     except httpx.HTTPError as exc:
-        raise HTTPException(status_code=502, detail=f"Supabase error: {exc}") from exc
+        raise HTTPException(status_code=502, detail="auth backend error") from exc
     if error:
         raise HTTPException(status_code=409, detail=error)
     return _to_session(session)
@@ -73,7 +73,7 @@ async def login(creds: Credentials) -> Session:
     try:
         session = await supabase_auth.login(creds.email, creds.password)
     except httpx.HTTPError as exc:
-        raise HTTPException(status_code=502, detail=f"Supabase error: {exc}") from exc
+        raise HTTPException(status_code=502, detail="auth backend error") from exc
     if session is None:
         raise HTTPException(status_code=401, detail="invalid email or password")
     return _to_session(session)

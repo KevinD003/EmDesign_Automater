@@ -136,7 +136,14 @@ export function Toolbar() {
     setTool(activeTool === tool ? 'select' : tool);
   };
   const canFinish = activeTool !== 'select' && draft.length >= minPointsFor(activeTool as ManualTool);
-  const onFinishDraw = () =>
+  const onFinishDraw = () => {
+    // Guard again at commit time: even if a draw was begun before an imported file was
+    // loaded, never let Finish rebuild (and thus wipe) an imported stitch stream.
+    if (isImportedNotEditable(design)) {
+      setTool('select');
+      setErr('Manual tools need a blank or digitized canvas — imported files aren’t editable object-by-object.');
+      return;
+    }
     run(async () => {
       const tool = activeTool as ManualTool;
       const built = buildManualDesign(design, tool, draft, selectedStop);
@@ -145,6 +152,7 @@ export function Toolbar() {
       else setDesign(rebuilt);
       setTool('select');
     });
+  };
   const onCancelDraw = () => setTool('select');
   const onExport = () =>
     design &&
