@@ -7,12 +7,12 @@
 | Field | Value |
 |---|---|
 | **Project** | STITCHIQ — AI-powered embroidery design & digitizing platform |
-| **Document version** | **v32** |
-| **Times updated** | **32** |
-| **Last updated** | 2026-07-04 |
-| **Current phase** | Phases 0–8(v1) + manual digitizing done & **hardened** (adversarial review → 6 bug fixes). Phase 8/9 *neural* AI remains (needs GPU/data) |
-| **Git branch** | `main` |
-| **Latest code commit** | `24c9aef` (harden session code — 6 fixes) |
+| **Document version** | **v33** |
+| **Times updated** | **33** |
+| **Last updated** | 2026-07-28 |
+| **Current phase** | Phases 0–8(v1) + manual digitizing done, hardened, **and usability-fixed** (fresh-install deps + lettering glyphs/detail + canvas visibility + banner stacking). Phase 8/9 *neural* AI remains (needs GPU/data) |
+| **Git branch** | `claude/code-quality-improvements-hyu6dg` |
+| **Latest code commit** | `0d7125b` (make features work out of the box) |
 | **Working tree** | clean |
 | **Tracked files** | 105 |
 | **Location** | `/Users/INDIA/Downloads/EmDesign_Automater` |
@@ -65,7 +65,7 @@
 
 - **Stack:** TypeScript (React + Vite) frontend · Python (FastAPI) backend · PostgreSQL/Supabase (schema **applied & live** — designs CRUD).
 - **Built:** **Phases 0–5 essentially done**: open/parse, **image auto-digitize** (TATAMI + SATIN + underlay + **holes/counters**), **text lettering**, **object-level editing** (→ server rebuild), Konva render, full color-stop editing, **export any format + convert + full production package ZIP**, worksheet PDF.
-- **Verified:** **pytest 81/81** · **vitest 57/57** · typecheck/build · e2e lettering→digitize→edit→rebuild→validate→export/convert/package/thread-match/**optimize+quality+manual-draw** through the Vite proxy · **live Supabase auth + per-user cloud CRUD + real Dashboard + Phase 8 path-opt + manual digitizing (multi-user isolation) verified in Chrome**.
+- **Verified:** **pytest 83/83** · **vitest 57/57** · typecheck/build · e2e lettering→digitize→edit→rebuild→validate→export/convert/package/thread-match/**optimize+quality+manual-draw** through the Vite proxy · **live Supabase auth + per-user cloud CRUD + real Dashboard + Phase 8 path-opt + manual digitizing (multi-user isolation) verified in Chrome**.
 - **Still stubbed:** *neural* AI/ML (learned digitizing, text-to-design — Phases 8/9, need GPU/data), satin-stroke lettering, password reset. (Auth, cloud sync, path-opt + quality scoring are live.)
 - **Next:** Phase 6 polish (password reset / Storage URLs), lettering v1.1, or push to GitHub (CI unverified).
 
@@ -77,6 +77,7 @@
 
 | # | Date | Author | Type | Summary |
 |---|------|--------|------|---------|
+| 33 | 2026-07-28 | Claude (Fable 5) | 🐛 Fix | **Make features work out of the box — 9 defects from a full e2e + in-browser sweep** — commit `0d7125b`. User reported "features run partially / results not good"; every feature was exercised over HTTP and in headless Chrome. Fixes, worst-first: **(1, fresh install broken)** the documented setup (`requirements.txt`+`-dev`) omitted **pyembroidery** → Open/Export/Convert/Package all failed on a fresh clone; moved to core requirements. **(2)** black-on-black canvas: stitches rendered on a near-black stage → dark designs (e.g. black lettering) were invisible; added a **light fabric backdrop** + stitches draw at **physical 0.4mm thread width** → fills read as embroidery. **(3)** Check/Quality/Optimize banners all rendered in one fixed corner — hid each other and **blocked clicks on Studio⇄Dashboard**; now they stack below the toolbar. **(4)** lettering accepted unsupported chars (emoji → .notdef tofu boxes → garbage stitch rectangles); per-char detection vs U+0378 rejects them with a clear 422. **(5)** lettering dropped sub-4mm² details ('i'/'j' dots at small sizes); lettering digitizes at 0.5mm² min-region ('i'@8mm keeps its dot, +2 tests). **(6)** tatami row pitch 0.6→0.45mm (full coverage, was fabric-through-fill). **(7)** page-nav Studio/Dashboard toggle reused the absolutely-positioned `.view-toggle` class → sat on top of Sign-in. **(8)** DST stops surfaced pyembroidery filler threads literally named "Random" → now "Color n (file has no color data)". **(9)** favicon 404. **pytest 81→83** (the emoji test previously FAILED on Linux fonts — now passes), vitest 57, typecheck+build clean, zero console errors/failed requests in Chrome re-verify. README refreshed (stale counts/claims). |
 | 32 | 2026-07-04 | Claude (Opus 4.8) | 🛠 Fix | **Harden session code — 6 bugs from an adversarial multi-agent review** — commit `24c9aef`. A 42-agent Workflow (5 review dimensions × 3 skeptics/finding) raised 12, **confirmed 7** (deduped to 6 root causes), rejected 5. Fixes, worst-first: **(1, data loss)** `create_design` only error-checked the `designs` INSERT — a failed `design_objects`/`color_stops`/`design_versions` write was swallowed → phantom 201 that lists but 404s on open; now every child write `raise_for_status`es + compensating-DELETEs the orphan row on failure. **(2, data loss)** `setDesign` left `activeTool`/`draft` dirty → loading a file mid-draw then Finish wiped an imported .DST; now resets tool+draft + `onFinishDraw` re-guards `isImportedNotEditable` (**verified in Chrome**: Open mid-draw keeps the 87-st import). **(3)** in-memory ids derived from `len()` reused after delete → monotonic `itertools.count`. **(4)** `list_designs`/`design_stats` truncated at PostgREST's 1000-row cap → added `_get_all` pagination. **(5)** malformed `design_id` → 400→502; now uuid-validated → 404. **(6)** RUNNING_DOUBLE/TRIPLE duplicated the turnaround vertex (0-length stitch) → drop the junction point. Plus 502 bodies no longer leak the internal Supabase URL/query/uuids. **pytest 78→81** (+3 regression), vitest 57; live cloud round-trip + browser re-verify; typecheck+build clean. |
 | 31 | 2026-07-04 | Claude (Opus 4.8) | ✨ Feature | **Manual digitizing — draw Run/Satin/Fill on the canvas** — commit `7a7bdfb`. Lights up the dead toolbar tools. Backend: `rebuild_design` gains a **RUNNING branch** (`_manual_run` + `_resample_open`) so a drawn **open path** stitches ALONG it (single/double/triple pass) instead of area-filling; Fill=tatami/Satin=column reuse existing branches. Frontend: store `activeTool` + `draft` points (setTool/addDraftPoint/undoDraftPoint); **StitchCanvas draw mode** (click drops points → design-mm via the fit Group, live polyline + hoop + crosshair); Toolbar wires **Select/Run/Satin/Fill** + Finish/⌫/Cancel; `lib/manual` builds the object (contour + stitch-type spec) → commits via `/api/designs/rebuild` (new design, or appended to a digitized one; imported files blocked with a message). **Esc** cancels. **Verified in Chrome**: draw Fill quad → 536-st tatami; add Run path → running chevron (16 st); both editable objects; **Undo reverts**. **pytest 75→78** (+3), **vitest 52→57** (+5); typecheck+build clean. |
 | 30 | 2026-07-04 | Claude (Opus 4.8) | ✨ Feature | **Phase 8 v1 — optimization engine (path opt + quality)** — commit `fe2482d`. Classical/deterministic baseline (neural digitizing & text-to-design need GPU/data → future). `services/optimizer.py`: **`optimize_path`** — since `rebuild_design` already groups objects by color, the win is a **nearest-neighbour tour within each color** to cut needle travel/jumps → reassign sequence_order + rebuild; returns before/after metrics; no-op when not regenerable or no gain. **`analyze_quality`** — 0–100 score + grade + findings (over-long >12.7mm stitches, sub-0.5mm stitches, excessive color changes/jumps). New `POST /api/optimize/{path,quality}` + models (PathMetrics/OptimizeReport/OptimizeResult/QualityFinding/QualityReport, TS mirror). Toolbar **Quality** + **Optimize** buttons with report banners; Optimize uses `replaceDesign` (Undo reverts). **Verified in Chrome**: digitize 8-object logo → Quality **A·100/100** → Optimize cut travel **328.8→272.9mm (−55.9mm)**, objects renumbered, Undo works. **pytest 70→75** (+5); vitest 52; typecheck+build clean. |
@@ -203,7 +204,7 @@ db/schema.sql (**applied to live Supabase**) · docs/ · STATUS.md · README.md 
 | Item | Status | Notes |
 |---|---|---|
 | Monorepo · shared data model | 🟢 | camelCase-on-wire verified |
-| Tests | 🟡 | **pytest 81 + vitest 57**; CI config written (**unverified — no remote**) |
+| Tests | 🟡 | **pytest 83 + vitest 57**; CI config written (**unverified**) |
 | **DB schema applied · Supabase designs CRUD** | 🟢 | 10 tables live; `services/supabase_store.py` create/list/get/delete verified over HTTP (§8) |
 | **Per-user auth (signup/login) + cloud Save/Open** | 🟢 | GoTrue proxy · bearer-token gate · owner-scoped CRUD; verified in Chrome (§8) |
 | Deploy · AI/ML · `.STIQ` binary | 🔴 | Phases 8 / X |
