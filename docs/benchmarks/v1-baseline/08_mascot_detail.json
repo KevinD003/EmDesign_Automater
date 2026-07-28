@@ -1,0 +1,31 @@
+{
+  "fixture": "08_mascot_detail",
+  "params": {
+    "colors": 5,
+    "hoop": "130x180",
+    "fabric": "cotton"
+  },
+  "ok": true,
+  "error": null,
+  "warnings": [],
+  "runtime_s": 0.578,
+  "stitch_count": 2039,
+  "color_count": 3,
+  "object_count": 13,
+  "stitch_types": {
+    "TATAMI": 13
+  },
+  "objects_with_holes": 3,
+  "width_mm": 69.83,
+  "height_mm": 70.93,
+  "est_minutes": 2.55,
+  "jump_count": 303,
+  "trim_count": 10,
+  "color_changes": 2,
+  "max_stitch_mm": 8.96,
+  "mean_stitch_mm": 3.216,
+  "stitches_over_machine_limit": 0,
+  "stitches_under_0_5mm": 288,
+  "stitch_density_per_mm2": 0.41,
+  "output_png": "docs/benchmarks/v1-baseline/08_mascot_detail-output.png"
+}

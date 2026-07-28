@@ -1,0 +1,31 @@
+{
+  "fixture": "10_low_contrast_subject",
+  "params": {
+    "colors": 4,
+    "hoop": "130x180",
+    "fabric": "cotton"
+  },
+  "ok": true,
+  "error": null,
+  "warnings": [],
+  "runtime_s": 0.115,
+  "stitch_count": 2612,
+  "color_count": 3,
+  "object_count": 4,
+  "stitch_types": {
+    "TATAMI": 4
+  },
+  "objects_with_holes": 2,
+  "width_mm": 73.49,
+  "height_mm": 73.13,
+  "est_minutes": 3.27,
+  "jump_count": 144,
+  "trim_count": 1,
+  "color_changes": 2,
+  "max_stitch_mm": 8.96,
+  "mean_stitch_mm": 4.747,
+  "stitches_over_machine_limit": 0,
+  "stitches_under_0_5mm": 272,
+  "stitch_density_per_mm2": 0.49,
+  "output_png": "docs/benchmarks/v1-baseline/10_low_contrast_subject-output.png"
+}

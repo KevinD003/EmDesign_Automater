@@ -1,0 +1,31 @@
+{
+  "fixture": "02_logo_fine_text_3color",
+  "params": {
+    "colors": 3,
+    "hoop": "130x180",
+    "fabric": "cotton"
+  },
+  "ok": true,
+  "error": null,
+  "warnings": [],
+  "runtime_s": 0.143,
+  "stitch_count": 3289,
+  "color_count": 2,
+  "object_count": 4,
+  "stitch_types": {
+    "TATAMI": 4
+  },
+  "objects_with_holes": 1,
+  "width_mm": 88.12,
+  "height_mm": 62.16,
+  "est_minutes": 4.11,
+  "jump_count": 140,
+  "trim_count": 2,
+  "color_changes": 1,
+  "max_stitch_mm": 8.96,
+  "mean_stitch_mm": 4.652,
+  "stitches_over_machine_limit": 0,
+  "stitches_under_0_5mm": 236,
+  "stitch_density_per_mm2": 0.6,
+  "output_png": "docs/benchmarks/v1-baseline/02_logo_fine_text_3color-output.png"
+}

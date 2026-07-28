@@ -1,0 +1,32 @@
+{
+  "fixture": "04_thin_line_outline",
+  "params": {
+    "colors": 2,
+    "hoop": "100x100",
+    "fabric": "cotton"
+  },
+  "ok": true,
+  "error": null,
+  "warnings": [],
+  "runtime_s": 0.422,
+  "stitch_count": 1377,
+  "color_count": 1,
+  "object_count": 14,
+  "stitch_types": {
+    "SATIN": 4,
+    "TATAMI": 10
+  },
+  "objects_with_holes": 2,
+  "width_mm": 59.34,
+  "height_mm": 59.2,
+  "est_minutes": 1.72,
+  "jump_count": 187,
+  "trim_count": 13,
+  "color_changes": 0,
+  "max_stitch_mm": 7.31,
+  "mean_stitch_mm": 1.058,
+  "stitches_over_machine_limit": 0,
+  "stitches_under_0_5mm": 309,
+  "stitch_density_per_mm2": 0.39,
+  "output_png": "docs/benchmarks/v1-baseline/04_thin_line_outline-output.png"
+}
