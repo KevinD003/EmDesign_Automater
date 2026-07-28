@@ -85,3 +85,121 @@ What the numbers say on their own, before anyone looks at an image:
   pipeline is **robust and fast — it is the accuracy that is failing, not the plumbing.**
 
 ---
+
+## 3. ⚠️ A confound found while auditing: the preview renderer misstates coverage
+
+Most graders' single loudest complaint was "the fill has white gaps — fabric shows through".
+**That complaint is largely wrong, and the reason matters.**
+
+`services.package.render_preview` draws every stitch run as a PIL polyline with a hard-coded
+`width=2` **pixels**, independent of scale. At the default 5 px/mm that happens to be ≈0.4 mm —
+about a real thread — but the rasteriser puts 2-pixel strokes on rows spaced ~2.1 px apart, and
+integer rounding lets a 1–2 px white line slip between them. Render the same design at 20 px/mm
+and the "coverage" gets *worse* (white area 33% → 80%), which is impossible for a real fill and
+proves the gaps are in the drawing, not in the stitches.
+
+Measuring the actual stitch geometry instead of the picture:
+
+| | Measured | Professional reference |
+|---|---|---|
+| Fill row pitch (fixture 01, blue disc) | **0.281 mm** median | 0.40 mm typical |
+| Rows with pitch > 1.0 mm (real holes) | **0 of 232** | 0 |
+| Stitch density | **0.59 st/mm²** | 0.62 st/mm² (0.4 mm pitch × 4 mm stitch) |
+| Fixtures with any >1 mm row gap | **0 of 10** | 0 |
+
+At a 0.28–0.42 mm pitch with 0.4 mm thread the rows *overlap*: coverage is complete. Several
+graders reasoned from the harness's `stitch_density_per_mm2` field (0.4–0.6) that the fill was
+"an order of magnitude below a functioning tatami (4–8 st/mm²)". That reference figure is wrong —
+4–8 st/mm² would be a stitch every 0.125–0.25 mm² — and the field is stitches per **bounding-box**
+mm², not per filled mm², so it reads low for any design with empty space.
+
+**Consequences, recorded honestly:**
+
+1. Every coverage-driven deduction below is **confounded** and should be treated as unproven.
+   The scores are still a valid *floor* (the non-coverage defects are independently corroborated
+   by the metrics table), but the absolute numbers are harsher than the stitches deserve.
+2. There is a **real defect here, just a different one**: this misleading PNG is shipped to the
+   customer inside the production package ZIP (`build_package` → `<stem>-preview.png`). The
+   product is showing customers gaps that will not exist in the sew-out. Logged for a later
+   part — *not* fixed here, since Part 0 must not touch rendering logic.
+3. **Action for Part 1's re-run:** grade coverage from stitch geometry (row pitch vs. thread
+   width), not from the preview bitmap, and/or scale the preview's stroke to `px_per_mm × 0.4`.
+
+---
+
+## 4. Scores
+
+Ten independent graders scored, then ten adversarial reviewers re-scored with instructions to
+assume the first pass was generous. **The adversarial pass lowered at least one score on all
+10 fixtures** — no grader survived unchallenged. Final (challenged) scores stand:
+
+| Fixture | Background / edge | Contour smoothness | Lettering | Stitch-type fit | Customer verdict |
+|---|:---:|:---:|:---:|:---:|---|
+| 01 flat_2color_logo | 2 | 1 | — | 1 | ❌ reject |
+| 02 logo_fine_text_3color | 2 | 2 | 1 | 1 | ❌ reject |
+| 03 gradient_soft_subject | 1 | 2 | — | 1 | ❌ reject |
+| 04 thin_line_outline | 2 | 1 | — | 1 | ❌ reject |
+| 05 wordmark_caps | 1 | 2 | 1 | 1 | ❌ reject |
+| 06 wordmark_script | 2 | 1 | 1 | 1 | ❌ reject |
+| 07 circular_badge | 1 | 1 | 1 | 1 | ❌ reject |
+| 08 mascot_detail | 1 | 1 | — | 1 | ❌ reject |
+| 09 nonuniform_background | 1 | 1 | — | 1 | ❌ reject |
+| 10 low_contrast_subject | 2 | 2 | 1 | 1 | ❌ reject |
+| **Mean** | **1.5** | **1.4** | **1.0** | **1.0** | **0 / 10 acceptable** |
+
+**Stitch-type appropriateness scored 1/5 on every single fixture** — the most uniform result in
+the audit, and the one least affected by the render confound, because it is corroborated by the
+`stitch_types` counts rather than by looking at pixels.
+
+### Worst defect per fixture (render-artifact claims excluded)
+
+| Fixture | Defect that would fail a customer |
+|---|---|
+| 01 | Blue fill stops 5–6 mm short of the gold triangle on ~half the scanlines, leaving a bare registration gap; contour breaks into detached dashes at the disc extremities |
+| 02 | **The white layer was never generated.** Both lines of type — the point of the logo — exist only as unstitched voids in the green. On any non-white garment the type simply is not there |
+| 03 | Continuous tone collapsed into concentric hard-edged bands; the soft drop shadow became a hard grey crescent larger than in the source |
+| 04 | The inner ring is not a ring — it survives as four detached arc fragments. Line art is area-filled (10 TATAMI) instead of stroked |
+| 05 | 5 of 6 letters are tatami-filled instead of satin — the "blocky text" complaint, measured |
+| 06 | 1–4 mm script strokes fed to tatami; every character breaks into disconnected horizontal dashes. 13 objects for 7 letters = fragmentation |
+| 07 | "HARBOR CLUB" stitches as "**HARBOR C UB**" (the L is gone); the curved "· ESTABLISHED 1908 ·" is entirely absent; 4 colors → 2; **718 jumps across 13 objects** |
+| 08 | Cream dropped entirely → muzzle and both eye-whites unstitched. Round eyes became flat rectangular bars; all 5 freckles and both catchlights vanished |
+| 09 | **Total subject/background failure.** The gradient backdrop was quantised into two extra colors and stitched as large teal and tan areas — the majority of 5,816 stitches are background |
+| 10 | "LC" illegible — the L's stem survives as two stray 2-px dashes; subject and backdrop merge into one grey mass |
+
+---
+
+## 5. Root causes (what Parts 1–5 actually have to fix)
+
+Ranked by how many fixtures they damage:
+
+1. **Background separation is a corner-color heuristic** (`_is_background`, ΔBGR < 40 vs. the
+   average of four corners). Fails completely on a non-uniform backdrop (09) and on a
+   low-contrast subject (10). → **Part 1 / Part 5.**
+2. **Color quantisation loses layers.** 8 of 10 fixtures returned fewer colors than requested;
+   in 02 and 08 the lost layer *was the subject* (white type; cream muzzle). k-means on raw BGR
+   has no notion of "this is a distinct design element". → **Part 1 / Part 5.**
+3. **Almost everything becomes tatami.** 10 of 76 objects satin; the badge and mascot are 100%
+   tatami. Small text and thin strokes need satin or running stitch, and the classifier's fixed
+   0.8–4 mm × aspect-2.5 window never fires on them. → **Parts 2 and 3.**
+4. **No stroke/line primitive.** Outlines and thin art are area-filled and shatter into dashes
+   (04, 06). → **Parts 2 and 4.**
+5. **Contours are raw pixel chains**, so edges are stepped and small features drop out
+   (freckles, catchlights, the 'L'). → **Part 1 (smoothing).**
+6. **Routing is naive** — 718 jumps / 13 objects on the badge, and hundreds of sub-0.5 mm
+   stitches per fixture. Real machines break thread on this. → cross-cutting.
+
+## 6. What "better" has to mean
+
+Re-run `python scripts/run_quality_bench.py --tag v2-<part>` and compare against
+`v1-baseline-summary.json`. Part N is an improvement only if:
+
+- **no regression** in the objective table (colors preserved, jumps down, no stitch > 12.7 mm,
+  no new sub-0.5 mm stitches), **and**
+- the targeted fixtures move up on the 1–5 scale, graded from **stitch geometry** rather than
+  from the preview bitmap (see §3), **and**
+- at least one fixture reaches an "accept" verdict by Part 3. Today that count is **0 / 10**.
+
+**Headline baseline: mean 1.2 / 5 across all criteria, 0 of 10 fixtures acceptable to a
+customer.** The pipeline is fast (2.2 s for ten designs), crash-free, warning-free, and emits
+no stitch beyond the machine limit — the engineering is sound. What it cannot yet do is decide
+*what* to stitch and *how* to stitch it.
