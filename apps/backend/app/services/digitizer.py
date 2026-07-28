@@ -245,6 +245,7 @@ def digitize_image(
     hoop_size: str = "100x100",
     max_colors: int = DEFAULT_MAX_COLORS,
     min_region_mm2: float = MIN_REGION_MM2,
+    text_mode: bool = False,
 ) -> Design:
     """Convert an image into a stitch Design (classical CV baseline)."""
     import cv2
@@ -354,6 +355,9 @@ def digitize_image(
     color_stops: list[ColorStop] = []
     objects: list[DesignObject] = []
     seq = 0
+    skeleton_satin_used = 0        # diagnostics for the bench/audit
+    skeleton_tatami_fallback = 0
+    skeleton_partial_tatami = 0
 
     emitted_stop = 0  # actual color-stop count — only clusters that yield objects get one
     for _, cluster_idx, center in clusters:
@@ -407,7 +411,38 @@ def digitize_image(
             under_step_px = max(1, round(UNDERLAY_STEP_MM / mm_per_px))
             pull_mm = _default_pull(fabric_type)
             top_region = _dilate_pull(region, pull_mm, mm_per_px)  # pull comp widens the top layer
-            if is_satin:
+
+            # ── Lettering: satin ALONG the stroke (v2 Part 2) ──────────────────
+            # Only in text_mode. A glyph's silhouette is not an arbitrary blob —
+            # its medial axis is the stroke path, so satin columns step along it
+            # with a width that tracks the local stroke. Shape-driven detection
+            # for non-text artwork is Part 3, so this stays opt-in.
+            skel_pts = None
+            if text_mode:
+                sat_step = max(1, round(SATIN_SPACING_MM / mm_per_px))
+                # Measure the TRUE region and add pull compensation to the column
+                # half-width. Measuring the pre-dilated mask would fold pull comp
+                # into the width test and push a 3.66mm stem over the 4mm cap.
+                cand, median_w, wide_mask = _skeleton_satin(
+                    region, mm_per_px, sat_step, max_step_px, extra_half_px=(pull_mm / 2.0) / mm_per_px
+                )
+                # Median stroke width over the satin limit → this is a blob, not a
+                # stroke; fall through to tatami untouched.
+                if cand and median_w <= SATIN_MAX_W_MM:
+                    # Per-segment fallback: tatami only the parts too wide for satin.
+                    if cv2.countNonZero(wide_mask) > 0:
+                        cand = cand + _scanline_fill(wide_mask, row_px, max_step_px, connect_px)
+                        skeleton_partial_tatami += 1
+                    skel_pts = cand
+                    skeleton_satin_used += 1
+                elif cand:
+                    skeleton_tatami_fallback += 1
+            if skel_pts is not None:
+                under = _center_walk(region, rect, under_step_px, connect_px)
+                pts = _with_underlay(under, skel_pts, connect_px)
+                underlay = UnderlayType.CENTER_WALK
+                is_satin = True
+            elif is_satin:
                 satin_step_px = max(1, round(SATIN_SPACING_MM / mm_per_px))
                 under = _center_walk(region, rect, under_step_px, connect_px)  # underlay on the true shape
                 pts = _with_underlay(under, _satin_zigzag(top_region, rect, satin_step_px, connect_px, max_step_px), connect_px)
@@ -621,6 +656,299 @@ def _satin_zigzag(region, rect, step_px: int, connect_px: float, max_step_px: in
     if pts:
         pts[0] = (pts[0][0], pts[0][1], True)  # enter the column with a jump
     return pts
+
+
+# ── v2 Part 2: skeleton-guided satin lettering ───────────────────────────────
+# A glyph is a STROKE, not an arbitrary blob. Filling its silhouette with
+# horizontal tatami rows is what makes machine lettering read as blocky; real
+# digitizing runs satin columns ACROSS the stroke, stepping ALONG its centreline,
+# with the column width tracking the stroke's local width. These helpers build
+# that: thin the glyph to its medial axis, walk each branch, and emit a zigzag
+# whose half-width comes from the distance transform at each step.
+SPUR_MIN_MM = 0.8         # skeleton branches shorter than this are thinning noise
+SKELETON_MIN_WIDTH_MM = 0.5   # below this a stroke is a running stitch, not satin
+SPUR_PRUNE_MULT = 0.6     # spur length threshold as a multiple of local half-width
+TANGENT_WINDOW = 3        # samples each side used to estimate stroke direction
+
+
+def _zhang_suen_thin(mask):
+    """Zhang-Suen thinning → 1px medial axis. Pure NumPy.
+
+    Deliberately NOT ``skimage.morphology.skeletonize``: scikit-image is not in
+    ``requirements.txt`` or ``requirements-dev.txt`` (it only appears when the
+    optional rembg extra is installed), and ``cv2.ximgproc`` is absent from
+    opencv-python-headless. Depending on either would make lettering behave
+    differently on CI than locally — the exact environment-dependence that Part
+    1's review caught.
+    """
+    import numpy as np
+
+    img = (mask > 0).astype(np.uint8)
+    while True:
+        removed_any = False
+        for step in (0, 1):
+            p = np.pad(img, 1)
+            # P2..P9, clockwise from north.
+            P2, P3 = p[:-2, 1:-1], p[:-2, 2:]
+            P4, P5 = p[1:-1, 2:], p[2:, 2:]
+            P6, P7 = p[2:, 1:-1], p[2:, :-2]
+            P8, P9 = p[1:-1, :-2], p[:-2, :-2]
+            seq = [P2, P3, P4, P5, P6, P7, P8, P9, P2]
+            B = P2 + P3 + P4 + P5 + P6 + P7 + P8 + P9
+            A = sum(((seq[i] == 0) & (seq[i + 1] == 1)).astype(np.uint8) for i in range(8))
+            if step == 0:
+                cond = (P2 * P4 * P6 == 0) & (P4 * P6 * P8 == 0)
+            else:
+                cond = (P2 * P4 * P8 == 0) & (P2 * P6 * P8 == 0)
+            remove = (img == 1) & (B >= 2) & (B <= 6) & (A == 1) & cond
+            if remove.any():
+                img[remove] = 0
+                removed_any = True
+        if not removed_any:
+            return img
+
+
+def _prune_spurs(skel, min_len_px: int, rounds: int = 4):
+    """Delete short dead-end branches from a skeleton.
+
+    Thinning a glyph whose outline carries any noise sprouts hairs: measured on
+    "SUMMIT", the letter S produced 82 branches from 179 skeleton pixels. Each
+    hair would start its own satin run with its own jump, which is what made the
+    first attempt look like scattered dashes rather than columns. A branch that
+    dead-ends and is shorter than a stroke width is thinning noise, not a stroke.
+    """
+    import numpy as np
+
+    out = skel.copy()
+    for _ in range(max(1, rounds)):
+        p = np.pad(out, 1)
+        deg = sum(
+            p[dy : dy + out.shape[0], dx : dx + out.shape[1]]
+            for dy in (0, 1, 2)
+            for dx in (0, 1, 2)
+            if not (dy == 1 and dx == 1)
+        )
+        endpoints = {(int(x), int(y)) for y, x in zip(*np.nonzero((out > 0) & (deg == 1)))}
+        if not endpoints:
+            break
+        removed = False
+        for br in _skeleton_branches(out):
+            if len(br) >= min_len_px:
+                continue
+            if br[0] in endpoints or br[-1] in endpoints:
+                # keep the junction pixel so the surviving strokes stay connected
+                for x, y in (br[1:] if br[0] in endpoints else br[:-1]):
+                    out[y, x] = 0
+                removed = True
+        if not removed:
+            break
+    return out
+
+
+def _skeleton_branches(skel, min_len: int = 2):
+    """Split a 1px skeleton into ordered polylines between endpoints/junctions.
+
+    Returns a list of [(x, y), ...] paths. Junction pixels are shared, so the
+    branches of a glyph like 'A' or 'K' meet rather than leaving a gap.
+    """
+    import numpy as np
+
+    pts = {(int(x), int(y)) for y, x in zip(*np.nonzero(skel))}
+    if not pts:
+        return []
+
+    def neighbours(pt):
+        x, y = pt
+        return [
+            (x + dx, y + dy)
+            for dy in (-1, 0, 1)
+            for dx in (-1, 0, 1)
+            if (dx or dy) and (x + dx, y + dy) in pts
+        ]
+
+    degree = {p: len(neighbours(p)) for p in pts}
+    nodes = {p for p, d in degree.items() if d != 2}  # endpoints + junctions
+    branches: list[list[tuple[int, int]]] = []
+    seen_edges: set[frozenset] = set()
+
+    def walk(start, first):
+        path = [start, first]
+        prev, cur = start, first
+        while cur not in nodes:
+            nxt = [n for n in neighbours(cur) if n != prev]
+            if not nxt:
+                break
+            prev, cur = cur, nxt[0]
+            path.append(cur)
+        return path
+
+    for node in nodes:
+        for nb in neighbours(node):
+            edge = frozenset((node, nb))
+            if edge in seen_edges:
+                continue
+            seen_edges.add(edge)
+            path = walk(node, nb)
+            for a, b in zip(path, path[1:]):
+                seen_edges.add(frozenset((a, b)))
+            if len(path) >= min_len:
+                branches.append(path)
+
+    if not branches and pts:  # a closed loop (e.g. 'O') has no endpoint at all
+        start = next(iter(pts))
+        path, prev, cur = [start], None, start
+        while True:
+            nxt = [n for n in neighbours(cur) if n != prev]
+            if not nxt or nxt[0] == start:
+                break
+            prev, cur = cur, nxt[0]
+            path.append(cur)
+        if len(path) >= min_len:
+            branches.append(path)
+    return branches
+
+
+def _extend_branch_ends(samples, dist, binary, step: int):
+    """Extrapolate a skeleton branch past both ends, out to the stroke's cap.
+
+    The medial axis of a bar stops half a width short of its end, so satin driven
+    straight off the skeleton leaves every stroke terminal unstitched. Points are
+    only added while they stay inside the glyph, so this cannot spill outside the
+    shape or run past a junction into open space.
+    """
+    h, w = binary.shape[:2]
+
+    def march(anchor, toward):
+        ax, ay = anchor
+        dx, dy = ax - toward[0], ay - toward[1]
+        norm = (dx * dx + dy * dy) ** 0.5
+        if norm < 1e-6:
+            return []
+        dx, dy = dx / norm, dy / norm
+        reach = float(dist[int(ay), int(ax)])  # local half-width = cap depth
+        out = []
+        travelled = float(step)
+        while travelled <= reach:
+            nx, ny = int(round(ax + dx * travelled)), int(round(ay + dy * travelled))
+            if not (0 <= nx < w and 0 <= ny < h) or binary[ny, nx] == 0:
+                break
+            out.append((nx, ny))
+            travelled += step
+        return out
+
+    head = march(samples[0], samples[min(1, len(samples) - 1)])
+    tail = march(samples[-1], samples[max(-2, -len(samples))])
+    return list(reversed(head)) + list(samples) + tail
+
+
+def _skeleton_satin(region, mm_per_px: float, spacing_px: int, max_step_px: int, extra_half_px: float = 0.0):
+    """Satin columns that follow a glyph's stroke.
+
+    Thins the region to its medial axis, walks each branch, and at every step
+    emits a pair of points on opposite edges — perpendicular to the local stroke
+    direction, at the local half-width taken from the distance transform. Column
+    width therefore varies along the stroke, which is what script/italic faces
+    need (a constant-width column reads wrong on a swelling curve).
+
+    Returns ``(points, median_width_mm, wide_mask)``. Where the stroke is wider
+    than satin can span, the column is clamped to the satin limit and the
+    unreachable remainder is returned as ``wide_mask`` for the caller to tatami —
+    the per-segment fallback, rather than dropping the whole glyph to tatami.
+    Without it a clamped column simply fails to reach the edges and the letter
+    stitches out hollow at its junctions.
+    """
+    import cv2
+    import numpy as np
+
+    binary = (region > 0).astype(np.uint8)
+    empty = np.zeros_like(binary)
+    if cv2.countNonZero(binary) == 0:
+        return [], 0.0, empty
+    dist = cv2.distanceTransform(binary, cv2.DIST_L2, 5)
+    # Close pinholes and soften the outline before thinning — boundary noise is
+    # what sprouts skeleton hairs, and it is cheaper to remove it here than to
+    # prune the consequences.
+    smooth = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8))
+    skel = _zhang_suen_thin(smooth)
+    # Prune spurs shorter than a typical stroke width; that is the scale at which
+    # a dead-end branch is noise rather than a real stroke ending.
+    median_half = float(np.median(dist[skel > 0])) if (skel > 0).any() else 0.0
+    spur_px = max(int(round(SPUR_MIN_MM / mm_per_px)), int(round(median_half * SPUR_PRUNE_MULT)), 3)
+    skel = _prune_spurs(skel, spur_px)
+    branches = [b for b in _skeleton_branches(skel) if len(b) >= 3]
+    if not branches:
+        branches = [b for b in _skeleton_branches(skel) if len(b) >= 2]
+    if not branches:
+        return [], 0.0, empty
+
+    step = max(1, int(spacing_px))
+    pts: list[tuple[float, float, bool]] = []
+    prev_end: tuple[float, float] | None = None
+    # Half-width is clamped to the satin limit. At a corner or a letter junction
+    # ('M' vertex, 'U' bowl join) the distance transform spikes — the medial axis
+    # there is genuinely far from every edge — even though the STROKE is no
+    # wider. Unclamped, those samples throw a single stitch clear across the
+    # glyph. Measured on "SUMMIT": stems are 3.66mm median but the 90th
+    # percentile hits 7.32mm purely from junctions.
+    max_half_px = (SATIN_MAX_W_MM / 2.0) / max(mm_per_px, 1e-6)
+    widths: list[float] = []
+
+    for branch in branches:
+        samples = branch[::step] or [branch[0]]
+        if samples[-1] != branch[-1]:
+            samples.append(branch[-1])
+        if len(samples) < 2:
+            continue
+        # A medial axis stops roughly half a stroke-width short of the stroke's
+        # END — the skeleton of a bar does not reach its cap. Left uncorrected,
+        # every terminal loses a half-width of coverage, which measured as a
+        # 13-17 point coverage deficit against tatami. Extrapolate each end along
+        # its tangent, keeping only points still inside the glyph.
+        samples = _extend_branch_ends(samples, dist, binary, step)
+        top = True
+        first_of_branch = True
+        for i, (x, y) in enumerate(samples):
+            # Tangent over a WINDOW, not the two adjacent samples. A 1-pixel
+            # skeleton is stair-stepped, so a ±1 estimate swings by 45° between
+            # consecutive samples and the columns fan out into a furry edge.
+            lo = max(i - TANGENT_WINDOW, 0)
+            hi = min(i + TANGENT_WINDOW, len(samples) - 1)
+            nxt, prv = samples[hi], samples[lo]
+            tx, ty = nxt[0] - prv[0], nxt[1] - prv[1]
+            norm = (tx * tx + ty * ty) ** 0.5 or 1.0
+            nx, ny = -ty / norm, tx / norm            # unit normal to the stroke
+            half = float(dist[int(y), int(x)])         # local half-width, px
+            widths.append(half * 2.0 * mm_per_px)      # measured on the TRUE shape
+            half = max(min(half, max_half_px), 0.5) + extra_half_px  # then pull-comp
+            a = (x + nx * half, y + ny * half)
+            b = (x - nx * half, y - ny * half)
+            p0, p1 = (a, b) if top else (b, a)
+            jump = first_of_branch and (prev_end is None or _dist(prev_end, p0) > spacing_px * 4)
+            pts.append((p0[0], p0[1], jump))
+            # Subdivide the cross-stroke zig so no single stitch exceeds the machine limit.
+            n = max(1, int(np.ceil(_dist(p0, p1) / max(max_step_px, 1))))
+            for k in range(1, n + 1):
+                pts.append((p0[0] + (p1[0] - p0[0]) * k / n, p0[1] + (p1[1] - p0[1]) * k / n, False))
+            prev_end = p1
+            top = not top
+            first_of_branch = False
+    if pts:
+        pts[0] = (pts[0][0], pts[0][1], True)
+    # Report the MEDIAN stroke width, not the share of samples over the limit:
+    # junction spikes make the mean and the over-limit share useless as a
+    # "is this a stroke or a blob?" test.
+    median_w = float(np.median(widths)) if widths else 0.0
+
+    # Everything satin could not reach: the region minus the band the columns
+    # actually cover. Discs of the clamped half-width swept along the skeleton
+    # approximate that band closely enough, and the remainder is what needs tatami.
+    r = max(1, int(round(max_half_px)))
+    disc = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * r + 1, 2 * r + 1))
+    covered = cv2.dilate((skel > 0).astype(np.uint8), disc)
+    wide_mask = ((binary > 0) & (covered == 0)).astype(np.uint8) * 255
+    # Ignore slivers — a thin uncovered rim is the anti-aliased edge, not a region.
+    wide_mask = cv2.morphologyEx(wide_mask, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+    return pts, median_w, wide_mask
 
 
 def _resample_closed(poly: list[tuple[float, float]], step: float) -> list[tuple[float, float]]:

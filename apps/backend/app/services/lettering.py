@@ -120,7 +120,13 @@ def generate_lettering(
     img.save(buf, format="PNG")
     # Letters carry meaningful sub-4mm² details (the dot on 'i'/'j', accents,
     # punctuation) that the image digitizer's speck filter would drop — keep them.
-    design = digitize_image(buf.getvalue(), fabric_type, hoop, max_colors=2, min_region_mm2=0.5)
+    # text_mode routes each glyph through skeleton-guided satin: columns run
+    # ACROSS the stroke, stepping along its medial axis, with the column width
+    # following the local stroke width. Filling a glyph's silhouette with
+    # horizontal tatami rows is what made machine lettering read as blocky.
+    design = digitize_image(
+        buf.getvalue(), fabric_type, hoop, max_colors=2, min_region_mm2=0.5, text_mode=True
+    )
     if design.stitch_count == 0 or not design.objects:
         raise ValueError(f"Text {text!r} produced no stitchable shapes (unsupported glyphs, or too small)")
     design.name = f'Text "{text}"'

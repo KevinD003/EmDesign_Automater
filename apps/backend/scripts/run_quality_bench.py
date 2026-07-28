@@ -57,8 +57,13 @@ FIXTURE_PARAMS: dict[str, dict] = {
     "02_logo_fine_text_3color": {"colors": 3, "hoop": "130x180", "fabric": "cotton"},
     "03_gradient_soft_subject": {"colors": 4, "hoop": "130x180", "fabric": "cotton"},
     "04_thin_line_outline": {"colors": 2, "hoop": "100x100", "fabric": "cotton"},
-    "05_wordmark_caps": {"colors": 2, "hoop": "130x180", "fabric": "cotton"},
-    "06_wordmark_script": {"colors": 2, "hoop": "130x180", "fabric": "cotton"},
+    # 05/06 are pure wordmarks, so they are digitized as LETTERING (text=True),
+    # the same path `generate_lettering` uses. Declared here rather than inferred
+    # so the setting is visible in the diff and in every summary JSON.
+    # 02 and 07 contain text inside a mixed design and stay text=False: isolating
+    # the type within a logo needs per-object stroke detection, which is Part 3.
+    "05_wordmark_caps": {"colors": 2, "hoop": "130x180", "fabric": "cotton", "text": True},
+    "06_wordmark_script": {"colors": 2, "hoop": "130x180", "fabric": "cotton", "text": True},
     "07_circular_badge": {"colors": 4, "hoop": "130x180", "fabric": "cotton"},
     "08_mascot_detail": {"colors": 5, "hoop": "130x180", "fabric": "cotton"},
     "09_nonuniform_background": {"colors": 4, "hoop": "130x180", "fabric": "cotton"},
@@ -111,6 +116,7 @@ class FixtureResult:
     coverage_ratio: float = 0.0
 
     segmentation_method: str | None = None
+    satin_share: float = 0.0        # SATIN objects / all objects
     output_png: str | None = None
 
 
@@ -200,6 +206,7 @@ def run_fixture(path: Path, out_dir: Path) -> FixtureResult:
                 fabric_type=params["fabric"],
                 hoop_size=params["hoop"],
                 max_colors=params["colors"],
+                text_mode=bool(params.get("text", False)),
             )
         except Exception as exc:  # noqa: BLE001 - a crash is a finding, not a stop
             res.runtime_s = round(time.perf_counter() - started, 3)
@@ -218,6 +225,7 @@ def run_fixture(path: Path, out_dir: Path) -> FixtureResult:
     for o in design.objects:
         key = o.stitch_type.value if hasattr(o.stitch_type, "value") else str(o.stitch_type)
         res.stitch_types[key] = res.stitch_types.get(key, 0) + 1
+    res.satin_share = round(res.stitch_types.get("SATIN", 0) / max(res.object_count, 1), 3)
 
     res.width_mm, res.height_mm = design.width_mm, design.height_mm
     res.est_minutes = round(design.stitch_count / SPM, 2)
