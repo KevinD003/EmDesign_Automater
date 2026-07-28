@@ -48,6 +48,37 @@ def find_font(preferred: str | None = None) -> str:
     raise ValueError("No TrueType font found on this system — supply a font path")
 
 
+def _unsupported_glyphs(text: str, font) -> list[str]:
+    """Characters the font renders as its .notdef "tofu" box (or not at all).
+
+    PIL gives no cmap access, so compare each character's rendering against the
+    rendering of a permanently-unassigned codepoint (U+0378): identical bitmaps
+    mean the font substituted .notdef — the character has no real glyph and would
+    digitize into a garbage rectangle of stitches.
+    """
+    from PIL import Image, ImageDraw
+
+    def render(s: str) -> bytes:
+        img = Image.new("L", (300, 300), 0)
+        ImageDraw.Draw(img).text((30, 30), s, font=font, fill=255)
+        return img.tobytes()
+
+    try:
+        notdef = render("\u0378")  # unassigned codepoint → guaranteed .notdef
+    except Exception:  # noqa: BLE001 - detection is best-effort; never block rendering
+        return []
+    bad: list[str] = []
+    for ch in dict.fromkeys(text):
+        if ch.isspace():
+            continue
+        try:
+            if render(ch) == notdef:
+                bad.append(ch)
+        except Exception:  # noqa: BLE001 - a char PIL cannot render at all
+            bad.append(ch)
+    return bad
+
+
 def generate_lettering(
     text: str,
     height_mm: float = 20.0,
@@ -63,6 +94,11 @@ def generate_lettering(
     height_mm = max(5.0, min(float(height_mm), 100.0))
 
     font = ImageFont.truetype(find_font(font_path), size=160)
+    bad = _unsupported_glyphs(text, font)
+    if bad:
+        raise ValueError(
+            f"Unsupported characters for lettering: {' '.join(bad)!r} — the font has no glyphs for them"
+        )
 
     # Measure, then render tightly cropped with a small margin.
     probe = ImageDraw.Draw(Image.new("RGB", (8, 8)))
@@ -82,7 +118,9 @@ def generate_lettering(
 
     buf = io.BytesIO()
     img.save(buf, format="PNG")
-    design = digitize_image(buf.getvalue(), fabric_type, hoop, max_colors=2)
+    # Letters carry meaningful sub-4mm² details (the dot on 'i'/'j', accents,
+    # punctuation) that the image digitizer's speck filter would drop — keep them.
+    design = digitize_image(buf.getvalue(), fabric_type, hoop, max_colors=2, min_region_mm2=0.5)
     if design.stitch_count == 0 or not design.objects:
         raise ValueError(f"Text {text!r} produced no stitchable shapes (unsupported glyphs, or too small)")
     design.name = f'Text "{text}"'

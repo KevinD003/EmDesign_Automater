@@ -23,7 +23,7 @@ from app.models.design import (
 )
 
 # Tunables (mm unless noted) — see spec "Quick Reference" table.
-ROW_SPACING_MM = 0.6      # fill row pitch (~4-6 stitches/mm density class)
+ROW_SPACING_MM = 0.45     # fill row pitch — full-coverage tatami (0.6 left fabric showing through)
 MAX_STITCH_MM = 6.0       # subdivide longer runs (machine safety << 12.7mm)
 MIN_REGION_MM2 = 4.0      # drop specks smaller than this
 CONNECT_MM = 3.0          # row-to-row travel below this = stitch, else JUMP
@@ -87,6 +87,7 @@ def digitize_image(
     fabric_type: str = "cotton",
     hoop_size: str = "100x100",
     max_colors: int = DEFAULT_MAX_COLORS,
+    min_region_mm2: float = MIN_REGION_MM2,
 ) -> Design:
     """Convert an image into a stitch Design (classical CV baseline)."""
     import cv2
@@ -131,7 +132,7 @@ def digitize_image(
 
     row_px = max(1, round(ROW_SPACING_MM / mm_per_px))
     max_step_px = max(2, round(MAX_STITCH_MM / mm_per_px))
-    min_area_px = MIN_REGION_MM2 / (mm_per_px * mm_per_px)
+    min_area_px = max(0.0, float(min_region_mm2)) / (mm_per_px * mm_per_px)
     connect_px = CONNECT_MM / mm_per_px
 
     stitches: list[Stitch] = []

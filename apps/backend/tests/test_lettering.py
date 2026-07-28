@@ -117,3 +117,20 @@ def test_multi_char_text_keeps_detail():
 def test_unsupported_glyphs_rejected():
     with pytest.raises(ValueError):
         generate_lettering("\U0001F600\U0001F680")  # emoji → no glyphs → empty (review #6)
+
+
+@pytest.mark.skipif(not HAVE_FONT, reason="no TrueType font found on this system")
+def test_mixed_supported_and_unsupported_rejected():
+    """Tofu boxes must be rejected even when mixed with real glyphs — otherwise
+    the design silently gains garbage rectangles of stitches. U+0378 is a
+    permanently-unassigned codepoint, so no font can have a real glyph for it."""
+    with pytest.raises(ValueError):
+        generate_lettering("Hi͸")
+
+
+@pytest.mark.skipif(not HAVE_FONT, reason="no TrueType font found on this system")
+def test_small_lettering_keeps_the_dot_on_i():
+    """The dot on 'i' is < 4mm² at small sizes; the lettering path must keep it
+    (the image digitizer's speck filter would drop it)."""
+    d = generate_lettering("i", height_mm=8)
+    assert len(d.objects) >= 2, "expected stem AND dot as separate objects"

@@ -80,12 +80,17 @@ def read_embroidery(data: bytes, ext: str) -> Design:
     color_stops: list[ColorStop] = []
     if pattern.stitches:
         for i, (block, thread) in enumerate(pattern.get_as_colorblocks(), start=1):
+            # Colorless formats (DST/EXP/…) get filler threads that pyembroidery
+            # names "Random" — surface an honest name instead of a confusing one.
+            desc = getattr(thread, "description", None)
+            if not desc or desc.strip().lower() == "random":
+                desc = f"Color {i} (file has no color data)"
             color_stops.append(
                 ColorStop(
                     stop_number=i,
                     thread_brand=(getattr(thread, "brand", None) or "Unknown"),
                     catalog_number=(getattr(thread, "catalog_number", None) or ""),
-                    thread_name=(getattr(thread, "description", None) or f"Color {i}"),
+                    thread_name=desc,
                     hex=(thread.hex_color() if thread is not None else "#808080"),
                     stitch_count=len(block),
                 )

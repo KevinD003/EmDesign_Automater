@@ -3,11 +3,12 @@
 AI-assisted embroidery design & digitizing platform — a working, browser-based embroidery studio.
 Built from [`AI-Embroidery-Software-Prompt.md`](./AI-Embroidery-Software-Prompt.md).
 
-> **Status:** Phases 0–5 + 7 complete (see [`STATUS.md`](./STATUS.md) for the full changelog and
-> feature matrix). Backend **63** tests, frontend **47** tests, all green. Two areas remain gated:
-> **cloud sync/auth** (Phase 6 — needs a Supabase project + keys) and **neural AI** (Phases 8–9 — needs GPU + data).
-> The digitizer today is a classical-CV baseline; the app has **not** been eyeballed in a browser by the authors
-> (logic is unit-/e2e-tested, in-browser paint isn't — see STATUS §12).
+> **Status:** Phases 0–8 (v1) complete, including per-user auth + cloud persistence and the
+> classical optimization engine (see [`STATUS.md`](./STATUS.md) for the full changelog and
+> feature matrix). Backend **83** tests, frontend **57** tests, all green; in-browser rendering
+> verified in Chrome. One area remains gated: **neural AI** (Phases 8-neural/9 — needs GPU + data).
+> The digitizer today is a classical-CV baseline. Cloud sync works keyless too (in-memory fallback);
+> point it at a Supabase project via `apps/backend/.env` for real persistence.
 
 ## What it does
 
@@ -34,7 +35,7 @@ Three ways in, full editing, every way out:
 |---|---|---|
 | Frontend | **TypeScript** | React + Vite · Konva (2D canvas) · Three.js (TrueView 3D) · Zustand · TanStack Query · vitest |
 | Backend | **Python 3.14** | FastAPI + Uvicorn · Pydantic v2 · **pyembroidery** (45+ formats) · **OpenCV/NumPy/Pillow** (digitize) · **ReportLab** (PDF) · pytest |
-| Data | PostgreSQL | Supabase schema in [`db/schema.sql`](./db/schema.sql) — **written, not applied** (Phase 6) |
+| Data | PostgreSQL | Supabase schema in [`db/schema.sql`](./db/schema.sql) — applied to a live project; keyless in-memory fallback for local dev |
 
 > All UI is TypeScript/TSX. The single `apps/frontend/index.html` is a ~12-line Vite bootstrap that mounts React.
 
@@ -62,8 +63,8 @@ npm run dev
 ## Test
 
 ```bash
-cd apps/backend && python -m pytest tests -q     # 63 passed
-npm test -w apps/frontend                         # vitest 47 passed
+cd apps/backend && python -m pytest tests -q     # 83 passed
+npm test -w apps/frontend                         # vitest 57 passed
 npm run typecheck                                 # tsc --noEmit, clean
 ```
 

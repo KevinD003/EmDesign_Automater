@@ -404,6 +404,7 @@ export function Toolbar() {
           ))}
         </div>
       )}
+      <div className="report-stack">
       {optimizeReport && (
         <div className="validation-report">
           <button type="button" className="vr-close" onClick={() => setOptimizeReport(null)} aria-label="Dismiss">
@@ -456,6 +457,7 @@ export function Toolbar() {
           {report.passed && report.warnings.length === 0 && <div className="vr-ok">No problems detected.</div>}
         </div>
       )}
+      </div>
     </header>
   );
 }

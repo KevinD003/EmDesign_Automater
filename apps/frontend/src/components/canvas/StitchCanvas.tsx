@@ -20,6 +20,8 @@ interface StitchCanvasProps {
 }
 
 const DEFAULT_HOOP = { minX: 0, minY: 0, maxX: 100, maxY: 100 }; // mm, when drawing on a blank canvas
+const FABRIC_MARGIN_MM = 6; // fabric backdrop extends this far beyond the design bounds
+const THREAD_WIDTH_MM = 0.4; // draw stitches at physical thread width (min 1.2 screen px)
 
 /**
  * Canvas design editor (spec §3). Renders color-grouped polylines (via the pure
@@ -116,6 +118,16 @@ export function StitchCanvas({
       >
         <Layer>
           <Group ref={groupRef} scaleX={fit.scale} scaleY={fit.scale} x={fit.offsetX} y={fit.offsetY}>
+            {/* Fabric backdrop — light like real fabric, so dark threads stay visible */}
+            <Rect
+              x={bounds.minX - FABRIC_MARGIN_MM}
+              y={bounds.minY - FABRIC_MARGIN_MM}
+              width={bounds.maxX - bounds.minX + 2 * FABRIC_MARGIN_MM}
+              height={bounds.maxY - bounds.minY + 2 * FABRIC_MARGIN_MM}
+              fill="#e9e5da"
+              cornerRadius={2 / pxPerMm}
+              listening={false}
+            />
             {/* Hoop outline when drawing on a blank canvas */}
             {!hasStitches && (
               <Rect
@@ -123,7 +135,7 @@ export function StitchCanvas({
                 y={bounds.minY}
                 width={bounds.maxX - bounds.minX}
                 height={bounds.maxY - bounds.minY}
-                stroke="#3a4150"
+                stroke="#8a8474"
                 strokeWidth={0.5 / pxPerMm}
                 dash={[2 / pxPerMm, 2 / pxPerMm]}
                 listening={false}
@@ -136,7 +148,10 @@ export function StitchCanvas({
                   key={i}
                   points={r.points}
                   stroke={r.color}
-                  strokeWidth={(r.stop === selectedStop ? 2 : 1.2) / pxPerMm}
+                  strokeWidth={Math.max(
+                    THREAD_WIDTH_MM * (r.stop === selectedStop ? 1.4 : 1),
+                    (r.stop === selectedStop ? 2 : 1.2) / pxPerMm,
+                  )}
                   opacity={active ? 1 : 0.12}
                   lineCap="round"
                   lineJoin="round"
