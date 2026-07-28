@@ -64,16 +64,16 @@ this is like-for-like.
 
 | Fixture | colours ask / v1 / **v2** | jumps v1→v2 | <0.5 mm v1→**v2** | max stitch v1→v2 | stitches v1→v2 |
 |---|---|---|---|---|---|
-| 01 flat_2color_logo | 2 / 2 / **2** | 77→78 | 80→**0** | 8.72→9.15 | 1,699→1,579 |
-| 02 logo_fine_text_3color | 3 / 2 / **3** ✅ | 140→164 | 236→**0** | 8.96→8.77 | 3,289→3,415 |
-| 03 gradient_soft_subject | 4 / 3 / **4** ✅ | 278→514 | 321→**0** | 8.96→9.15 | 3,900→2,966 |
-| 04 thin_line_outline | 2 / 1 / **1** | 187→287 | 309→**2** | 7.31→7.45 | 1,377→1,219 |
-| 05 wordmark_caps | 2 / 1 / **2** | 173→186 | 292→**0** | 8.96→8.97 | 1,371→1,268 |
-| 06 wordmark_script | 2 / 1 / **1** | 77→122 | 364→**0** | 8.59→8.78 | 1,094→794 |
-| 07 circular_badge | 4 / 2 / **3** | 718→858 | 617→**0** | 8.96→9.15 | 4,083→5,234 |
-| 08 mascot_detail | 5 / 3 / **5** ✅ | 303→374 | 288→**0** | 8.96→8.97 | 2,039→2,471 |
-| 09 nonuniform_background | 4 / 4 / **2** | 78→**41** | 677→**0** | 8.96→8.77 | 5,816→**1,032** |
-| 10 low_contrast_subject | 4 / 3 / **3** | 144→143 | 272→**0** | 8.96→8.97 | 2,612→2,345 |
+| 01 flat_2color_logo | 2 / 2 / **2** | 77→63 | 80→**0** | 8.72→8.73 | 1,699→1,648 |
+| 02 logo_fine_text_3color | 3 / 2 / **3** ✅ | 140→167 | 236→**0** | 8.96→8.96 | 3,289→3,435 |
+| 03 gradient_soft_subject | 4 / 3 / **4** ✅ | 278→513 | 321→**0** | 8.96→9.15 | 3,900→2,977 |
+| 04 thin_line_outline | 2 / 1 / **1** | 187→286 | 309→**2** | 7.31→8.72 | 1,377→1,223 |
+| 05 wordmark_caps | 2 / 1 / **2** ✅ | 173→186 | 292→**0** | 8.96→8.96 | 1,371→1,275 |
+| 06 wordmark_script | 2 / 1 / **1** | 77→119 | 364→**0** | 8.59→8.96 | 1,094→799 |
+| 07 circular_badge | 4 / 2 / **3** | 718→868 | 617→**0** | 8.96→9.32 | 4,083→5,275 |
+| 08 mascot_detail | 5 / 3 / **5** ✅ | 303→385 | 288→**0** | 8.96→9.15 | 2,039→2,534 |
+| 09 nonuniform_background | 4 / 4 / **2** | 78→41 | 677→**0** | 8.96→8.96 | 5,816→1,010 |
+| 10 low_contrast_subject | 4 / 3 / **3** | 144→140 | 272→**0** | 8.96→8.97 | 2,612→2,342 |
 
 | Metric | v1 | v2-part1 |
 |---|---|---|
@@ -81,7 +81,7 @@ this is like-for-like.
 | Sub-0.5 mm stitches (all fixtures) | 3,456 | **2** |
 | Stitches over the 12.7 mm machine limit | 0 | **0** |
 | Geometry-measured coverage ratio | — | **1.0 on all ten** |
-| Jumps (all fixtures) | 2,175 | **2,767 — regression, see §5** |
+| Jumps (all fixtures) | 2,175 | **2,768 — regression, see §6.2** |
 
 ## 4. The five acceptance questions, answered with evidence
 
@@ -115,3 +115,104 @@ a failure rather than dressing it up: low-contrast input needs contrast-aware pa
 which is not in Part 1's scope.
 
 ---
+## 5. Adversarial re-grade — and it is not flattering
+
+Same method as Part 0: ten independent graders comparing v1 and v2 side by side, then ten
+adversarial reviewers instructed to assume the improvement was overstated. Challenged scores stand.
+
+> **Stamp:** these scores graded the build *before* the contour-smoothing correction in §6.1. The
+> fixture-01 regression that drove its "regressed" verdict has since been measured back to parity;
+> fixture 05's regression is real and stands. Re-running twenty agents to move one score would be
+> disproportionate, so the numbers are reported as measured, with that caveat visible.
+
+| Fixture | v1 bg / contour / colour | v2 bg / contour / colour | Verdict |
+|---|:---:|:---:|---|
+| 01 flat_2color_logo | 5 / 3 / 3 | 5 / 3 / 2 | regressed *(since fixed — §6.1)* |
+| 02 logo_fine_text_3color | 3 / 2 / 2 | 3 / 3 / 3 | mixed |
+| 03 gradient_soft_subject | 2 / 4 / 2 | 4 / 2 / 3 | mixed |
+| 04 thin_line_outline | 4 / 2 / 5 | 4 / 3 / 4 | mixed |
+| 05 wordmark_caps | 4 / 3 / 5 | 2 / 2 / 2 | **regressed** |
+| 06 wordmark_script | 4 / 2 / 5 | 4 / 2 / 4 | mixed |
+| 07 circular_badge | 4 / 3 / 2 | 3 / 2 / 3 | mixed |
+| 08 mascot_detail | 3 / 2 / 2 | 3 / 2 / 3 | mixed |
+| 09 nonuniform_background | 1 / 2 / 3 | **5** / 2 / 4 | **improved** |
+| 10 low_contrast_subject | 3 / 2 / 3 | 3 / 3 / 3 | mixed |
+| **Mean** | **3.3 / 2.5 / 3.2** | **3.6 / 2.4 / 3.1** | 1 improved · 7 mixed · 2 regressed |
+
+**The honest reading: subjective quality is essentially flat.** Background/edge gains +0.3, contour
+and colour each lose 0.1. That sits uncomfortably beside objective metrics that improved a lot
+(colours matching request 2→5, sub-0.5 mm stitches 3,456→2, fixture 09 down 82% in stitch count).
+
+Both are true, and the tension is the finding: **Part 1 fixed the specific named defects without
+lifting overall perceived quality**, because what dominates a grader's eye — blocky tatami where
+satin belongs, text that is present but not legible — is untouched by Part 1 and is exactly what
+Parts 2–3 address. Fixture 02 is the clearest illustration: its white type genuinely stitches now
+(verified below), yet it still reads "EORTEFIELD" rather than "NORTHFIELD" because a 6mm cap-height
+word rendered as tatami cannot resolve. The layer was the Part-1 bug; the legibility is a Part-2 bug.
+
+### Two reviewer findings that were wrong, and why
+
+**"Fixture 02's white text is not actually stitched."** Wrong, but for an instructive reason.
+`render_preview` draws on a near-white background, so white thread is invisible — the reviewer
+could see a white band and reasonably concluded nothing was there. Re-plotting **stop 3 alone on a
+mid-grey ground** shows 398 white stitches forming the wordmark in the correct position. The
+reviewer's *observation* was accurate; the inference was not.
+
+This exposes a third rendering defect in the same family as the v1 stroke-width bug: **the
+customer-facing preview cannot depict white or light thread at all.** Logged for a later part.
+
+**"Coverage claims 1.0 while the render shows unfilled wedges."** The reviewer is **right**, and
+this is a genuine flaw in the metric I added. `coverage_ratio` compares fill-row pitch to thread
+width — it detects *rows too far apart*, not *regions never filled*. It cannot see a bare wedge
+between two layers. It should not be used as a pass/fail gate, and §6.1 exists only because a human
+looked at the picture. A void-detecting metric (rasterise contours, compare to stitched area) is
+needed before coverage can gate anything.
+
+## 6. Regressions and honest limitations
+
+### 6.1 A regression this audit caught, and I fixed
+Adversarial review found that fixture 01's gold triangle had eroded away from the blue disc,
+opening a bare-fabric wedge. Verified and traced: **Chaikin corner-cutting shrinks a polygon**, and
+adjacent colour layers are smoothed independently, so they pull apart. Measured white area in the
+gold/blue join region: **v1 27.5% · v2 at 2 iterations/0.18mm 41.1% · v2 at 1 iteration/0.10mm
+27.8%.** Settings reduced to 1 iteration at 0.10 mm — parity with v1, staircase still removed.
+Fixture 01's jumps also improved as a side effect (77 → 63).
+
+### 6.2 Jump count regressed on 7 of 10 — not fixed
+Totals 2,175 → 2,768. This violates the brief's "no regression" line and I am not going to explain
+it away. Evidenced cause: v2 stitches content v1 deleted (objects 76 → 97; fixture 07 gained a
+1,904-stitch cream disc that v1 dropped entirely), and the only fixture where v2 *removes* content
+improved (09: 78 → 41). Normalised per 1,000 stitches, 07 and 08 improve while 03, 04 and 06 still
+regress. The real fix is decomposing annular regions into monotone chunks before scanline filling,
+so a row does not repeatedly cross a hole — that is a fill-pattern change, which the brief reserves
+for Parts 2–4. `POST /api/optimize/path` already reduces travel on demand.
+
+### 6.3 Fixture 05 gained a spurious colour — not fixed
+"SUMMIT" is one ink colour; v2 returns two, the second a light halo at Δ21.4 from white — too far
+from the page to trip the substrate rule, too close to be a real layer. I attempted an
+"anti-aliasing halo has no interior" suppressor; it broke three tests without fixing this case, and
+I **reverted it rather than tune thresholds until the fixtures looked right**. Recorded as open.
+
+### 6.4 Other honest notes
+- **Fixture 10 is not fixed** (see §4, question 5). Low-contrast input needs contrast-aware palette
+  selection.
+- **Fixture 02's small second line** ("EST. 1974 · SUPPLY CO.") still produces no stitches at all.
+- **rembg costs runtime**: fixture 01 went 0.10 s → 2.58 s. Total bench 2.2 s → ~7 s. It also
+  bought nothing measurable on clean white-background fixtures, where flood-fill agreed with it.
+  A cheap "is the background already uniform?" pre-check would skip the model in those cases.
+- **The corpus is ten synthetic fixtures.** Thresholds tuned against them risk overfitting; the
+  substrate rule in particular is a heuristic over a genuine ambiguity (a glyph counter and
+  knocked-out type are the same shape, separable only by scale and enclosure).
+- **Nothing has been stitched on a real machine.** All claims are geometry and renders.
+
+## 7. Reproducing
+
+```bash
+cd apps/backend && source .venv/bin/activate
+pip install -r requirements.txt -r requirements-dev.txt
+pip install -r requirements-features.txt     # optional: enables the rembg tier
+python -m pytest tests -q                    # 88 passed
+python scripts/run_quality_bench.py --tag v2-part1
+```
+Without rembg installed the pipeline still runs, falling back to border flood-fill; fixtures 03 and
+09 will be materially worse, which is itself worth measuring.

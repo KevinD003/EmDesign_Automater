@@ -76,9 +76,16 @@ SUBSTRATE_MAX_MM2 = 8.0
 # Contour smoothing. Douglas-Peucker tolerance in mm, then Chaikin corner-cutting.
 # Both are capped for small contours so fine features are not smoothed away —
 # the audit requires fixture 08's freckles/catchlights and fixture 07's "L" to survive.
-APPROX_EPS_MM = 0.18
-CHAIKIN_ITERS = 2
+APPROX_EPS_MM = 0.10
+CHAIKIN_ITERS = 1
 SMOOTH_MIN_POINTS = 10    # below this a contour is left alone entirely
+# Chaikin corner-cutting SHRINKS a polygon, and adjacent colour layers are
+# smoothed independently, so an aggressive setting pulls neighbouring layers
+# apart and opens bare-fabric wedges between them. Measured on fixture 01's
+# gold/blue join (white area in the join region): v1 27.5% · 2 iterations at
+# 0.18mm 41.1% (a real regression, caught in adversarial review) · 1 iteration
+# at 0.10mm 27.8%, i.e. parity with v1 while still removing the pixel staircase.
+# Anything stronger trades layer registration for edge smoothness — not worth it.
 
 # Pull compensation (spec §4.6): widen the top fill/satin to counter fabric pull that
 # narrows stitching. Higher for stretchy fabrics. Applied as a dilation (per side, mm).
