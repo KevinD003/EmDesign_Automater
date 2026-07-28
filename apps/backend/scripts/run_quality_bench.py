@@ -158,13 +158,25 @@ def filled_area_mm2(design) -> float:
 
 
 def fill_row_geometry(design) -> tuple[float, int]:
-    """Median vertical pitch between adjacent fill rows (mm), and how many gaps
-    exceed one thread width.
+    """Median vertical pitch between adjacent SCANLINE fill rows (mm), and how
+    many gaps exceed one thread width.
 
-    Measured from stitch coordinates, never from the render. A pitch at or below
-    the thread width means the rows touch or overlap — full coverage.
+    Only meaningful for row-based fills. A satin column is a zigzag ACROSS the
+    stroke, so its distinct y-values are the zigzag vertices, not fill rows —
+    reading them as a row pitch produced a physically impossible 0.018mm on the
+    Part 2 lettering fixtures (thread is ~0.4mm), which an adversarial reviewer
+    correctly flagged. Designs that are majority-satin now report 0.0 rather
+    than a meaningless number that looks like a measurement.
     """
     import statistics
+
+    satin = sum(
+        1
+        for o in design.objects
+        if (o.stitch_type.value if hasattr(o.stitch_type, "value") else str(o.stitch_type)) == "SATIN"
+    )
+    if design.objects and satin > len(design.objects) / 2:
+        return 0.0, 0
 
     ys = sorted({round(s.y, 3) for s in design.stitches if _cmd(s) == "STITCH"})
     gaps = [b - a for a, b in zip(ys, ys[1:]) if b - a > 1e-6]

@@ -101,3 +101,80 @@ Caps reach parity; script sits 3.5 points below, concentrated at junctions where
 meeting strokes do not perfectly abut. Reported rather than smoothed over.
 
 ---
+## 5. Adversarial re-grade
+
+Same method as Parts 0/1: a grader per fixture, then an adversarial reviewer told to assume the
+improvement was overstated. Challenged scores stand. 02 and 07 are **controls** — Part 2 should not
+have touched them.
+
+| Fixture | | grader | **challenged** | verdict | columns follow strokes? |
+|---|---|---|---|---|---|
+| 05 wordmark_caps | PRIMARY | 2 → 4 | **2 → 3** | improved | **yes** (confirmed from the image) |
+| 06 wordmark_script | PRIMARY | 2 → 3 | **2 → 2** | mixed | disputed — see §6 |
+| 02 logo_fine_text_3color | control | 2 → 2 | **1 → 1** | unchanged | n/a — correctly untouched |
+| 07 circular_badge | control | 1 → 1 | **1 → 1** | unchanged | n/a — correctly untouched |
+
+Both controls confirmed identical before/after by reviewers reading the JSONs, so **the scope
+guarantee held under adversarial checking**, not just in my own diff.
+
+## 6. The reviewers' central claim, tested
+
+> *"AFTER is HOLLOW, not satin-filled… stitches sit ON the contour; they do not span from one
+> stroke edge to the other. That is outline stitching, not satin."* — challenger, fixture 06
+
+This would mean the whole implementation is wrong, so it was measured rather than argued. Coverage
+was recomputed **separately for the stroke interior and the edge band** (interior = the glyph eroded
+by 0.6 mm; edge = the remainder). Outline stitching covers the edge and not the interior; satin
+columns cover both.
+
+| Fixture | | all | **interior** | edge |
+|---|---|---|---|---|
+| 05 wordmark_caps | tatami (before) | 84.3% | 84.5% | 84.1% |
+| 05 wordmark_caps | **satin (after)** | 87.1% | **95.2%** | **78.1%** |
+| 06 wordmark_script | tatami (before) | 88.4% | 92.9% | 87.5% |
+| 06 wordmark_script | **satin (after)** | 90.2% | **98.2%** | 88.7% |
+
+**The claim is refuted.** Interior coverage *rose* under satin on both fixtures — to 95.2% and
+98.2%. The columns do span the strokes; the glyphs are not hollow.
+
+Why it looked hollow is worth recording, because it is the third instance of the same underlying
+problem: **the preview renderer cannot faithfully draw satin.** It renders each stitch as a
+hairline, so a satin column reads as a row of separate ticks with gaps between them, while tatami's
+long horizontal runs read as solid. Fixture 06 makes this worst because its strokes are so thin
+that **84% of the glyph's area lies within 0.6 mm of an edge** (interior 2,201 px vs edge 11,864 px)
+— there is barely any "interior" to look solid. The reviewer's *observation* was accurate; the
+inference from it was not. (Previously: fixed 2px stroke width, and light thread invisible on a
+white ground.)
+
+**But one of their criticisms is confirmed.** Edge-band coverage on fixture 05 *fell* 84.1% → 78.1%,
+which is exactly the "ragged, furry, overshooting edges" the reviewers described. Satin columns
+built from skeleton ± local width do not hug the outline the way a real digitiser's edge-defined
+columns would. That is a genuine quality regression at the letter edge, traded for a large gain in
+the interior, and it is not fixed here.
+
+**And a third criticism was correct and has been fixed.** `fill_row_pitch_mm` reported **0.018 mm**
+for satin fixtures — physically impossible for 0.4 mm thread. It measures spacing between distinct
+y-values, which for a satin zigzag are the column vertices, not fill rows. The harness now returns
+`0.0` for majority-satin designs instead of a meaningless number that looks like a measurement.
+Caught by an adversarial reviewer reading my own metric more carefully than I did.
+
+## 7. Honest position on Part 2
+
+**What is established:** lettering now stitches as satin columns that follow stroke direction
+(satin share 17% → 100% and 25% → 100%), interior coverage improved on both wordmarks, fixture 05's
+jump count fell 174 → 93, no non-lettering fixture moved by a single stitch, and both test
+environments pass at 90.
+
+**What is not:** the challenged scores are **05: 2→3** and **06: 2→2**. On fixture 06 the reviewer
+scored no net gain, and after checking their reasoning I only partly disagree — the hollowness claim
+is wrong, but the ragged edges and the broken 'y' descender fragment are real, and a texture change
+that does not clearly improve word legibility is a fair thing to score as neutral.
+
+So: **structurally the right change, measurably better in the stroke interior, still visibly rough
+at the edges.** Edge-defined satin (deriving each column from the two boundary curves of the stroke
+rather than from skeleton ± width) is the known way to fix that, and is a larger change than Part 2
+scoped.
+
+**Also unimproved and stated plainly:** the text inside fixtures 02 and 07 is untouched, because
+`text_mode` is per-design. Per-object stroke detection would be needed to find the type inside a
+mixed logo, and that is Part 3's adaptive classification.
