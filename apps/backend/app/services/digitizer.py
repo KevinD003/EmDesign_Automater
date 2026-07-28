@@ -11,6 +11,7 @@ cv2/numpy are imported lazily so the app boots without them.
 
 from __future__ import annotations
 
+from app.services import segmentation
 from app.models.design import (
     ColorStop,
     ConnectMethod,
@@ -25,7 +26,11 @@ from app.models.design import (
 # Tunables (mm unless noted) — see spec "Quick Reference" table.
 ROW_SPACING_MM = 0.45     # fill row pitch — full-coverage tatami (0.6 left fabric showing through)
 MAX_STITCH_MM = 6.0       # subdivide longer runs (machine safety << 12.7mm)
-MIN_REGION_MM2 = 4.0      # drop specks smaller than this
+MIN_REGION_MM2 = 2.0      # drop specks smaller than this. v1 used 4.0, which
+                          # deleted the mascot's 2.6mm² freckles and similar
+                          # deliberate small detail (v1 audit §5). 2.0 keeps them
+                          # while still discarding anti-aliasing specks; going to
+                          # 1.0 adds objects without recovering further detail.
 CONNECT_MM = 3.0          # row-to-row travel below this = stitch, else JUMP
 DEFAULT_MAX_COLORS = 6
 
@@ -41,6 +46,39 @@ UNDERLAY_STEP_MM = 2.0    # running-stitch length
 EDGE_INSET_MM = 0.6       # edge-walk offset inside the region edge
 
 _MAX_WORK_PX = 1200.0     # cap working resolution (raise = more detail, slower)
+
+# ── v2 Part 1: layer preservation + contour smoothing ────────────────────────
+# Two clusters closer than this in BGR are the same thread in practice; merging
+# them stops the engine emitting two colour stops (two thread changes) for what
+# a human sees as one colour.
+MERGE_DELTA = 18.0
+
+# A cluster within this distance of the substrate (border) colour is the garment
+# showing through, not ink. Deliberately much tighter than v1's global 40.0 —
+# at 40 the cream muzzle of fixture 08 (Δ 34.8) was deleted as "background".
+SUBSTRATE_DELTA = 12.0
+# ...unless the region is small and fully enclosed by ink (catchlights, small
+# highlights). Above this share of the foreground a substrate-coloured region is
+# the garment showing through and must not be stitched.
+#
+# Measured separation: a letter's counter is ~18% of the design's foreground and
+# fixture 04's ring interior 32-54%, while genuine enclosed detail (catchlights)
+# is well under 1%. Note this is a HEURISTIC over a genuine ambiguity — a glyph
+# counter and knocked-out type are the same shape geometrically, distinguishable
+# only by scale. Fixture 02's knocked-out type is unaffected because it is not
+# substrate-coloured (Δ 19.9 from the page white), so it never reaches this rule.
+SUBSTRATE_ENCLOSED_MAX_AREA = 0.05
+# ...and an absolute cap, which is the discriminator that actually works: a
+# highlight/catchlight is a few mm², a glyph counter at legible text sizes is
+# tens of mm². Measured: mascot catchlight ≈4mm², the counter of a 25mm "O" ≈90mm².
+SUBSTRATE_MAX_MM2 = 8.0
+
+# Contour smoothing. Douglas-Peucker tolerance in mm, then Chaikin corner-cutting.
+# Both are capped for small contours so fine features are not smoothed away —
+# the audit requires fixture 08's freckles/catchlights and fixture 07's "L" to survive.
+APPROX_EPS_MM = 0.18
+CHAIKIN_ITERS = 2
+SMOOTH_MIN_POINTS = 10    # below this a contour is left alone entirely
 
 # Pull compensation (spec §4.6): widen the top fill/satin to counter fabric pull that
 # narrows stitching. Higher for stretchy fabrics. Applied as a dilation (per side, mm).
@@ -76,10 +114,117 @@ def _parse_hoop(hoop_size: str) -> tuple[float, float]:
 
 
 def _is_background(center_bgr, corners_bgr) -> bool:
-    """A cluster is background if it sits close to the average corner color."""
+    """v1 background test — kept only for the corner fallback path and tests.
+
+    Superseded in v2 by ``segmentation.foreground_mask``: this compares COLOURS
+    globally, so a design layer that happens to match the backdrop is deleted
+    everywhere it appears. See the v1 baseline audit §5 root causes #1 and #2.
+    """
     import numpy as np
 
     return bool(np.linalg.norm(center_bgr.astype(float) - corners_bgr.astype(float)) < 40.0)
+
+
+def _drop_large_substrate_regions(mask, design_area_px: float, mm_per_px: float = 0.0, fg_mask=None):
+    """Decide which garment-coloured regions are actually ink.
+
+    Two independent tests, both of which a region must pass:
+
+    * **Enclosure** — the region must be completely surrounded by ink. A
+      catchlight sits inside a dark pupil and passes; the aperture of a "G" or
+      "C" opens onto the background and fails. This is the test that carries the
+      decision, because it is topological rather than a tuned magnitude.
+    * **Size** — a region fully enclosed by ink can still be the garment showing
+      through a closed outline (fixture 04's ring interior is enclosed by its
+      ring). Small in both relative and absolute terms keeps highlights while
+      rejecting large enclosed fields.
+    """
+    import cv2
+    import numpy as np
+
+    n, labelled, stats, _ = cv2.connectedComponentsWithStats((mask > 0).astype(np.uint8), 8)
+    px_area = (mm_per_px * mm_per_px) if mm_per_px > 0 else 0.0
+    outside = None if fg_mask is None else (fg_mask == 0)
+    kernel = np.ones((5, 5), np.uint8)
+    keep = np.zeros_like(mask)
+    for i in range(1, n):
+        area_px = stats[i, cv2.CC_STAT_AREA]
+        if area_px > SUBSTRATE_ENCLOSED_MAX_AREA * design_area_px:
+            continue
+        if px_area and area_px * px_area > SUBSTRATE_MAX_MM2:
+            continue
+        if outside is not None:
+            comp = (labelled == i).astype(np.uint8)
+            halo = cv2.dilate(comp, kernel) > 0
+            if bool((halo & outside).any()):
+                continue  # opens onto the background — an aperture, not a highlight
+        keep[labelled == i] = 255
+    return keep
+
+
+def _border_color(img):
+    """Median colour of the image border = the substrate/garment colour."""
+    import numpy as np
+
+    edges = np.concatenate([img[0, :], img[-1, :], img[:, 0], img[:, -1]], axis=0)
+    return np.median(edges.astype(np.float32), axis=0)
+
+
+def _merge_centers(centers, delta: float) -> dict[int, int]:
+    """Map each centroid index to a representative, merging ones within ``delta``.
+
+    Prevents emitting two colour stops for what a human reads as one colour —
+    e.g. a single-colour wordmark digitized with a 2-colour budget.
+    """
+    import numpy as np
+
+    rep: dict[int, int] = {}
+    for i, c in enumerate(centers):
+        for j in sorted(rep.values()):
+            if float(np.linalg.norm(c.astype(float) - centers[j].astype(float))) < delta:
+                rep[i] = j
+                break
+        else:
+            rep[i] = i
+    return rep
+
+
+def _chaikin_closed(pts, iterations: int):
+    """Chaikin corner-cutting on a closed polygon — turns the pixel staircase
+    left by findContours into a smooth outline. Each pass replaces every vertex
+    with two points at 1/4 and 3/4 along its edges."""
+    import numpy as np
+
+    out = np.asarray(pts, np.float32)
+    for _ in range(max(0, iterations)):
+        if len(out) < 4:
+            break
+        nxt = np.roll(out, -1, axis=0)
+        out = np.stack([out * 0.75 + nxt * 0.25, out * 0.25 + nxt * 0.75], axis=1).reshape(-1, 2)
+    return out
+
+
+def _smooth_contour(contour, mm_per_px: float):
+    """Douglas-Peucker simplify + Chaikin smooth, biased toward PRESERVATION.
+
+    Small contours are returned untouched: the v1 audit requires the mascot's
+    freckles/catchlights and the badge's "L" to survive, and simplification is
+    exactly what removes features that small. The epsilon is also capped at a
+    fraction of the perimeter so a short outline is never collapsed.
+    """
+    import cv2
+    import numpy as np
+
+    pts = contour.reshape(-1, 2)
+    if len(pts) < SMOOTH_MIN_POINTS:
+        return contour  # too few points to be a staircase; leave it alone
+    peri = cv2.arcLength(contour, True)
+    eps = min(APPROX_EPS_MM / max(mm_per_px, 1e-6), peri * 0.01)
+    approx = cv2.approxPolyDP(contour, eps, True)
+    if len(approx) < 4:
+        return contour  # simplification degenerated — keep the original
+    smoothed = _chaikin_closed(approx.reshape(-1, 2), CHAIKIN_ITERS)
+    return np.round(smoothed).astype(np.int32).reshape(-1, 1, 2)
 
 
 def digitize_image(
@@ -108,27 +253,53 @@ def digitize_image(
         mm_per_px /= f
         ih, iw = img.shape[:2]
 
-    # K-means quantization in BGR.
-    k = max(2, min(int(max_colors) + 1, 8))  # +1 slot for background
-    Z = img.reshape(-1, 3).astype(np.float32)
-    _, labels, centers = cv2.kmeans(
+    # ── Foreground/background separation (v2 Part 1) ──────────────────────────
+    # Background is decided by WHERE a pixel is, not by what colour it is. The
+    # v1 rule ("cluster colour within 40 of the corner average") deleted every
+    # pixel of that colour anywhere in the frame, which is what removed fixture
+    # 02's white type and fixture 08's cream muzzle while keeping fixture 09's
+    # background. See services/segmentation.py.
+    fg_mask, seg_method = segmentation.foreground_mask(img, data)
+    if fg_mask.shape[:2] != (ih, iw):
+        fg_mask = cv2.resize(fg_mask, (iw, ih), interpolation=cv2.INTER_NEAREST)
+    fg_flat = fg_mask.reshape(-1) > 0
+    if not fg_flat.any():  # segmentation found nothing — treat everything as ink
+        fg_flat = np.ones(ih * iw, bool)
+        fg_mask = np.full((ih, iw), 255, np.uint8)
+
+    # K-means over FOREGROUND pixels only. v1 clustered the whole image, so the
+    # background stole a cluster slot (hence its "+1 for background" fudge) and
+    # dominated the centroids; excluding it means the requested colour budget is
+    # spent entirely on real design layers.
+    flat_rgb = img.reshape(-1, 3).astype(np.float32)
+    Z = flat_rgb[fg_flat]
+    k = max(1, min(int(max_colors), 8, len(np.unique(Z, axis=0))))
+    _, fg_labels, centers = cv2.kmeans(
         Z, k, None, (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 20, 1.0), 3, cv2.KMEANS_PP_CENTERS
     )
-    labels = labels.reshape(ih, iw)
     centers = centers.astype(np.uint8)
 
-    corners = np.array(
-        [img[0, 0], img[0, -1], img[-1, 0], img[-1, -1]], dtype=np.float32
-    ).mean(axis=0)
+    # Merge perceptually-identical centroids so one colour never becomes two
+    # thread stops (a 1-colour wordmark asked to use 2 colours must return 1).
+    remap = _merge_centers(centers, MERGE_DELTA)
+    centers = np.array([centers[i] for i in sorted(set(remap.values()))], np.uint8)
+    order = {old: new for new, old in enumerate(sorted(set(remap.values())))}
 
-    # Collect foreground clusters, darkest-first stitching order (spec §4.2).
+    labels = np.full(ih * iw, -1, np.int32)
+    labels[fg_flat] = [order[remap[int(v)]] for v in fg_labels.reshape(-1)]
+    labels = labels.reshape(ih, iw)
+
+    substrate = _border_color(img)
+    design_area_px = float(max(int(fg_flat.sum()), 1))
+
+    # Darkest-first stitching order (spec §4.2). Clusters emptied by halo
+    # suppression are skipped so they never open a colour stop.
     clusters = [
-        (int(c.astype(int).sum()), idx, c) for idx, c in enumerate(centers) if not _is_background(c, corners)
+        (int(c.astype(int).sum()), idx, c)
+        for idx, c in enumerate(centers)
+        if bool((labels == idx).any())
     ]
     clusters.sort(key=lambda t: t[0])
-    if not clusters:  # image was all "background" — keep the darkest cluster anyway
-        darkest = min(range(len(centers)), key=lambda i: int(centers[i].astype(int).sum()))
-        clusters = [(0, darkest, centers[darkest])]
 
     row_px = max(1, round(ROW_SPACING_MM / mm_per_px))
     max_step_px = max(2, round(MAX_STITCH_MM / mm_per_px))
@@ -143,7 +314,16 @@ def digitize_image(
     emitted_stop = 0  # actual color-stop count — only clusters that yield objects get one
     for _, cluster_idx, center in clusters:
         mask = (labels == cluster_idx).astype(np.uint8) * 255
-        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+        # Opening removes speckle but also erases strokes ~2px wide (this is what
+        # ate the "L" of HARBOR CLUB in fixture 07), so only open when the mask
+        # is coarse enough to survive it.
+        if cv2.countNonZero(cv2.erode(mask, np.ones((3, 3), np.uint8))) > 0.5 * cv2.countNonZero(mask):
+            mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+        # Substrate rule: a cluster the colour of the garment is only ink where it
+        # forms a small enclosed element (knocked-out type, counters, catchlights).
+        # A large expanse of it is the garment showing through a thin outline.
+        if float(np.linalg.norm(center.astype(float) - substrate)) < SUBSTRATE_DELTA:
+            mask = _drop_large_substrate_regions(mask, design_area_px, mm_per_px, fg_mask)
         # RETR_CCOMP: 2-level hierarchy — top-level outlines + their interior holes
         # (letter counters, donuts). RETR_EXTERNAL would fill an 'o' solid.
         contours, hierarchy = cv2.findContours(mask, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
@@ -165,6 +345,11 @@ def digitize_image(
             net_area = cv2.contourArea(contour) - sum(cv2.contourArea(h) for h in hole_contours)
             if net_area < min_area_px:
                 continue
+            # Smooth the pixel staircase before it becomes stitches. Done here so
+            # the stored contour (which drives rebuild) is smooth too, not just
+            # this run's fill.
+            contour = _smooth_contour(contour, mm_per_px)
+            hole_contours = [_smooth_contour(h, mm_per_px) for h in hole_contours]
             region = np.zeros_like(mask)
             cv2.drawContours(region, [contour], -1, 255, thickness=cv2.FILLED)
             for h in hole_contours:
@@ -188,6 +373,7 @@ def digitize_image(
                 under = _edge_walk(region, inset_px, under_step_px, connect_px)
                 pts = _with_underlay(under, _scanline_fill(top_region, row_px, max_step_px, connect_px), connect_px)
                 underlay = UnderlayType.EDGE_WALK
+            pts = _coalesce_short(pts, MIN_STITCH_MM / mm_per_px)
             if len(pts) < 2:
                 continue
             if this_stop is None:  # first real object → open a color stop (deferred COLOR_CHANGE)
@@ -297,6 +483,31 @@ def _scanline_fill(region, row_px: int, max_step_px: int, connect_px: float):
                 pts.append((a + (b - a) * i / n, float(y), False))
         left_to_right = not left_to_right
     return pts
+
+
+MIN_STITCH_MM = 0.5  # below this a needle penetration risks thread break / needle strike
+
+
+def _coalesce_short(pts, min_dist_px: float):
+    """Drop needle penetrations closer together than ``min_dist_px``.
+
+    Sub-0.5mm stitches break thread and damage needles, and they buy nothing —
+    the shape is unchanged because the following point is still stitched. Jumps
+    and the final point are always kept so the path and outline stay intact.
+    """
+    if not pts or min_dist_px <= 0:
+        return pts
+    out = [pts[0]]
+    for p in pts[1:]:
+        if p[2]:  # a jump defines the path; never coalesce it away
+            out.append(p)
+            continue
+        if _dist(out[-1], p) < min_dist_px:
+            continue
+        out.append(p)
+    if out[-1][:2] != pts[-1][:2]:
+        out.append(pts[-1])
+    return out
 
 
 def _dist(p, q) -> float:
@@ -640,6 +851,7 @@ def rebuild_design(design: Design) -> Design:
                 if ut and ut != "NONE":  # any non-NONE underlay → edge-walk for fills
                     inset_px = max(1, round(EDGE_INSET_MM / mm_per_px))
                     pts = _with_underlay(_edge_walk(mask, inset_px, under_step_px, connect_px), pts, connect_px)
+            pts = _coalesce_short(pts, MIN_STITCH_MM / mm_per_px)
             if len(pts) < 2:
                 continue
 

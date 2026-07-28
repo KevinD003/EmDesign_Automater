@@ -96,8 +96,21 @@ class FixtureResult:
     mean_stitch_mm: float = 0.0
     stitches_over_machine_limit: int = 0
     stitches_under_0_5mm: int = 0
-    stitch_density_per_mm2: float = 0.0
 
+    # Density over the FILLED area (sum of object contour areas minus holes), not
+    # the bounding box. The bounding-box version read artificially low for any
+    # design with empty space and invited the misreading corrected in v1 audit §3.
+    stitch_density_per_mm2: float = 0.0
+    filled_area_mm2: float = 0.0
+    stitch_density_per_bbox_mm2: float = 0.0  # v1's definition, kept for comparability
+
+    # Coverage straight from stitch geometry — the audit proved bitmap-based
+    # coverage grading is unreliable, so this never looks at the rendered PNG.
+    fill_row_pitch_mm: float = 0.0
+    fill_rows_over_thread_width: int = 0
+    coverage_ratio: float = 0.0
+
+    segmentation_method: str | None = None
     output_png: str | None = None
 
 
@@ -112,6 +125,46 @@ def _rel(path: Path) -> str:
 def _cmd(stitch) -> str:
     c = stitch.command
     return c.value if hasattr(c, "value") else str(c)
+
+
+THREAD_WIDTH_MM = 0.4  # 40wt embroidery thread, the global standard
+
+
+def _polygon_area(points) -> float:
+    """Shoelace area of a closed polygon of Points, in mm²."""
+    if len(points) < 3:
+        return 0.0
+    total = 0.0
+    for i, p in enumerate(points):
+        q = points[(i + 1) % len(points)]
+        total += p.x * q.y - q.x * p.y
+    return abs(total) / 2.0
+
+
+def filled_area_mm2(design) -> float:
+    """Area the design actually covers: object contours minus their holes."""
+    total = 0.0
+    for o in design.objects:
+        if not o.contour:
+            continue
+        total += _polygon_area(o.contour) - sum(_polygon_area(h) for h in (o.holes or []))
+    return max(total, 0.0)
+
+
+def fill_row_geometry(design) -> tuple[float, int]:
+    """Median vertical pitch between adjacent fill rows (mm), and how many gaps
+    exceed one thread width.
+
+    Measured from stitch coordinates, never from the render. A pitch at or below
+    the thread width means the rows touch or overlap — full coverage.
+    """
+    import statistics
+
+    ys = sorted({round(s.y, 3) for s in design.stitches if _cmd(s) == "STITCH"})
+    gaps = [b - a for a, b in zip(ys, ys[1:]) if b - a > 1e-6]
+    if not gaps:
+        return 0.0, 0
+    return round(statistics.median(gaps), 3), sum(1 for g in gaps if g > THREAD_WIDTH_MM)
 
 
 def _stitch_lengths(design) -> list[float]:
@@ -179,8 +232,30 @@ def run_fixture(path: Path, out_dir: Path) -> FixtureResult:
         res.mean_stitch_mm = round(sum(lengths) / len(lengths), 3)
         res.stitches_over_machine_limit = sum(1 for d in lengths if d > MACHINE_MAX_STITCH_MM)
         res.stitches_under_0_5mm = sum(1 for d in lengths if d < 0.5)
-    area = max(design.width_mm * design.height_mm, 1.0)
-    res.stitch_density_per_mm2 = round(design.stitch_count / area, 2)
+    bbox = max(design.width_mm * design.height_mm, 1.0)
+    res.stitch_density_per_bbox_mm2 = round(design.stitch_count / bbox, 2)
+    res.filled_area_mm2 = round(filled_area_mm2(design), 1)
+    res.stitch_density_per_mm2 = round(design.stitch_count / max(res.filled_area_mm2, 1.0), 2)
+
+    pitch, over = fill_row_geometry(design)
+    res.fill_row_pitch_mm = pitch
+    res.fill_rows_over_thread_width = over
+    res.coverage_ratio = round(min(1.0, THREAD_WIDTH_MM / pitch), 3) if pitch else 0.0
+
+    # Record which segmentation tier handled this fixture (rembg / floodfill /
+    # corner). Recomputed here rather than threaded through the Design model, so
+    # the data model stays untouched by the harness.
+    try:
+        import cv2
+        import numpy as np
+
+        from app.services import segmentation
+
+        raw = path.read_bytes()
+        bgr = cv2.imdecode(np.frombuffer(raw, np.uint8), cv2.IMREAD_COLOR)
+        res.segmentation_method = segmentation.foreground_mask(bgr, raw)[1]
+    except Exception:  # noqa: BLE001 - diagnostic only
+        res.segmentation_method = None
 
     out_png = out_dir / f"{path.stem}-output.png"
     out_png.write_bytes(render_preview(design))

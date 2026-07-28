@@ -54,8 +54,20 @@ def build_summary(design: Design) -> str:
     return "\n".join(lines) + "\n"
 
 
+# Approximate physical width of 40wt embroidery thread, in mm. Stitches are drawn
+# at this width so the preview shows the coverage the sew-out will actually have.
+THREAD_WIDTH_MM = 0.4
+
+
 def render_preview(design: Design, px_per_mm: float = 5.0, pad: int = 12) -> bytes:
-    """Render the stitch map to a PNG (color-grouped polylines on white)."""
+    """Render the stitch map to a PNG (color-grouped polylines on white).
+
+    Stroke width scales with ``px_per_mm``. It used to be a hard-coded 2px at any
+    scale, which drew a 0.4mm-wide thread as a hairline whenever the preview was
+    rendered above ~5px/mm and left false white gaps between fill rows — the
+    customer-facing preview in the package ZIP showed coverage holes that do not
+    exist in the stitches (v1 baseline audit §3).
+    """
     from PIL import Image, ImageDraw
 
     pts = [(s.x, s.y) for s in design.stitches if _cmd(s) == "STITCH"]
@@ -75,14 +87,15 @@ def render_preview(design: Design, px_per_mm: float = 5.0, pad: int = 12) -> byt
     fallback = ["#e11d48", "#2563eb", "#16a34a", "#d97706", "#7c3aed", "#0891b2"]
     run: list[tuple[float, float]] = []
     stop_idx = 0
+    stroke = max(1, round(px_per_mm * THREAD_WIDTH_MM))
 
     def flush(idx: int) -> None:
         if len(run) >= 2:
             color = stops[idx].hex if idx < len(stops) else fallback[idx % len(fallback)]
             try:
-                draw.line(run, fill=color, width=2, joint="curve")
+                draw.line(run, fill=color, width=stroke, joint="curve")
             except (ValueError, SystemError):
-                draw.line(run, fill="#333333", width=2)
+                draw.line(run, fill="#333333", width=stroke)
 
     for s in design.stitches:
         if _cmd(s) == "STITCH":

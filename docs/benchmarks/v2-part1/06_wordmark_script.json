@@ -1,0 +1,38 @@
+{
+  "fixture": "06_wordmark_script",
+  "params": {
+    "colors": 2,
+    "hoop": "130x180",
+    "fabric": "cotton"
+  },
+  "ok": true,
+  "error": null,
+  "warnings": [],
+  "runtime_s": 0.378,
+  "stitch_count": 794,
+  "color_count": 1,
+  "object_count": 10,
+  "stitch_types": {
+    "TATAMI": 9,
+    "SATIN": 1
+  },
+  "objects_with_holes": 2,
+  "width_mm": 85.92,
+  "height_mm": 24.13,
+  "est_minutes": 0.99,
+  "jump_count": 122,
+  "trim_count": 9,
+  "color_changes": 0,
+  "max_stitch_mm": 8.78,
+  "mean_stitch_mm": 2.243,
+  "stitches_over_machine_limit": 0,
+  "stitches_under_0_5mm": 0,
+  "stitch_density_per_mm2": 2.06,
+  "filled_area_mm2": 384.8,
+  "stitch_density_per_bbox_mm2": 0.38,
+  "fill_row_pitch_mm": 0.175,
+  "fill_rows_over_thread_width": 1,
+  "coverage_ratio": 1.0,
+  "segmentation_method": "rembg",
+  "output_png": "docs/benchmarks/v2-part1/06_wordmark_script-output.png"
+}

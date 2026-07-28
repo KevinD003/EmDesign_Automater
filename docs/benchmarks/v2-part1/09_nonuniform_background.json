@@ -1,0 +1,37 @@
+{
+  "fixture": "09_nonuniform_background",
+  "params": {
+    "colors": 4,
+    "hoop": "130x180",
+    "fabric": "cotton"
+  },
+  "ok": true,
+  "error": null,
+  "warnings": [],
+  "runtime_s": 0.402,
+  "stitch_count": 1032,
+  "color_count": 2,
+  "object_count": 2,
+  "stitch_types": {
+    "TATAMI": 2
+  },
+  "objects_with_holes": 1,
+  "width_mm": 54.48,
+  "height_mm": 61.43,
+  "est_minutes": 1.29,
+  "jump_count": 41,
+  "trim_count": 0,
+  "color_changes": 1,
+  "max_stitch_mm": 8.77,
+  "mean_stitch_mm": 4.868,
+  "stitches_over_machine_limit": 0,
+  "stitches_under_0_5mm": 0,
+  "stitch_density_per_mm2": 0.61,
+  "filled_area_mm2": 1691.2,
+  "stitch_density_per_bbox_mm2": 0.31,
+  "fill_row_pitch_mm": 0.365,
+  "fill_rows_over_thread_width": 0,
+  "coverage_ratio": 1.0,
+  "segmentation_method": "rembg",
+  "output_png": "docs/benchmarks/v2-part1/09_nonuniform_background-output.png"
+}

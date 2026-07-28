@@ -10,3 +10,11 @@ reportlab>=4.2           # worksheet PDF
 numpy>=1.26
 scipy>=1.11              # k-d tree thread color match
 supabase>=2.9            # auth + persistence + storage
+
+# v2 Part 1 — learned foreground/background segmentation (services/segmentation.py).
+# OPTIONAL and lazily imported: without it the digitizer falls back to a border
+# flood-fill, then to the v1 corner heuristic. rembg downloads a ~176MB U2-Net
+# model on first use, so it is deliberately NOT in requirements.txt — CI and
+# offline installs must not depend on a model download.
+rembg>=2.0            # U2-Net salient-object segmentation (MIT)
+onnxruntime>=1.17     # inference backend for rembg

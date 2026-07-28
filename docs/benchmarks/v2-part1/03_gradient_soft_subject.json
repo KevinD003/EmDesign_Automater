@@ -1,0 +1,37 @@
+{
+  "fixture": "03_gradient_soft_subject",
+  "params": {
+    "colors": 4,
+    "hoop": "130x180",
+    "fabric": "cotton"
+  },
+  "ok": true,
+  "error": null,
+  "warnings": [],
+  "runtime_s": 0.51,
+  "stitch_count": 2966,
+  "color_count": 4,
+  "object_count": 4,
+  "stitch_types": {
+    "TATAMI": 4
+  },
+  "objects_with_holes": 3,
+  "width_mm": 72.21,
+  "height_mm": 72.39,
+  "est_minutes": 3.71,
+  "jump_count": 514,
+  "trim_count": 0,
+  "color_changes": 3,
+  "max_stitch_mm": 9.15,
+  "mean_stitch_mm": 4.312,
+  "stitches_over_machine_limit": 0,
+  "stitches_under_0_5mm": 0,
+  "stitch_density_per_mm2": 0.75,
+  "filled_area_mm2": 3960.2,
+  "stitch_density_per_bbox_mm2": 0.57,
+  "fill_row_pitch_mm": 0.183,
+  "fill_rows_over_thread_width": 0,
+  "coverage_ratio": 1.0,
+  "segmentation_method": "rembg",
+  "output_png": "docs/benchmarks/v2-part1/03_gradient_soft_subject-output.png"
+}
