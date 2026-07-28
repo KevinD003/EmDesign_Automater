@@ -43,7 +43,15 @@ import os
 # worse than the geometric fallback.
 _REMBG_MIN_FG = 0.005
 _REMBG_MAX_FG = 0.97
-_REMBG_ALPHA = 128  # alpha above this = foreground
+# U2-Net emits a soft saliency matte, and the 50% level of that ramp sits OUTSIDE
+# the true object edge — thresholding at 128 fattened every shape by roughly
+# 0.4mm per side, which silently pushed a 3.6mm satin bar over the 4mm
+# satin/tatami boundary and reclassified it as a fill. Measured on that bar
+# (true width 3.60mm): alpha>128 → 4.45mm · >192 → 4.14mm · >224 → 3.82mm.
+# A conservative mask is also the right bias here: colour clustering inside the
+# mask can recover a slightly under-included edge, but nothing trims an
+# over-included one.
+_REMBG_ALPHA = 224
 
 # Border flood-fill tolerance, per channel, in 0-255 units. Loose enough to walk
 # a smooth gradient or film grain, tight enough to stop at a real design edge

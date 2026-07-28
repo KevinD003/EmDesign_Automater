@@ -1,0 +1,38 @@
+{
+  "fixture": "05_wordmark_caps",
+  "params": {
+    "colors": 2,
+    "hoop": "130x180",
+    "fabric": "cotton"
+  },
+  "ok": true,
+  "error": null,
+  "warnings": [],
+  "runtime_s": 0.427,
+  "stitch_count": 1072,
+  "color_count": 1,
+  "object_count": 6,
+  "stitch_types": {
+    "TATAMI": 5,
+    "SATIN": 1
+  },
+  "objects_with_holes": 0,
+  "width_mm": 106.76,
+  "height_mm": 19.38,
+  "est_minutes": 1.34,
+  "jump_count": 174,
+  "trim_count": 5,
+  "color_changes": 0,
+  "max_stitch_mm": 9.15,
+  "mean_stitch_mm": 3.101,
+  "stitches_over_machine_limit": 0,
+  "stitches_under_0_5mm": 0,
+  "stitch_density_per_mm2": 1.24,
+  "filled_area_mm2": 864.9,
+  "stitch_density_per_bbox_mm2": 0.52,
+  "fill_row_pitch_mm": 0.183,
+  "fill_rows_over_thread_width": 0,
+  "coverage_ratio": 1.0,
+  "segmentation_method": "rembg",
+  "output_png": "docs/benchmarks/v2-part1-fix/05_wordmark_caps-output.png"
+}

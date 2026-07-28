@@ -99,6 +99,26 @@ def test_single_color_text_is_one_stop():
 
 
 @pytest.mark.skipif(not HAVE_FONT, reason="no TrueType font found on this system")
+@pytest.mark.parametrize("disable_rembg", [False, True], ids=["rembg-or-default", "no-rembg"])
+def test_single_color_text_is_one_stop_on_every_segmentation_tier(monkeypatch, disable_rembg):
+    """Single-colour text must yield ONE thread on every segmentation backend.
+
+    This regression was environment-dependent and therefore invisible locally:
+    with rembg installed the suite passed, and without it (the documented
+    `requirements.txt` + `requirements-dev.txt` install, and what CI runs) the
+    anti-aliased halo around the glyphs became a second near-white ink layer.
+    Pinning both tiers means a machine that happens to have the optional
+    dependency can no longer hide a failure from one that does not.
+    """
+    if disable_rembg:
+        monkeypatch.setenv("STITCHIQ_DISABLE_REMBG", "1")
+    else:
+        monkeypatch.delenv("STITCHIQ_DISABLE_REMBG", raising=False)
+    d = generate_lettering("GO", 25)
+    assert len(d.color_stops) == 1, [c.hex for c in d.color_stops]
+
+
+@pytest.mark.skipif(not HAVE_FONT, reason="no TrueType font found on this system")
 def test_narrow_letter_reaches_full_height():
     """Tall-thin letters must not be cropped ~half by satin rotation (review #4/#5)."""
     d = generate_lettering("l", 12)

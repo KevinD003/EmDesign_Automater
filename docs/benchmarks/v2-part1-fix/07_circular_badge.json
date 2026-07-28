@@ -1,0 +1,37 @@
+{
+  "fixture": "07_circular_badge",
+  "params": {
+    "colors": 4,
+    "hoop": "130x180",
+    "fabric": "cotton"
+  },
+  "ok": true,
+  "error": null,
+  "warnings": [],
+  "runtime_s": 0.843,
+  "stitch_count": 5250,
+  "color_count": 3,
+  "object_count": 18,
+  "stitch_types": {
+    "TATAMI": 18
+  },
+  "objects_with_holes": 10,
+  "width_mm": 95.43,
+  "height_mm": 95.06,
+  "est_minutes": 6.56,
+  "jump_count": 866,
+  "trim_count": 15,
+  "color_changes": 2,
+  "max_stitch_mm": 9.15,
+  "mean_stitch_mm": 4.025,
+  "stitches_over_machine_limit": 0,
+  "stitches_under_0_5mm": 0,
+  "stitch_density_per_mm2": 0.78,
+  "filled_area_mm2": 6772.3,
+  "stitch_density_per_bbox_mm2": 0.58,
+  "fill_row_pitch_mm": 0.183,
+  "fill_rows_over_thread_width": 0,
+  "coverage_ratio": 1.0,
+  "segmentation_method": "rembg",
+  "output_png": "docs/benchmarks/v2-part1-fix/07_circular_badge-output.png"
+}

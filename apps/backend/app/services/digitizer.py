@@ -53,6 +53,11 @@ _MAX_WORK_PX = 1200.0     # cap working resolution (raise = more detail, slower)
 # a human sees as one colour.
 MERGE_DELTA = 18.0
 
+# Squared-distance ratio above which a pixel counts as an anti-aliased blend of
+# two palette colours rather than a member of either (0.5 on squared distance
+# ≈ 0.71 on linear distance).
+AMBIGUOUS_BLEND_RATIO = 0.5
+
 # A cluster within this distance of the substrate (border) colour is the garment
 # showing through, not ink. Deliberately much tighter than v1's global 40.0 —
 # at 40 the cream muzzle of fixture 08 (Δ 34.8) was deleted as "background".
@@ -280,10 +285,41 @@ def digitize_image(
     # spent entirely on real design layers.
     flat_rgb = img.reshape(-1, 3).astype(np.float32)
     Z = flat_rgb[fg_flat]
-    k = max(1, min(int(max_colors), 8, len(np.unique(Z, axis=0))))
-    _, fg_labels, centers = cv2.kmeans(
-        Z, k, None, (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 20, 1.0), 3, cv2.KMEANS_PP_CENTERS
+
+    # The PALETTE is learned from the foreground's INTERIOR, not its whole area.
+    # Rendering and rescaling leave a 1-2px anti-aliased band where two colours
+    # meet; those pixels are blends, not design colours, and if they are allowed
+    # to seed a centroid they become a spurious extra thread — black-on-white
+    # text came back as {black, near-white halo}, i.e. two colour stops for a
+    # one-colour wordmark. Eroding first keeps the palette to colours that own
+    # real area; every foreground pixel is then assigned to the nearest palette
+    # entry below, so the halo is absorbed instead of promoted.
+    interior = cv2.erode(fg_mask, np.ones((3, 3), np.uint8))
+    pal_flat = interior.reshape(-1) > 0
+    if int(pal_flat.sum()) < max(16, 0.05 * int(fg_flat.sum())):
+        pal_flat = fg_flat  # design too thin to erode — fall back to all of it
+    Z_pal = flat_rgb[pal_flat]
+
+    k = max(1, min(int(max_colors), 8, len(np.unique(Z_pal, axis=0))))
+    _, _, centers = cv2.kmeans(
+        Z_pal, k, None, (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 20, 1.0), 3, cv2.KMEANS_PP_CENTERS
     )
+    # Assign every foreground pixel to its nearest palette colour. Looped over
+    # centres to keep memory at N×k.
+    d2 = np.empty((len(Z), len(centers)), np.float32)
+    for ci in range(len(centers)):
+        diff = Z - centers[ci]
+        d2[:, ci] = np.einsum("ij,ij->i", diff, diff)
+    fg_labels = d2.argmin(axis=1).astype(np.int32)
+    if len(centers) > 1:
+        # A pixel roughly equidistant from two palette colours IS the blend
+        # between them. Assigning it to the nearer one grows every shape by
+        # about a pixel per side, which pushed a 3.6mm satin bar over the 4mm
+        # satin/tatami threshold. Leave those unassigned instead: they belong to
+        # neither layer, and dropping them keeps shapes at their true width.
+        nearest2 = np.partition(d2, 1, axis=1)[:, :2]
+        ambiguous = nearest2[:, 0] > AMBIGUOUS_BLEND_RATIO * nearest2[:, 1]
+        fg_labels[ambiguous] = -1
     centers = centers.astype(np.uint8)
 
     # Merge perceptually-identical centroids so one colour never becomes two
@@ -293,7 +329,8 @@ def digitize_image(
     order = {old: new for new, old in enumerate(sorted(set(remap.values())))}
 
     labels = np.full(ih * iw, -1, np.int32)
-    labels[fg_flat] = [order[remap[int(v)]] for v in fg_labels.reshape(-1)]
+    # -1 marks an unassigned blend pixel and must stay -1 (no layer owns it).
+    labels[fg_flat] = [-1 if int(v) < 0 else order[remap[int(v)]] for v in fg_labels.reshape(-1)]
     labels = labels.reshape(ih, iw)
 
     substrate = _border_color(img)

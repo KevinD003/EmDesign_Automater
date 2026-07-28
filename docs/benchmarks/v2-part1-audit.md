@@ -211,8 +211,73 @@ I **reverted it rather than tune thresholds until the fixtures looked right**. R
 cd apps/backend && source .venv/bin/activate
 pip install -r requirements.txt -r requirements-dev.txt
 pip install -r requirements-features.txt     # optional: enables the rembg tier
-python -m pytest tests -q                    # 88 passed
-python scripts/run_quality_bench.py --tag v2-part1
+python -m pytest tests -q                    # 90 passed  (both with and without rembg)
+python scripts/run_quality_bench.py --tag v2-part1-fix
 ```
-Without rembg installed the pipeline still runs, falling back to border flood-fill; fixtures 03 and
-09 will be materially worse, which is itself worth measuring.
+
+> **Correction (2026-07-28).** An earlier revision of this section claimed
+> "88 passed". That was true only on a machine with the optional `rembg` package
+> installed. On the documented install above - `requirements.txt` +
+> `requirements-dev.txt`, no rembg, which is also what CI runs - the suite was
+> **87 passed / 1 failed**
+> (`test_lettering.py::test_single_color_text_is_one_stop`). The claim was
+> verified in one environment and reported as if it held in all of them; the
+> reviewer caught it by running the suite rather than trusting the number.
+> See section 8 for the fix. Both tiers now pass, and a parametrised regression
+> test pins each so this cannot become environment-dependent again.
+
+## 8. Post-review fix - the anti-aliasing halo, properly
+
+**Symptom.** `test_single_color_text_is_one_stop` failed without rembg: black-on-white
+lettering produced two colour stops instead of one. Fixture 05 ("SUMMIT") had the same defect,
+recorded as open in section 6.3 - the two were the same bug, and it also broke a previously-passing
+test.
+
+**Why it was invisible to me.** Segmentation tiers produce different foreground masks, so the
+defect only appeared on the flood-fill path. Reproduced deliberately with
+`STITCHIQ_DISABLE_REMBG=1`: **with rembg 88 passed - without rembg 87 passed, 1 failed.**
+
+**Root cause.** Rendering and rescaling leave a 1-2px anti-aliased band where two colours meet.
+Those pixels are *blends*, not design colours, but they were fed to k-means as ordinary samples,
+so with a 2-colour budget on one-colour art the second centroid landed on the halo.
+
+**Fix (not a special case for lettering).** Two changes in `digitize_image`, both applying to every
+input:
+1. **The palette is learned from the foreground's interior** (`cv2.erode` of the mask), so only
+   colours that own real area can seed a centroid. Every foreground pixel is then assigned to the
+   nearest palette entry, absorbing the halo instead of promoting it.
+2. **Genuinely ambiguous blend pixels are left unassigned.** Assigning each to its nearer centroid
+   grew every shape by ~1px per side, which pushed a 3.6mm satin bar over the 4mm satin/tatami
+   threshold and silently reclassified it as a fill. A pixel whose two nearest palette distances
+   are within sqrt(0.5) of each other now belongs to neither layer.
+
+**A third defect found while fixing it.** U2-Net emits a soft matte and the 50% level of that ramp
+sits *outside* the true edge, so `alpha > 128` fattened every shape. Measured on a bar of true
+width 3.60mm: **alpha>128 -> 4.45mm - >192 -> 4.14mm - >224 -> 3.82mm.** Threshold raised to 224.
+This was mis-sizing satin classification on every rembg-segmented input, not just in tests.
+
+**Result** (`--tag v2-part1-fix`, both tiers): **90 passed** each way.
+
+| Fixture | colours: ask / v1 / part1 / **fix** | jumps part1->fix |
+|---|---|---|
+| 01 flat_2color_logo | 2 / 2 / 2 / **2** | 63->63 |
+| 02 logo_fine_text_3color | 3 / 2 / 3 / **3** | 167->171 |
+| 03 gradient_soft_subject | 4 / 3 / 4 / **4** | 513->452 |
+| 04 thin_line_outline | 2 / 1 / 1 / **1** | 286->285 |
+| 05 wordmark_caps | 2 / 1 / 2 / **1** <- fixed | 186->174 |
+| 06 wordmark_script | 2 / 1 / 1 / **1** | 119->101 |
+| 07 circular_badge | 4 / 2 / 3 / **3** | 868->866 |
+| 08 mascot_detail | 5 / 3 / 5 / **5** | 385->385 |
+| 09 nonuniform_background | 4 / 4 / 2 / **2** | 41->41 |
+| 10 low_contrast_subject | 4 / 3 / 3 / **3** | 140->150 |
+
+Every Part-1 win is intact (02, 07, 08, 09 unchanged), jumps improved 2,768 -> **2,688**,
+sub-0.5mm stitches stay at 3 across all ten, nothing exceeds the 12.7mm limit.
+
+**One honest consequence.** "Colours matching the request" reads **4/10, down from 5/10**, because
+fixture 05 now returns 1 colour instead of 2. That is the *correct* answer - "SUMMIT" is one ink
+colour, and the 2 it previously returned was the bug being fixed. It does mean the brief's
+"requested == returned for 01, 02, 05, 07, 08" cannot be fully satisfied without reintroducing the
+defect: 05's art has one ink colour and 07's has three, so matching a request for 2 and 4 would
+require emitting duplicate thread stops. Scoring by *true* design colours, those fixtures are now
+right and the metric is wrong.
