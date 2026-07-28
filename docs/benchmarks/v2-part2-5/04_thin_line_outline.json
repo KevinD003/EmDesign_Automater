@@ -1,0 +1,38 @@
+{
+  "fixture": "04_thin_line_outline",
+  "params": {
+    "colors": 2,
+    "hoop": "100x100",
+    "fabric": "cotton"
+  },
+  "ok": true,
+  "error": null,
+  "warnings": [],
+  "runtime_s": 0.5,
+  "stitch_count": 1312,
+  "color_count": 1,
+  "object_count": 11,
+  "stitch_types": {
+    "TATAMI": 11
+  },
+  "objects_with_holes": 3,
+  "width_mm": 59.2,
+  "height_mm": 58.78,
+  "est_minutes": 1.64,
+  "jump_count": 285,
+  "trim_count": 10,
+  "color_changes": 0,
+  "max_stitch_mm": 8.58,
+  "mean_stitch_mm": 1.39,
+  "stitches_over_machine_limit": 0,
+  "stitches_under_0_5mm": 2,
+  "stitch_density_per_mm2": 6.22,
+  "filled_area_mm2": 210.8,
+  "stitch_density_per_bbox_mm2": 0.38,
+  "fill_row_pitch_mm": 0.141,
+  "fill_rows_over_thread_width": 33,
+  "coverage_ratio": 1.0,
+  "segmentation_method": "rembg",
+  "satin_share": 0.0,
+  "output_png": "docs/benchmarks/v2-part2-5/04_thin_line_outline-output.png"
+}

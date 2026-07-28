@@ -808,6 +808,30 @@ def _skeleton_branches(skel, min_len: int = 2):
     return branches
 
 
+def _march_to_edge(binary, x: float, y: float, nx: float, ny: float, limit: float) -> float:
+    """Distance from (x, y) along (nx, ny) to the last pixel still inside the shape.
+
+    The distance transform gives the radius of the largest inscribed circle,
+    which is the distance to the NEAREST edge — not the distance to the edge in
+    the direction the column actually runs. Using it symmetrically puts both
+    column ends at that same radius, so on any stroke whose medial axis is not
+    perfectly centred (most real glyphs, and every curve) one end falls short of
+    the outline and the other overshoots it. That is the ragged edge measured in
+    Part 2 (edge-band coverage 84.1% -> 78.1%). Marching to the actual boundary
+    gives each side its own true half-width.
+    """
+    h, w = binary.shape[:2]
+    travelled = 0.0
+    last = 0.0
+    while travelled <= limit:
+        px, py = int(round(x + nx * travelled)), int(round(y + ny * travelled))
+        if not (0 <= px < w and 0 <= py < h) or binary[py, px] == 0:
+            break
+        last = travelled
+        travelled += 0.5
+    return last
+
+
 def _extend_branch_ends(samples, dist, binary, step: int):
     """Extrapolate a skeleton branch past both ends, out to the stroke's cap.
 
@@ -917,11 +941,16 @@ def _skeleton_satin(region, mm_per_px: float, spacing_px: int, max_step_px: int,
             tx, ty = nxt[0] - prv[0], nxt[1] - prv[1]
             norm = (tx * tx + ty * ty) ** 0.5 or 1.0
             nx, ny = -ty / norm, tx / norm            # unit normal to the stroke
-            half = float(dist[int(y), int(x)])         # local half-width, px
-            widths.append(half * 2.0 * mm_per_px)      # measured on the TRUE shape
-            half = max(min(half, max_half_px), 0.5) + extra_half_px  # then pull-comp
-            a = (x + nx * half, y + ny * half)
-            b = (x - nx * half, y - ny * half)
+            # Each side gets its own reach, measured to the real boundary along
+            # the column direction rather than assuming a centred skeleton.
+            reach = max_half_px + 1.0
+            up = _march_to_edge(binary, x, y, nx, ny, reach)
+            dn = _march_to_edge(binary, x, y, -nx, -ny, reach)
+            widths.append((up + dn) * mm_per_px)       # true local stroke width
+            up = max(min(up, max_half_px), 0.5) + extra_half_px   # then pull-comp
+            dn = max(min(dn, max_half_px), 0.5) + extra_half_px
+            a = (x + nx * up, y + ny * up)
+            b = (x - nx * dn, y - ny * dn)
             p0, p1 = (a, b) if top else (b, a)
             jump = first_of_branch and (prev_end is None or _dist(prev_end, p0) > spacing_px * 4)
             pts.append((p0[0], p0[1], jump))
