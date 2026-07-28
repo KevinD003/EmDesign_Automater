@@ -117,6 +117,9 @@ class FixtureResult:
 
     segmentation_method: str | None = None
     satin_share: float = 0.0        # SATIN objects / all objects
+    # Per-object measured medial-axis width and the resulting satin/tatami call.
+    # Lets the audit explain every classification from geometry, not assertion.
+    classification: list = field(default_factory=list)
     output_png: str | None = None
 
 
@@ -238,6 +241,12 @@ def run_fixture(path: Path, out_dir: Path) -> FixtureResult:
         key = o.stitch_type.value if hasattr(o.stitch_type, "value") else str(o.stitch_type)
         res.stitch_types[key] = res.stitch_types.get(key, 0) + 1
     res.satin_share = round(res.stitch_types.get("SATIN", 0) / max(res.object_count, 1), 3)
+    try:
+        from app.services.digitizer import last_classification_log
+
+        res.classification = last_classification_log()
+    except Exception:  # noqa: BLE001 - diagnostic only
+        res.classification = []
 
     res.width_mm, res.height_mm = design.width_mm, design.height_mm
     res.est_minutes = round(design.stitch_count / SPM, 2)

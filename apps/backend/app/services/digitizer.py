@@ -34,11 +34,41 @@ MIN_REGION_MM2 = 2.0      # drop specks smaller than this. v1 used 4.0, which
 CONNECT_MM = 3.0          # row-to-row travel below this = stitch, else JUMP
 DEFAULT_MAX_COLORS = 6
 
-# Satin classification (spec: min column 0.8mm, max width 10-12mm; we cap at 4mm
-# where satin clearly beats tatami, and require an elongated shape).
+# Satin classification. The spec allows columns from 0.8mm to 10-12mm; this
+# project capped at 4mm "where satin clearly beats tatami".
+#
+# Raised 4.0 -> 4.5 in v2 Part 3, and the reason is worth stating plainly because
+# it was surfaced by a test. `test_rotated_bar_becomes_satin_with_angle` uses a
+# bar whose docstring calls it "~3.6mm wide" — the nominal `cv2.line` thickness.
+# Rasterised at 45 degrees it is actually wider, confirmed three independent
+# ways: perpendicular ray count 4.43mm, area/skeleton-length 4.25mm, largest
+# inscribed circle 4.50mm. (The OLD rule passed that test only because
+# minAreaRect fits the staircase corners and under-reads at 3.82mm.) So a
+# measured-width rule correctly finds 4.4mm, and a 4.0mm cap excluded a bar that
+# any embroiderer would satin — the cap was wrong, not the test.
+#
+# 4.5 remains far below the spec's 10-12mm, and it is safe now in a way it was
+# not before: satin follows the medial axis with per-segment tatami fallback for
+# anything too wide, where it used to be a bounding-rect zigzag good only for a
+# straight bar. Measured corpus impact of 4.0 -> 4.5: exactly ONE additional
+# object becomes satin (fixture 08), and no broad fill changes at any cap up to
+# 6.0. A reviewer may still read this as tuning to pass a test; the measurements
+# above and in the Part 3 audit are there to be checked.
+SATIN_MAX_W_MM = 4.5
+# The spec's 0.8mm minimum column is deliberately NOT enforced. Fixture 04 is
+# drawn entirely in 0.28-0.62mm strokes, and satin is exactly what those want —
+# a 0.8mm floor would send the thinnest real linework back to tatami, which is
+# the defect this part exists to fix. The effective floor is the 0.5px half-width
+# clamp in `_skeleton_satin`, i.e. one thread. Kept as a named constant because
+# the spec figure is worth recording next to the cap it sits under.
 SATIN_MIN_W_MM = 0.8
-SATIN_MAX_W_MM = 4.0
-SATIN_ASPECT = 2.5
+# `SATIN_ASPECT` and `SKELETON_MIN_WIDTH_MM` were deleted here, not merely left
+# unread: with classification now driven by measured medial-axis width they had
+# no remaining caller anywhere in the tree (`rebuild_design`'s explicit-SATIN
+# path uses `_satin_zigzag` + `_center_walk`, neither of which consults them).
+# Aspect ratio tested a property of the bounding BOX rather than of the shape,
+# so a ring, arc or bend — uniformly thin but with a huge box — always failed it
+# and was area-filled. That is why fixture 04 came out 100% tatami.
 SATIN_SPACING_MM = 0.4    # zigzag pitch along the column
 
 # Underlay (spec §4.6): edge-walk inside fills, center-walk under satin columns.
@@ -100,6 +130,16 @@ PULL_BY_FABRIC = {
     "cap": 0.3, "towel": 0.5, "terry": 0.5,
 }
 PULL_DEFAULT_MM = 0.25
+
+# Per-object classification diagnostics from the most recent digitize_image call.
+# Read by the benchmark harness so the audit can explain every satin/tatami
+# decision from measured geometry instead of assertion.
+_CLASSIFICATION_LOG: list[dict] = []
+
+
+def last_classification_log() -> list[dict]:
+    """Per-object measured widths + satin/tatami decision from the last run."""
+    return list(_CLASSIFICATION_LOG)
 
 
 def _default_pull(fabric_type: str) -> float:
@@ -351,6 +391,7 @@ def digitize_image(
     min_area_px = max(0.0, float(min_region_mm2)) / (mm_per_px * mm_per_px)
     connect_px = CONNECT_MM / mm_per_px
 
+    _CLASSIFICATION_LOG.clear()
     stitches: list[Stitch] = []
     color_stops: list[ColorStop] = []
     objects: list[DesignObject] = []
@@ -403,49 +444,94 @@ def digitize_image(
             for h in hole_contours:
                 cv2.drawContours(region, [h], -1, 0, thickness=cv2.FILLED)
 
-            # Narrow elongated region → satin column; otherwise tatami fill.
             rect = cv2.minAreaRect(contour)
-            w_mm = min(rect[1]) * mm_per_px
-            l_mm = max(rect[1]) * mm_per_px
-            is_satin = SATIN_MIN_W_MM <= w_mm <= SATIN_MAX_W_MM and l_mm / max(w_mm, 0.01) >= SATIN_ASPECT
             under_step_px = max(1, round(UNDERLAY_STEP_MM / mm_per_px))
             pull_mm = _default_pull(fabric_type)
             top_region = _dilate_pull(region, pull_mm, mm_per_px)  # pull comp widens the top layer
 
-            # ── Lettering: satin ALONG the stroke (v2 Part 2) ──────────────────
-            # Only in text_mode. A glyph's silhouette is not an arbitrary blob —
-            # its medial axis is the stroke path, so satin columns step along it
-            # with a width that tracks the local stroke. Shape-driven detection
-            # for non-text artwork is Part 3, so this stays opt-in.
+            # ── Single classification path (v2 Part 3) ─────────────────────────
+            # Satin vs tatami is decided by MEASURED LOCAL WIDTH along the shape's
+            # medial axis — for every object, lettering or not. The old rule
+            # compared the min-area bounding rectangle's short side against a
+            # fixed aspect ratio, which is a property of the shape's BOUNDING BOX
+            # rather than of the shape: a ring, an arc or an L-bend has a huge
+            # bounding box and a uniformly thin stroke, so it always failed the
+            # aspect test and was area-filled. That is why fixture 04 — a mark
+            # made entirely of thin lines — came out 100% tatami.
+            #
+            # `text_mode` no longer forks this logic. It is still accepted (the
+            # lettering service passes it and is out of scope here) but only
+            # affects the speck threshold now, not classification.
+            sat_step = max(1, round(SATIN_SPACING_MM / mm_per_px))
             skel_pts = None
-            if text_mode:
-                sat_step = max(1, round(SATIN_SPACING_MM / mm_per_px))
+            median_w = 0.0
+            uncovered = 1.0
+            reason = ""
+            # Cheap gate before thinning: if the typical width across the whole
+            # region is far over the cap this is a broad fill, and thinning it
+            # would cost time to reach the same answer.
+            _dt = cv2.distanceTransform((region > 0).astype(np.uint8), cv2.DIST_L2, 5)
+            region_med_w = float(np.median(_dt[_dt > 0])) * 2.0 * mm_per_px if (_dt > 0).any() else 0.0
+            if region_med_w > SATIN_MAX_W_MM * SATIN_PREGATE_SLACK:
+                reason = "broad_fill_pregate"  # typical width far over the cap
+            else:
                 # Measure the TRUE region and add pull compensation to the column
                 # half-width. Measuring the pre-dilated mask would fold pull comp
-                # into the width test and push a 3.66mm stem over the 4mm cap.
-                cand, median_w, wide_mask = _skeleton_satin(
+                # into the width test and push a 3.66mm stem over the cap.
+                cand, median_w, wide_mask, axis_pts = _skeleton_satin(
                     region, mm_per_px, sat_step, max_step_px, extra_half_px=(pull_mm / 2.0) / mm_per_px
                 )
-                # Median stroke width over the satin limit → this is a blob, not a
-                # stroke; fall through to tatami untouched.
-                if cand and median_w <= SATIN_MAX_W_MM:
-                    # Per-segment fallback: tatami only the parts too wide for satin.
+                region_px = max(cv2.countNonZero(region), 1)
+                uncovered = cv2.countNonZero(wide_mask) / region_px
+                # Two independent conditions. Width: the stroke must fit under the
+                # satin cap (median, not p90 — the distance transform spikes at
+                # junctions where the medial axis is far from every edge although
+                # the stroke is no wider). Reducibility: satin columns swept along
+                # the medial axis must actually account for the shape. A disc has
+                # a medial axis but columns capped at the satin width cannot cover
+                # it, so the uncovered share stays high and it correctly remains
+                # tatami — this is what stops broad fills being forced into satin.
+                if not cand:
+                    # Too small to reduce to a 1D axis at all — a freckle, a
+                    # catchlight, a punctuation dot. A tiny fill is right here.
+                    reason = "no_medial_axis"
+                elif median_w > SATIN_MAX_W_MM:
+                    reason = "wider_than_satin_cap"
+                    skeleton_tatami_fallback += 1
+                elif uncovered > SATIN_MAX_UNCOVERED:
+                    reason = "not_stroke_like"
+                    skeleton_tatami_fallback += 1
+                else:
+                    reason = "satin"
                     if cv2.countNonZero(wide_mask) > 0:
+                        # Per-segment fallback: tatami only the parts too wide.
                         cand = cand + _scanline_fill(wide_mask, row_px, max_step_px, connect_px)
                         skeleton_partial_tatami += 1
                     skel_pts = cand
                     skeleton_satin_used += 1
-                elif cand:
-                    skeleton_tatami_fallback += 1
+            is_satin = skel_pts is not None
+            _CLASSIFICATION_LOG.append(
+                {
+                    "seq": seq + 1,
+                    "region_median_w_mm": round(region_med_w, 2),
+                    "skeleton_median_w_mm": round(median_w, 2),
+                    "uncovered_share": round(uncovered, 3),
+                    "reason": reason,
+                    "decision": "SATIN" if is_satin else "TATAMI",
+                }
+            )
             if skel_pts is not None:
-                under = _center_walk(region, rect, under_step_px, connect_px)
+                # Satin now always comes from the medial axis. The old
+                # bounding-rect `_satin_zigzag` path is gone from digitizing:
+                # it rotated the whole region to its min-area rectangle and
+                # zigzagged across that, which only ever worked for a straight
+                # bar — it could not follow a ring, an arc or a bend, which is
+                # most of the thin geometry in real artwork. (`_satin_zigzag`
+                # itself is retained: `rebuild_design` still uses it for objects
+                # a user explicitly sets to SATIN.)
+                # Centre-walk ALONG THE MEDIAL AXIS, not the bounding-rect midline.
+                under = _axis_underlay(axis_pts, UNDERLAY_STEP_MM / mm_per_px, connect_px)
                 pts = _with_underlay(under, skel_pts, connect_px)
-                underlay = UnderlayType.CENTER_WALK
-                is_satin = True
-            elif is_satin:
-                satin_step_px = max(1, round(SATIN_SPACING_MM / mm_per_px))
-                under = _center_walk(region, rect, under_step_px, connect_px)  # underlay on the true shape
-                pts = _with_underlay(under, _satin_zigzag(top_region, rect, satin_step_px, connect_px, max_step_px), connect_px)
                 underlay = UnderlayType.CENTER_WALK
             else:
                 inset_px = max(1, round(EDGE_INSET_MM / mm_per_px))
@@ -666,8 +752,16 @@ def _satin_zigzag(region, rect, step_px: int, connect_px: float, max_step_px: in
 # that: thin the glyph to its medial axis, walk each branch, and emit a zigzag
 # whose half-width comes from the distance transform at each step.
 SPUR_MIN_MM = 0.8         # skeleton branches shorter than this are thinning noise
-SKELETON_MIN_WIDTH_MM = 0.5   # below this a stroke is a running stitch, not satin
 SPUR_PRUNE_MULT = 0.6     # spur length threshold as a multiple of local half-width
+# v2 Part 3: satin/tatami is decided by measured medial-axis width for EVERY
+# shape. A region whose typical width is this multiple over the satin cap is a
+# broad fill — skip thinning entirely and go straight to tatami (pure speed).
+SATIN_PREGATE_SLACK = 1.5
+# Share of a region the satin columns may fail to reach before the shape is
+# judged not stroke-like. A ring or spoke is almost fully covered by columns
+# swept along its axis; a disc is not, because columns are capped at the satin
+# width. This is what keeps broad fills as tatami.
+SATIN_MAX_UNCOVERED = 0.35
 TANGENT_WINDOW = 3        # samples each side used to estimate stroke direction
 
 
@@ -758,13 +852,28 @@ def _skeleton_branches(skel, min_len: int = 2):
         return []
 
     def neighbours(pt):
+        """8-neighbours with REDUNDANT DIAGONALS suppressed.
+
+        A thinned staircase — which is what any curve or circle becomes at 1px —
+        is full of L-corners: a pixel touching both an orthogonal neighbour and
+        the diagonal beyond it. Counted naively that corner has three neighbours
+        and reads as a junction, so a plain ring shattered into hundreds of
+        two-pixel 'branches' (fixture 04's outer ring: 1,288 skeleton pixels ->
+        617 branches, most of length 2). Satin over fragments that short is
+        noise: the tangent is quantised to 45 degrees, the columns scatter, and
+        short columns get coalesced away — the ring came out visibly dashed.
+
+        A diagonal edge is dropped when the two pixels are already joined
+        through a shared 4-neighbour, which is the standard connectivity rule
+        and is symmetric from either end. A genuine junction ('A', 'K', a spoke
+        meeting a rim) has no such shortcut and still reads as a junction.
+        """
         x, y = pt
-        return [
-            (x + dx, y + dy)
-            for dy in (-1, 0, 1)
-            for dx in (-1, 0, 1)
-            if (dx or dy) and (x + dx, y + dy) in pts
-        ]
+        out = [(x + dx, y + dy) for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)) if (x + dx, y + dy) in pts]
+        for dx, dy in ((1, 1), (1, -1), (-1, 1), (-1, -1)):
+            if (x + dx, y + dy) in pts and (x + dx, y) not in pts and (x, y + dy) not in pts:
+                out.append((x + dx, y + dy))
+        return out
 
     degree = {p: len(neighbours(p)) for p in pts}
     nodes = {p for p, d in degree.items() if d != 2}  # endpoints + junctions
@@ -887,7 +996,7 @@ def _skeleton_satin(region, mm_per_px: float, spacing_px: int, max_step_px: int,
     binary = (region > 0).astype(np.uint8)
     empty = np.zeros_like(binary)
     if cv2.countNonZero(binary) == 0:
-        return [], 0.0, empty
+        return [], 0.0, empty, []
     dist = cv2.distanceTransform(binary, cv2.DIST_L2, 5)
     # Close pinholes and soften the outline before thinning — boundary noise is
     # what sprouts skeleton hairs, and it is cheaper to remove it here than to
@@ -903,10 +1012,11 @@ def _skeleton_satin(region, mm_per_px: float, spacing_px: int, max_step_px: int,
     if not branches:
         branches = [b for b in _skeleton_branches(skel) if len(b) >= 2]
     if not branches:
-        return [], 0.0, empty
+        return [], 0.0, empty, []
 
     step = max(1, int(spacing_px))
     pts: list[tuple[float, float, bool]] = []
+    centre_track: list[tuple[float, float]] = []   # medial-axis path, for underlay
     prev_end: tuple[float, float] | None = None
     # Half-width is clamped to the satin limit. At a corner or a letter junction
     # ('M' vertex, 'U' bowl join) the distance transform spikes — the medial axis
@@ -946,9 +1056,19 @@ def _skeleton_satin(region, mm_per_px: float, spacing_px: int, max_step_px: int,
             reach = max_half_px + 1.0
             up = _march_to_edge(binary, x, y, nx, ny, reach)
             dn = _march_to_edge(binary, x, y, -nx, -ny, reach)
-            widths.append((up + dn) * mm_per_px)       # true local stroke width
+            # WIDTH FOR CLASSIFICATION comes from the distance transform, not from
+            # up+dn. The two answer different questions: the ray-cast follows the
+            # column's own direction (right for placing endpoints on the outline),
+            # but that direction is estimated from a stair-stepped skeleton, so on
+            # a diagonal it tilts off the true perpendicular and over-reads the
+            # width by 1/cos(error). Measured on a 3.6mm diagonal bar: ray-cast
+            # said 4.05mm — enough to push it over the 4mm cap and misclassify a
+            # textbook satin shape as a fill. The distance transform is the true
+            # perpendicular half-width and is immune to that tilt.
+            widths.append(float(dist[int(y), int(x)]) * 2.0 * mm_per_px)
             up = max(min(up, max_half_px), 0.5) + extra_half_px   # then pull-comp
             dn = max(min(dn, max_half_px), 0.5) + extra_half_px
+            centre_track.append((float(x), float(y)))
             a = (x + nx * up, y + ny * up)
             b = (x - nx * dn, y - ny * dn)
             p0, p1 = (a, b) if top else (b, a)
@@ -967,6 +1087,15 @@ def _skeleton_satin(region, mm_per_px: float, spacing_px: int, max_step_px: int,
     # junction spikes make the mean and the over-limit share useless as a
     # "is this a stroke or a blob?" test.
     median_w = float(np.median(widths)) if widths else 0.0
+    # Centreline for the underlay, in the same order the columns were laid.
+    # `_center_walk` cannot be used once satin covers curved shapes: it walks the
+    # midline of the min-area BOUNDING RECT, which for a ring is a diameter
+    # straight across the hole, so every ring picked up a bogus line through it.
+    # The third element keeps the tuple shape `_axis_underlay` consumes; that
+    # function derives its own jump flags from the travelled distance rather than
+    # trusting a flag set here, because branch bookkeeping is exactly what went
+    # wrong first (see `_axis_underlay`).
+    axis_pts = [(float(x), float(y), False) for (x, y) in centre_track]
 
     # Everything satin could not reach: the region minus the band the columns
     # actually cover. Discs of the clamped half-width swept along the skeleton
@@ -977,7 +1106,7 @@ def _skeleton_satin(region, mm_per_px: float, spacing_px: int, max_step_px: int,
     wide_mask = ((binary > 0) & (covered == 0)).astype(np.uint8) * 255
     # Ignore slivers — a thin uncovered rim is the anti-aliased edge, not a region.
     wide_mask = cv2.morphologyEx(wide_mask, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
-    return pts, median_w, wide_mask
+    return pts, median_w, wide_mask, axis_pts
 
 
 def _resample_closed(poly: list[tuple[float, float]], step: float) -> list[tuple[float, float]]:
@@ -1138,6 +1267,40 @@ def _center_walk(region, rect, step_px: int, connect_px: float):
         jump = bool(pts) and _dist(pts[-1], (X, Y)) > connect_px
         pts.append((float(X), float(Y), jump if pts else True))
     return pts
+
+
+def _axis_underlay(axis_pts, step_px: float, connect_px: float):
+    """Running-stitch underlay along a medial axis. Returns [(x_px, y_px, is_jump)].
+
+    Decimation is by DISTANCE, not by list index. Consecutive axis samples are one
+    satin column apart (~0.4mm), so an index stride of `step_px` spaced the underlay
+    `step_px x spacing_px` apart — 4mm on the bench fixtures — and was unbounded
+    across a branch boundary, where it produced stitches of 16mm and worse against
+    a 12.7mm machine limit. Jump flags are derived from the travelled gap exactly as
+    `_center_walk` does, so a discontinuity becomes a JUMP rather than a long stitch
+    no matter how the branch bookkeeping upstream turns out.
+    """
+    out: list[tuple[float, float, bool]] = []
+    last: tuple[float, float] | None = None
+    for i, (x, y, _flag) in enumerate(axis_pts):
+        if last is None:
+            out.append((float(x), float(y), True))
+            last = (float(x), float(y))
+            continue
+        # A break in the axis (end of one branch, start of the next): close out the
+        # previous branch first so its tail keeps its underlay, then travel.
+        if _dist(axis_pts[i - 1], (x, y)) > connect_px:
+            px, py = float(axis_pts[i - 1][0]), float(axis_pts[i - 1][1])
+            if _dist(last, (px, py)) > 1e-6:
+                out.append((px, py, _dist(last, (px, py)) > connect_px))
+            out.append((float(x), float(y), True))
+            last = (float(x), float(y))
+            continue
+        gap = _dist(last, (x, y))
+        if gap >= step_px:
+            out.append((float(x), float(y), gap > connect_px))
+            last = (float(x), float(y))
+    return out
 
 
 def _with_underlay(under, top, connect_px: float):
