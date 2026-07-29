@@ -1,0 +1,65 @@
+{
+  "fixture": "01_flat_2color_logo",
+  "params": {
+    "colors": 2,
+    "hoop": "100x100",
+    "fabric": "cotton"
+  },
+  "ok": true,
+  "error": null,
+  "warnings": [],
+  "runtime_s": 2.814,
+  "stitch_count": 1632,
+  "color_count": 2,
+  "object_count": 2,
+  "stitch_types": {
+    "TATAMI": 2
+  },
+  "objects_with_holes": 1,
+  "width_mm": 64.69,
+  "height_mm": 64.12,
+  "est_minutes": 2.04,
+  "jump_count": 63,
+  "trim_count": 0,
+  "color_changes": 1,
+  "max_stitch_mm": 8.86,
+  "mean_stitch_mm": 5.084,
+  "stitches_over_machine_limit": 0,
+  "stitches_under_0_5mm": 0,
+  "stitch_density_per_mm2": 0.5,
+  "filled_area_mm2": 3284.5,
+  "stitch_density_per_bbox_mm2": 0.39,
+  "fill_row_pitch_mm": 0.281,
+  "fill_rows_over_thread_width": 85,
+  "coverage_ratio": 1.0,
+  "segmentation_method": "rembg",
+  "satin_share": 0.0,
+  "classification": [
+    {
+      "seq": 1,
+      "region_median_w_mm": 8.43,
+      "skeleton_median_w_mm": 0.0,
+      "uncovered_share": 1.0,
+      "reason": "broad_fill_pregate",
+      "decision": "TATAMI"
+    },
+    {
+      "seq": 2,
+      "region_median_w_mm": 6.97,
+      "skeleton_median_w_mm": 0.0,
+      "uncovered_share": 1.0,
+      "reason": "broad_fill_pregate",
+      "decision": "TATAMI"
+    }
+  ],
+  "coverage": {
+    "interior_pct": 98.7,
+    "edge_band_pct": 94.6,
+    "spill_pct": 2.1,
+    "interior_frac": 0.926
+  },
+  "penetration": {
+    "satin_objects": 0
+  },
+  "output_png": "docs/benchmarks/v2-part6/01_flat_2color_logo-output.png"
+}

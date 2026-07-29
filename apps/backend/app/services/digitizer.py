@@ -663,12 +663,16 @@ MIN_STITCH_MM = 0.5  # below this a needle penetration risks thread break / need
 # curve, where the inner boundary is much shorter than the outer one that sets
 # the pitch.
 MIN_PENETRATION_MM = 0.30
-# Enforcement is OFF by default in v2 Part 5, which is a measurement part: turning
-# it on changes the stitch count of every satin object, so it needs its own
-# coverage re-grade rather than riding along with the instrument that found the
-# problem. `set_penetration_floor(MIN_PENETRATION_MM)` enables it; the audit
-# reports the corpus and probe both ways.
-_PENETRATION_FLOOR_MM: float | None = None
+# ENFORCED since v2 Part 6. Part 5 built the metric, measured the damage and left
+# enforcement off so the decision could be taken on its own evidence rather than
+# riding along with the instrument that found the problem. The evidence: every
+# satin fixture in the corpus was violating, 8-24% of penetrations under the
+# floor and hundreds at exactly 0.000mm — the needle entering the same hole
+# twice. Enforcing costs 3.0 points of mean interior coverage and 3.5 of edge
+# band across the satin corpus; the floor sweep and the rejected alternatives are
+# in the Part 6 audit. `set_penetration_floor(None)` disables it, which is how
+# the audit reproduces the before/after.
+_PENETRATION_FLOOR_MM: float | None = MIN_PENETRATION_MM
 
 
 def set_penetration_floor(mm: float | None) -> None:
@@ -1232,6 +1236,24 @@ def _enforce_floor(pairs, floor_px: float, closed: bool):
     """
     if floor_px <= 0.0 or len(pairs) < 2:
         return pairs
+    # A violating column is DROPPED. Two cleverer strategies were implemented and
+    # measured first, because deleting a whole crossing to fix one boundary looks
+    # wasteful — and both lost. At a 0.30mm floor across the satin corpus:
+    #
+    #   strategy                    residual violations   mean interior   mean edge band
+    #   drop the column (shipped)                     3           95.84            94.28
+    #   slide the end along its boundary            245           96.60            95.33
+    #   retract the end along its column             44           96.61            95.34
+    #
+    # Both buy about half a point of coverage and give up the guarantee, which is
+    # the entire point of a safety floor. They fail for the same reason in two
+    # forms: moving a penetration instead of removing it only relocates the
+    # crowding. Sliding forward shortens the gap to whatever comes next. Retraction
+    # shortens the COLUMN, and a column under the 0.5mm minimum stitch length gets
+    # a point removed by `_coalesce_short` further down the pipeline, which breaks
+    # the strict A-B-A-B alternation and creates fresh same-side adjacencies. A
+    # strict second pass does not rescue either (measured 59 and 45), because by
+    # then the damage is downstream of this function.
     kept = [pairs[0]]
     for a, b in pairs[1:]:
         pa, pb = kept[-1]

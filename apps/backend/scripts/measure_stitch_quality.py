@@ -253,9 +253,25 @@ def _parse_args():
     ap.add_argument("--probe", action="store_true",
                     help="measure the curvature probe instead of the bench corpus")
     ap.add_argument("--floor-mm", type=float, default=None,
-                    help="enforce this same-side penetration floor (default: report only)")
+                    help="override the shipped penetration floor for this run")
+    ap.add_argument("--no-floor", action="store_true",
+                    help="disable penetration-floor enforcement (to reproduce before/after)")
     ap.add_argument("--json", type=Path, help="write the full result here")
     return ap.parse_args()
+
+
+def _apply_floor(args, setter, shipped: float) -> float:
+    """Resolve the run's floor. Returns the value the REPORT should compare against.
+
+    `--floor-mm` OVERRIDES the shipped floor; absent, the shipped default stands.
+    It used to mean "report only", which silently disabled enforcement once Part 6
+    turned the floor on by default.
+    """
+    if args.no_floor:
+        setter(None)
+    elif args.floor_mm is not None:
+        setter(args.floor_mm)
+    return shipped if args.floor_mm is None else args.floor_mm
 
 
 def _print_row(name: str, res: dict) -> None:
@@ -297,8 +313,7 @@ def _main() -> int:
     )
 
     args = _parse_args()
-    set_penetration_floor(args.floor_mm)
-    floor_report = MIN_PENETRATION_MM if args.floor_mm is None else args.floor_mm
+    floor_report = _apply_floor(args, set_penetration_floor, MIN_PENETRATION_MM)
 
     results = {}
     src = PROBE_DIR if args.probe else FIXTURE_DIR

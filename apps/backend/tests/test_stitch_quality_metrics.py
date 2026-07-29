@@ -11,13 +11,28 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+import pytest
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND_ROOT / "scripts"))
 
 from measure_stitch_quality import coverage_metrics, penetration_metrics, same_side_spacings
 
-from app.services.digitizer import digitize_image, set_penetration_floor
+from app.services.digitizer import MIN_PENETRATION_MM, digitize_image, set_penetration_floor
+
+
+@pytest.fixture(autouse=True)
+def _restore_penetration_floor():
+    """Never let a test leak the module-level floor into the next one.
+
+    Without this, a test that disabled the floor in a `finally` left the whole
+    rest of the session running unenforced — which is how the first version of
+    `test_floor_is_enforced_by_default` failed.
+    """
+    from app.services.digitizer import MIN_PENETRATION_MM
+
+    yield
+    set_penetration_floor(MIN_PENETRATION_MM)
 
 
 class _S:
@@ -101,7 +116,7 @@ def test_penetration_floor_removes_violations_on_a_tight_ring():
         tight = digitize_image(art, "cotton", "100x100", max_colors=2)
         after = penetration_metrics(tight, 0.4, 0.30)
     finally:
-        set_penetration_floor(None)
+        set_penetration_floor(MIN_PENETRATION_MM)
 
     assert before.get("satin_objects"), "a 16px-wide ring must digitize as satin"
     assert before["below_floor"] > 0, "the tight ring must violate the floor when unenforced"
@@ -109,14 +124,29 @@ def test_penetration_floor_removes_violations_on_a_tight_ring():
     assert after["min_spacing_mm"] >= 0.30 - 1e-6
 
 
-def test_floor_off_by_default_leaves_the_pipeline_unchanged():
-    """The shipped default must not alter stitch output."""
+def test_floor_is_enforced_by_default():
+    """v2 Part 6 turned enforcement on; the shipped default must honour the floor."""
+    from app.services import digitizer
+
+    assert digitizer._PENETRATION_FLOOR_MM == MIN_PENETRATION_MM
+    design = digitize_image(_ring_bytes(radius_px=32), "cotton", "100x100", max_colors=2)
+    pen = penetration_metrics(design, 0.4, MIN_PENETRATION_MM)
+    assert pen["satin_objects"], "a 16px-wide ring must digitize as satin"
+    assert pen["below_floor"] == 0, f"default build left {pen['below_floor']} violations"
+
+
+def test_enforcement_does_not_change_which_objects_are_satin():
+    """The floor removes columns; it must never flip a classification verdict."""
     art = _ring_bytes(radius_px=48)
-    set_penetration_floor(None)
-    a = digitize_image(art, "cotton", "100x100", max_colors=2)
-    b = digitize_image(art, "cotton", "100x100", max_colors=2)
-    assert a.stitch_count == b.stitch_count
-    assert [o.stitch_type for o in a.objects] == [o.stitch_type for o in b.objects]
+    try:
+        set_penetration_floor(None)
+        loose = digitize_image(art, "cotton", "100x100", max_colors=2)
+        set_penetration_floor(MIN_PENETRATION_MM)
+        tight = digitize_image(art, "cotton", "100x100", max_colors=2)
+    finally:
+        set_penetration_floor(MIN_PENETRATION_MM)
+    assert [o.stitch_type for o in loose.objects] == [o.stitch_type for o in tight.objects]
+    assert tight.stitch_count < loose.stitch_count, "the floor should remove columns"
 
 
 def test_coverage_metrics_on_a_fully_stitched_shape():
