@@ -78,6 +78,13 @@ UNDERLAY_STEP_MM = 2.0    # running-stitch length
 EDGE_INSET_MM = 0.6       # edge-walk offset inside the region edge
 
 _MAX_WORK_PX = 1200.0     # cap working resolution (raise = more detail, slower)
+_MIN_WORK_PX = 1200.0     # floor: small sources are upscaled to this (v2 Part 17)
+# Only sources with real geometry are upscaled: below this, the anti-alias band
+# a cubic upscale widens is as large (in mm) as the smallest real features, so
+# the sub-thread gate can no longer separate blend halos from ink — measured on
+# a 200px test square whose halo came out at 0.45mm, over the 0.35 gate. A
+# 640px logo's halo at 1.875x measures ~0.15mm and is gated cleanly.
+_UPSCALE_MIN_SRC_PX = 400.0
 # Per-REGION upscale for the skeleton-satin stage (v2 Part 16). A 640px source
 # in a 130mm hoop puts a 4mm letter at ~20px with 2-4px strokes — the medial
 # axis of a 3px stroke is staircase noise, which is why small lettering came
@@ -91,6 +98,12 @@ _MAX_WORK_PX = 1200.0     # cap working resolution (raise = more detail, slower)
 # stitches AFTER its background so the background can sew solid beneath it.
 DETAIL_DEFER_MAX_MM2 = 60.0
 DETAIL_EMBED_SHARE = 0.6
+# Thinner than this is unstitchable blend-halo, not ink (v2 Part 17). Measured
+# at 1.875x work resolution: upscale phantom halos 0.15mm; fixture 04's REAL
+# hairlines 0.30-0.33mm (the coarse grid had inflated them to 0.5). 0.25 sits
+# between the two measured populations; the first value tried (0.35) silently
+# deleted all of fixture 04, which is why this constant carries its data.
+MIN_FEATURE_W_MM = 0.25
 SMALL_STROKE_PX = 8.0
 SMALL_STROKE_MAX_SCALE = 3
 
@@ -437,6 +450,22 @@ def digitize_image(
     ih, iw = img.shape[:2]
     mm_per_px = min(hoop_w / iw, hoop_h / ih) * 0.9  # 90% of hoop
     # Work at a bounded resolution for speed; keep mm scale consistent.
+    # Granularity floor (v2 Part 17): small sources are upscaled so contours,
+    # borders and details are traced at fine geometry — a 640px logo in a 130mm
+    # hoop otherwise carries a 0.18mm/px staircase into every downstream stage.
+    # Affordable now that the thinner crops to its bounding box (62s -> 18s on
+    # the heaviest fixture at 2x; typical fixtures are seconds).
+    up_f = 1.0
+    if _UPSCALE_MIN_SRC_PX <= max(iw, ih) < _MIN_WORK_PX:
+        # Capped at 2x: beyond that, cubic AA bands grow wider than the palette
+        # erosion can suppress even when scaled (a 160px lettering render at
+        # 7.5x produced no stitchable shapes at all). 2x doubles geometric
+        # granularity for the common 640px source; truly tiny sources should be
+        # rendered bigger upstream, not inflated here.
+        up_f = min(2.0, _MIN_WORK_PX / max(iw, ih))
+        img = cv2.resize(img, (round(iw * up_f), round(ih * up_f)), interpolation=cv2.INTER_CUBIC)
+        mm_per_px /= up_f
+        ih, iw = img.shape[:2]
     if max(iw, ih) > _MAX_WORK_PX:
         f = _MAX_WORK_PX / max(iw, ih)
         img = cv2.resize(img, (int(iw * f), int(ih * f)), interpolation=cv2.INTER_AREA)
@@ -472,7 +501,12 @@ def digitize_image(
     # one-colour wordmark. Eroding first keeps the palette to colours that own
     # real area; every foreground pixel is then assigned to the nearest palette
     # entry below, so the halo is absorbed instead of promoted.
-    interior = cv2.erode(fg_mask, np.ones((3, 3), np.uint8))
+    # The palette-seeding erosion scales with the upscale factor (v2 Part 17):
+    # cubic upscaling widens anti-alias bands to ~up_f pixels, and a 1px erosion
+    # let them seed phantom clusters — a 2x-upscaled two-colour square grew four
+    # 0.15mm 'satin' slivers in the blend colour, which no needle could sew.
+    ek = max(1, round(up_f))
+    interior = cv2.erode(fg_mask, np.ones((2 * ek + 1, 2 * ek + 1), np.uint8))
     pal_flat = interior.reshape(-1) > 0
     if int(pal_flat.sum()) < max(16, 0.05 * int(fg_flat.sum())):
         pal_flat = fg_flat  # design too thin to erode — fall back to all of it
@@ -569,9 +603,17 @@ def digitize_image(
         for k in range(1, ncc):
             if stats[k, cv2.CC_STAT_AREA] * mm_per_px * mm_per_px > DETAIL_DEFER_MAX_MM2:
                 continue
-            comp = lab_cc == k
-            ring = cv2.dilate(comp.astype(np.uint8), np.ones((5, 5), np.uint8)).astype(bool) & ~comp
-            if ring.any() and float(later[ring].mean()) >= DETAIL_EMBED_SHARE:
+            # Window to the component's bbox (v2 Part 17): the full-canvas dilate
+            # here was the top profiler entry at 2x work resolution (4.7s/fixture).
+            bx, by = stats[k, cv2.CC_STAT_LEFT], stats[k, cv2.CC_STAT_TOP]
+            bw, bh = stats[k, cv2.CC_STAT_WIDTH], stats[k, cv2.CC_STAT_HEIGHT]
+            wy0, wy1 = max(0, by - 3), min(ih, by + bh + 3)
+            wx0, wx1 = max(0, bx - 3), min(iw, bx + bw + 3)
+            comp_w = lab_cc[wy0:wy1, wx0:wx1] == k
+            ring_w = cv2.dilate(comp_w.astype(np.uint8), np.ones((5, 5), np.uint8)).astype(bool) & ~comp_w
+            if ring_w.any() and float(later[wy0:wy1, wx0:wx1][ring_w].mean()) >= DETAIL_EMBED_SHARE:
+                comp = np.zeros((ih, iw), bool)
+                comp[wy0:wy1, wx0:wx1] = comp_w
                 deferred_mask |= comp
                 if not deferred_items or deferred_items[-1][0] != ci_:
                     deferred_items.append((ci_, center_, comp.copy()))
@@ -653,6 +695,15 @@ def digitize_image(
             # would cost time to reach the same answer.
             _dt = cv2.distanceTransform((region > 0).astype(np.uint8), cv2.DIST_L2, 5)
             region_med_w = float(np.median(_dt[_dt > 0])) * 2.0 * mm_per_px if (_dt > 0).any() else 0.0
+            # Sub-thread features cannot be sewn — see MIN_FEATURE_W_MM's
+            # measured grounding before touching the value.
+            if 0.0 < region_med_w < MIN_FEATURE_W_MM:
+                _CLASSIFICATION_LOG.append({
+                    "seq": seq + 1, "region_median_w_mm": round(region_med_w, 2),
+                    "skeleton_median_w_mm": 0.0, "uncovered_share": 1.0,
+                    "reason": "sub_thread_feature", "decision": "SKIPPED",
+                })
+                continue
             if region_med_w > SATIN_MAX_W_MM * SATIN_PREGATE_SLACK:
                 reason = "broad_fill_pregate"  # typical width far over the cap
             else:
@@ -1189,9 +1240,19 @@ def _zhang_suen_thin(mask):
     """
     import numpy as np
 
-    img = (mask > 0).astype(np.uint8)
+    full = (mask > 0).astype(np.uint8)
+    # Crop to the active bounding box (v2 Part 17): thinning iterated full-canvas
+    # array passes although a region typically occupies a small fraction of it —
+    # profiled at 44s of a 62s fixture at 2x work resolution. The crop is pasted
+    # back at the end; +1 padding keeps the neighbourhood reads in-bounds.
+    ys, xs = np.nonzero(full)
+    if ys.size == 0:
+        return full
+    y0, y1 = max(0, ys.min() - 1), min(full.shape[0], ys.max() + 2)
+    x0, x1 = max(0, xs.min() - 1), min(full.shape[1], xs.max() + 2)
+    img = full[y0:y1, x0:x1].copy()
     yy, xx = np.indices(img.shape)
-    parity_mask = (yy + xx) % 2
+    parity_mask = (yy + xx + y0 + x0) % 2
     while True:
         removed_any = False
         for step in (0, 1):
@@ -1220,7 +1281,9 @@ def _zhang_suen_thin(mask):
                     img[remove] = 0
                     removed_any = True
         if not removed_any:
-            return img
+            out = np.zeros_like(full)
+            out[y0:y1, x0:x1] = img
+            return out
 
 
 def _prune_spurs(skel, min_len_px: int, rounds: int = 4):
