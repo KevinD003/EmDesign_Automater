@@ -169,6 +169,88 @@ PULL_DEFAULT_MM = FABRIC_DEFAULT["pull_mm"]  # name kept: tests/test_pullcomp.py
 def _fabric_profile(fabric_type: str) -> dict[str, float]:
     return FABRIC_PROFILES.get((fabric_type or "").strip().lower(), FABRIC_DEFAULT)
 
+# A fill hole below this area is absorbed instead of knocked out (v2 Part 14).
+# Rationale is thread-path, not thread-saving: every fill row crossing a hole
+# narrower than CONNECT_MM lays a surface thread across it, so small knockouts
+# read as mush (fixture 02's lettering), while the fabric bulk a small knockout
+# avoids is negligible. 50mm2 is ~7x7mm — comfortably above letter-scale detail,
+# far below feature-scale holes like 02's 26mm sun. Unvalidated on fabric, same
+# standing as every stitch constant: docs/FABRIC_TEST_PROTOCOL.md.
+HOLE_KNOCKOUT_MIN_MM2 = 50.0
+# Fringe test for hole absorption: ring width probed around the hole, and the
+# share of that ring the hole-owning cluster must occupy for the hole to count
+# as the fringe of a continuing shape rather than a contained detail.
+HOLE_FRINGE_RING_MM = 1.0
+HOLE_FRINGE_MIN_SHARE = 0.3
+# A connected component the 3x3 opening erases OUTRIGHT is restored when bigger
+# than this — dust is 1-4 px, the smallest real letter is tens (v2 Part 14).
+SPECK_KEEP_MM2 = 0.15
+
+
+def _hole_covered_later(hole, labels, stitch_rank: dict, my_rank: int, shape,
+                        mm_per_px: float) -> bool:
+    """True when absorbing this fill hole cannot bury anything.
+
+    Absorbing a hole means the fill sews over that area, so whatever the input
+    shows there must either land ON TOP of the fill afterwards, or already
+    extend beyond the hole so the fill merely overlaps its edge. Two safe cases:
+
+    1. The hole's pixels belong to a cluster stitched AFTER this fill — the
+       detail re-covers the area (fixture 02's letters in the green card).
+    2. The hole is a FRINGE of a larger, earlier-stitched shape: the owning
+       cluster continues past the hole boundary (checked in a ~1mm ring), so
+       sewing over it is edge overlap — normal registration practice — not
+       burial. This is fixture 07's antialias slivers hugging the star; keeping
+       their knockout put one thread crossing per fill row around the star.
+
+    Everything else keeps the knockout: an earlier-stitched detail WHOLLY inside
+    the hole (07's HARBOR CLUB letters, navy before white) would be buried — the
+    regression the first, unguarded version of this rule shipped for one bench
+    run — and pixels owned by nobody are never re-covered at all.
+    """
+    import cv2
+    import numpy as np
+
+    m = np.zeros(shape, np.uint8)
+    cv2.drawContours(m, [hole], -1, 255, thickness=cv2.FILLED)
+    inside = labels[m > 0]
+    inside = inside[inside >= 0]
+    if inside.size == 0:
+        return False
+    dominant = int(np.bincount(inside).argmax())
+    if stitch_rank.get(dominant, -1) > my_rank:
+        return True
+    r = max(1, round(HOLE_FRINGE_RING_MM / mm_per_px))
+    ring = cv2.dilate(m, np.ones((2 * r + 1, 2 * r + 1), np.uint8)) & ~m
+    ring_owned = float((labels[ring > 0] == dominant).mean()) if (ring > 0).any() else 0.0
+    return ring_owned > HOLE_FRINGE_MIN_SHARE
+
+
+def _open_preserving_detail(mask, mm_per_px: float):
+    """3x3 opening that restores components the opening erased outright.
+
+    The plain opening removed speckle but also deleted every stroke under ~2px
+    wide as a unit: fixture 02's 'EST. 1974 - SUPPLY CO.' line vanished from the
+    white mask, while the big NORTHFIELD letters kept the mask coarse enough to
+    pass the open guard. Restoring only components that disappeared ENTIRELY
+    keeps the anti-speckle effect (attached fuzz still erodes) while thin-but-
+    real detail survives whole.
+    """
+    import cv2
+    import numpy as np
+
+    opened = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+    n, labels, stats, _c = cv2.connectedComponentsWithStats(mask, connectivity=8)
+    keep_px = max(4, round(SPECK_KEEP_MM2 / (mm_per_px * mm_per_px)))
+    for i in range(1, n):
+        if stats[i, cv2.CC_STAT_AREA] < keep_px:
+            continue
+        comp = labels == i
+        if not opened[comp].any():
+            opened[comp] = 255
+    return opened
+
+
 # Per-object classification diagnostics from the most recent digitize_image call.
 # Read by the benchmark harness so the audit can explain every satin/tatami
 # decision from measured geometry instead of assertion.
@@ -442,13 +524,16 @@ def digitize_image(
     skeleton_partial_tatami = 0
 
     emitted_stop = 0  # actual color-stop count — only clusters that yield objects get one
+    # Stitch rank per cluster: absorption of a fill hole is only safe when the
+    # detail that sits in the hole is stitched AFTER this fill (v2 Part 14).
+    stitch_rank = {cluster_idx: rank for rank, (_, cluster_idx, _c) in enumerate(clusters)}
     for _, cluster_idx, center in clusters:
         mask = (labels == cluster_idx).astype(np.uint8) * 255
         # Opening removes speckle but also erases strokes ~2px wide (this is what
         # ate the "L" of HARBOR CLUB in fixture 07), so only open when the mask
         # is coarse enough to survive it.
         if cv2.countNonZero(cv2.erode(mask, np.ones((3, 3), np.uint8))) > 0.5 * cv2.countNonZero(mask):
-            mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+            mask = _open_preserving_detail(mask, mm_per_px)
         # Substrate rule: a cluster the colour of the garment is only ink where it
         # forms a small enclosed element (knocked-out type, counters, catchlights).
         # A large expanse of it is the garment showing through a thin outline.
@@ -583,6 +668,23 @@ def digitize_image(
                 pts = _with_underlay(under, skel_pts, connect_px)
                 underlay = UnderlayType.CENTER_WALK
             else:
+                # v2 Part 14: small holes are NOT knocked out of a fill. A hole
+                # narrower than CONNECT_MM earns one thread crossing per fill row
+                # (fixture 02's letters took one per row and read as mush), and a
+                # small knockout saves no measurable thread while costing
+                # registration. Standard digitizing practice: sew the fill solid
+                # and stitch the small detail on top. Large holes (02's sun,
+                # donut counters) keep the knockout.
+                knockout_px2 = HOLE_KNOCKOUT_MIN_MM2 / (mm_per_px * mm_per_px)
+                small_holes = [
+                    hh for hh in hole_contours
+                    if cv2.contourArea(hh) < knockout_px2
+                    and _hole_covered_later(hh, labels, stitch_rank, stitch_rank[cluster_idx], mask.shape, mm_per_px)
+                ]
+                if small_holes:
+                    hole_contours = [hh for hh in hole_contours if cv2.contourArea(hh) >= knockout_px2]
+                    cv2.drawContours(region, small_holes, -1, 255, thickness=cv2.FILLED)
+                    top_region = _dilate_pull(region, pull_mm, mm_per_px)
                 inset_px = max(1, round(prof["inset_mm"] / mm_per_px))
                 under = _edge_walk(
                     region, inset_px, under_step_px, connect_px,

@@ -185,7 +185,15 @@ def render_preview(design: Design, px_per_mm: float = 5.0, pad: int = 12) -> byt
             run.append(to_px(s.x, s.y))
         else:
             flush(stop_idx)
-            run = []
+            # The new run starts AT the command's coordinates, not empty. A JUMP
+            # entry's (x, y) is the needle's landing point — the FIRST penetration
+            # of the next segment — and `run = []` silently discarded it, so every
+            # post-jump segment lost its first span (up to one max-step, 6.4mm)
+            # and 2-point segments vanished outright. On fixture 02 that erased a
+            # lens of fill dashes around the sun hole in every render since v1;
+            # found in v2 Part 14 by diffing the drawn preview against the stitch
+            # stream, which was complete the whole time.
+            run = [to_px(s.x, s.y)]
             if _cmd(s) == "COLOR_CHANGE":
                 stop_idx += 1
     flush(stop_idx)
