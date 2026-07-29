@@ -193,7 +193,10 @@ def test_measure_cli_runs_and_writes_json(tmp_path, monkeypatch, capsys):
     # 10 of the fixture's 11 satin objects yield same-side pairs; the hub circle
     # is too short to produce a zigzag triple, and is skipped rather than counted
     # as a zero-penetration object.
-    assert rec["penetration"]["satin_objects"] == 10
+    # 11 since v2 Part 16: the checkerboard thinner fix brought the last of
+    # fixture 04's eleven satin objects into the zigzag count (it previously
+    # produced no same-side pairs at all and was excluded from per_object).
+    assert rec["penetration"]["satin_objects"] == 11
 
 
 def test_measure_cli_rejects_an_unknown_fixture(monkeypatch):
@@ -211,7 +214,7 @@ def test_bench_records_coverage_and_penetration(tmp_path):
     result = bench.run_fixture(fixture, tmp_path)
     assert result.ok and not result.error
     assert result.coverage["edge_band_pct"] > 90.0
-    assert result.penetration["satin_objects"] == 10
+    assert result.penetration["satin_objects"] == 11  # see CLI test note (Part 16 thinner fix)
     assert result.penetration["nominal_pitch_mm"] == 0.4
     # The safety number must be present even when nothing violates the floor.
     assert "min_spacing_mm" in result.penetration

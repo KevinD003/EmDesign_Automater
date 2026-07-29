@@ -70,16 +70,33 @@ def test_large_hole_keeps_its_knockout(monkeypatch):
     assert dark.holes, "a feature-scale hole must stay knocked out"
 
 
-def test_detail_stitched_earlier_is_not_buried():
-    """Fixture 07's regression, pinned: dark letters inside a LIGHT fill are
-    stitched first (darkest-first), so absorbing the light fill's holes would
-    bury them. The guard must keep those knockouts."""
+def test_small_dark_detail_is_deferred_on_top_of_the_light_fill():
+    """v2 Part 16 sequencing: a SMALL dark detail embedded in a later-stitched
+    fill no longer stitches first (where the fill would have to keep an
+    uncrossable knockout around it) — it is deferred to a pass AFTER the fill,
+    the fill sews solid beneath, and the detail lands on top."""
     img = np.full((300, 300, 3), 255, np.uint8)
     cv2.rectangle(img, (40, 40), (260, 260), (200, 200, 190), -1)      # light square
-    cv2.circle(img, (150, 150), 12, (40, 30, 20), -1)                  # small DARK dot
+    cv2.circle(img, (150, 150), 12, (40, 30, 20), -1)                  # small DARK dot (~70mm2? no: ~4.4mm r -> 60mm2 edge)
     d = digitize_image(_png(img), "cotton", "100x100", max_colors=2)
     light = max(d.objects, key=lambda o: o.stitch_count)
-    assert light.holes, "an earlier-stitched detail inside the hole must keep its knockout"
+    dark = min((o for o in d.objects if o.stitch_count > 0), key=lambda o: o.stitch_count)
+    assert not light.holes, "the fill should sew solid beneath a deferred detail"
+    assert dark.sequence_order > light.sequence_order, "the detail must stitch AFTER the fill"
+
+
+def test_large_dark_detail_keeps_the_knockout(monkeypatch):
+    """The burial guard still protects what deferral does not cover: a detail
+    too large to defer stitches first, so the fill must keep its knockout.
+    Deterministic segmentation path: U2-Net drops this synthetic's light square
+    as background, which is a property of the model, not of the rule under test."""
+    monkeypatch.setenv("STITCHIQ_DISABLE_REMBG", "1")
+    img = np.full((340, 340, 3), 255, np.uint8)
+    cv2.rectangle(img, (20, 20), (320, 320), (200, 200, 190), -1)      # light square
+    cv2.circle(img, (170, 170), 60, (40, 30, 20), -1)                  # BIG dark disc (~1000mm2)
+    d = digitize_image(_png(img), "cotton", "100x100", max_colors=2)
+    light = max(d.objects, key=lambda o: o.stitch_count)
+    assert light.holes, "a non-deferrable earlier detail must keep its knockout"
 
 
 def test_open_preserving_detail_restores_thin_type_but_not_dust():

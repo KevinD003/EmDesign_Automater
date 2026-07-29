@@ -78,6 +78,21 @@ UNDERLAY_STEP_MM = 2.0    # running-stitch length
 EDGE_INSET_MM = 0.6       # edge-walk offset inside the region edge
 
 _MAX_WORK_PX = 1200.0     # cap working resolution (raise = more detail, slower)
+# Per-REGION upscale for the skeleton-satin stage (v2 Part 16). A 640px source
+# in a 130mm hoop puts a 4mm letter at ~20px with 2-4px strokes — the medial
+# axis of a 3px stroke is staircase noise, which is why small lettering came
+# out as mush. Regions whose typical stroke is under SMALL_STROKE_PX are
+# thinned and columned at up to SMALL_STROKE_MAX_SCALE x resolution, points
+# scaled back after. A global upscale was tried first and rejected on
+# measurement: 43.8s per fixture (18x) for quality gains only small strokes
+# need. Per-region, only the small objects pay.
+# Detail deferral thresholds (v2 Part 16): a component this small, whose
+# surrounding ring is mostly a later-stitched cluster, is embedded detail — it
+# stitches AFTER its background so the background can sew solid beneath it.
+DETAIL_DEFER_MAX_MM2 = 60.0
+DETAIL_EMBED_SHARE = 0.6
+SMALL_STROKE_PX = 8.0
+SMALL_STROKE_MAX_SCALE = 3
 
 # ── v2 Part 1: layer preservation + contour smoothing ────────────────────────
 # Two clusters closer than this in BGR are the same thread in practice; merging
@@ -188,7 +203,7 @@ SPECK_KEEP_MM2 = 0.15
 
 
 def _hole_covered_later(hole, labels, stitch_rank: dict, my_rank: int, shape,
-                        mm_per_px: float) -> bool:
+                        mm_per_px: float, deferred=None) -> bool:
     """True when absorbing this fill hole cannot bury anything.
 
     Absorbing a hole means the fill sews over that area, so whatever the input
@@ -213,6 +228,8 @@ def _hole_covered_later(hole, labels, stitch_rank: dict, my_rank: int, shape,
 
     m = np.zeros(shape, np.uint8)
     cv2.drawContours(m, [hole], -1, 255, thickness=cv2.FILLED)
+    if deferred is not None and (m > 0).any() and float(deferred[m > 0].mean()) >= 0.5:
+        return True  # the detail here was deferred behind this fill — it lands on top
     inside = labels[m > 0]
     inside = inside[inside >= 0]
     if inside.size == 0:
@@ -481,6 +498,14 @@ def digitize_image(
         nearest2 = np.partition(d2, 1, axis=1)[:, :2]
         ambiguous = nearest2[:, 0] > AMBIGUOUS_BLEND_RATIO * nearest2[:, 1]
         fg_labels[ambiguous] = -1
+    # Truer thread colours (v2 Part 16): the k-means centroid averages every
+    # member pixel INCLUDING anti-aliased blends, muddying flat-art colours.
+    # The per-channel median of the cluster's members is robust to the blend
+    # tail and lands on the ink the artwork actually used.
+    for ci in range(len(centers)):
+        member = Z[fg_labels == ci]
+        if len(member) > 8:
+            centers[ci] = np.median(member, axis=0)
     centers = centers.astype(np.uint8)
 
     # Merge perceptually-identical centroids so one colour never becomes two
@@ -527,8 +552,38 @@ def digitize_image(
     # Stitch rank per cluster: absorption of a fill hole is only safe when the
     # detail that sits in the hole is stitched AFTER this fill (v2 Part 14).
     stitch_rank = {cluster_idx: rank for rank, (_, cluster_idx, _c) in enumerate(clusters)}
-    for _, cluster_idx, center in clusters:
-        mask = (labels == cluster_idx).astype(np.uint8) * 255
+    # ── Detail deferral (v2 Part 16) ─────────────────────────────────────────
+    # A small dark component embedded in a LATER-stitched fill (fixture 08's
+    # forehead dots and eye pupils, 07's HARBOR CLUB letters) used to stitch
+    # first, forcing the fill to keep a knockout it cannot cross — the painted
+    # miss-map showed red wedges around every such hole. Professional sequencing
+    # stitches the background first and the detail ON TOP: those components are
+    # deferred to a second pass after the main clusters, at the cost of extra
+    # colour changes, and the fill absorbs their holes.
+    deferred_mask = np.zeros((ih, iw), bool)
+    deferred_items = []
+    for rank, (_, ci_, center_) in enumerate(clusters[:-1]):
+        later = np.isin(labels, [c2 for _, c2, _c in clusters[rank + 1:]])
+        m8 = (labels == ci_).astype(np.uint8)
+        ncc, lab_cc, stats, _cents = cv2.connectedComponentsWithStats(m8, connectivity=8)
+        for k in range(1, ncc):
+            if stats[k, cv2.CC_STAT_AREA] * mm_per_px * mm_per_px > DETAIL_DEFER_MAX_MM2:
+                continue
+            comp = lab_cc == k
+            ring = cv2.dilate(comp.astype(np.uint8), np.ones((5, 5), np.uint8)).astype(bool) & ~comp
+            if ring.any() and float(later[ring].mean()) >= DETAIL_EMBED_SHARE:
+                deferred_mask |= comp
+                if not deferred_items or deferred_items[-1][0] != ci_:
+                    deferred_items.append((ci_, center_, comp.copy()))
+                else:  # one detail pass (one colour stop) per cluster, not per component
+                    deferred_items[-1][2][:] |= comp
+    work = [("main", ci_, c_, None) for _, ci_, c_ in clusters]
+    work += [("detail", ci_, c_, comp) for ci_, c_, comp in deferred_items]
+    for phase, cluster_idx, center, comp_mask in work:
+        if phase == "main":
+            mask = ((labels == cluster_idx) & ~deferred_mask).astype(np.uint8) * 255
+        else:
+            mask = comp_mask.astype(np.uint8) * 255
         # Opening removes speckle but also erases strokes ~2px wide (this is what
         # ate the "L" of HARBOR CLUB in fixture 07), so only open when the mask
         # is coarse enough to survive it.
@@ -604,8 +659,9 @@ def digitize_image(
                 # Measure the TRUE region and add pull compensation to the column
                 # half-width. Measuring the pre-dilated mask would fold pull comp
                 # into the width test and push a 3.66mm stem over the cap.
-                cand, median_w, wide_mask, axis_pts = _skeleton_satin(
-                    region, mm_per_px, sat_step, max_step_px, extra_half_px=(pull_mm / 2.0) / mm_per_px
+                cand, median_w, wide_mask, axis_pts = _skeleton_satin_hires(
+                    region, mm_per_px, sat_step, max_step_px,
+                    (pull_mm / 2.0) / mm_per_px, region_med_w / mm_per_px,
                 )
                 region_px = max(cv2.countNonZero(region), 1)
                 uncovered = cv2.countNonZero(wide_mask) / region_px
@@ -679,7 +735,7 @@ def digitize_image(
                 small_holes = [
                     hh for hh in hole_contours
                     if cv2.contourArea(hh) < knockout_px2
-                    and _hole_covered_later(hh, labels, stitch_rank, stitch_rank[cluster_idx], mask.shape, mm_per_px)
+                    and _hole_covered_later(hh, labels, stitch_rank, stitch_rank[cluster_idx], mask.shape, mm_per_px, deferred_mask)
                 ]
                 if small_holes:
                     hole_contours = [hh for hh in hole_contours if cv2.contourArea(hh) >= knockout_px2]
@@ -1134,26 +1190,35 @@ def _zhang_suen_thin(mask):
     import numpy as np
 
     img = (mask > 0).astype(np.uint8)
+    yy, xx = np.indices(img.shape)
+    parity_mask = (yy + xx) % 2
     while True:
         removed_any = False
         for step in (0, 1):
-            p = np.pad(img, 1)
-            # P2..P9, clockwise from north.
-            P2, P3 = p[:-2, 1:-1], p[:-2, 2:]
-            P4, P5 = p[1:-1, 2:], p[2:, 2:]
-            P6, P7 = p[2:, 1:-1], p[2:, :-2]
-            P8, P9 = p[1:-1, :-2], p[:-2, :-2]
-            seq = [P2, P3, P4, P5, P6, P7, P8, P9, P2]
-            B = P2 + P3 + P4 + P5 + P6 + P7 + P8 + P9
-            A = sum(((seq[i] == 0) & (seq[i + 1] == 1)).astype(np.uint8) for i in range(8))
-            if step == 0:
-                cond = (P2 * P4 * P6 == 0) & (P4 * P6 * P8 == 0)
-            else:
-                cond = (P2 * P4 * P8 == 0) & (P2 * P6 * P8 == 0)
-            remove = (img == 1) & (B >= 2) & (B <= 6) & (A == 1) & cond
-            if remove.any():
-                img[remove] = 0
-                removed_any = True
+            # Checkerboard split (v2 Part 16): the textbook simultaneous update
+            # deletes BOTH sides of an even-width ridge in one sub-iteration —
+            # a 2px line satisfies the conditions on both rows at once and
+            # vanishes entirely, which collapsed a 2x-upscaled bar to a single
+            # skeleton pixel. Removing one pixel parity at a time re-checks the
+            # neighbourhood between halves, so a ridge always keeps its centre.
+            for parity in (0, 1):
+                p = np.pad(img, 1)
+                # P2..P9, clockwise from north.
+                P2, P3 = p[:-2, 1:-1], p[:-2, 2:]
+                P4, P5 = p[1:-1, 2:], p[2:, 2:]
+                P6, P7 = p[2:, 1:-1], p[2:, :-2]
+                P8, P9 = p[1:-1, :-2], p[:-2, :-2]
+                seq = [P2, P3, P4, P5, P6, P7, P8, P9, P2]
+                B = P2 + P3 + P4 + P5 + P6 + P7 + P8 + P9
+                A = sum(((seq[i] == 0) & (seq[i + 1] == 1)).astype(np.uint8) for i in range(8))
+                if step == 0:
+                    cond = (P2 * P4 * P6 == 0) & (P4 * P6 * P8 == 0)
+                else:
+                    cond = (P2 * P4 * P8 == 0) & (P2 * P6 * P8 == 0)
+                remove = (img == 1) & (B >= 2) & (B <= 6) & (A == 1) & cond & (parity_mask == parity)
+                if remove.any():
+                    img[remove] = 0
+                    removed_any = True
         if not removed_any:
             return img
 
@@ -1964,6 +2029,38 @@ def _uncovered_mask(binary, skel, max_half_px: float):
     mask = ((binary > 0) & (covered == 0)).astype(np.uint8) * 255
     # Ignore slivers — a thin uncovered rim is the anti-aliased edge, not a region.
     return cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+
+
+def _skeleton_satin_hires(region, mm_per_px, sat_step, max_step_px, extra_half_px,
+                          stroke_px: float):
+    """Run `_skeleton_satin` at scaled-up resolution for thin-stroke regions.
+
+    The scale factor targets SMALL_STROKE_PX of resolution across the typical
+    stroke; outputs are scaled back so callers stay in working pixels. Cubic
+    upscale then threshold, so the mask edge is smoothed rather than a magnified
+    staircase.
+    """
+    import cv2
+
+    f = 1
+    if stroke_px > 0 and stroke_px < SMALL_STROKE_PX:
+        f = min(SMALL_STROKE_MAX_SCALE, max(2, round(SMALL_STROKE_PX / stroke_px)))
+    if f == 1:
+        return _skeleton_satin(region, mm_per_px, sat_step, max_step_px,
+                               extra_half_px=extra_half_px)
+    big = cv2.resize(region, (region.shape[1] * f, region.shape[0] * f),
+                     interpolation=cv2.INTER_CUBIC)
+    big = (big > 127).astype(region.dtype) * 255
+    cand, median_w, wide_mask, axis_pts = _skeleton_satin(
+        big, mm_per_px / f, sat_step * f, max_step_px * f,
+        extra_half_px=extra_half_px * f,
+    )
+    cand = [(x / f, y / f, j) for x, y, j in cand]
+    axis_pts = [(x / f, y / f, j) for x, y, j in axis_pts]
+    wide_mask = cv2.resize(wide_mask, (region.shape[1], region.shape[0]),
+                           interpolation=cv2.INTER_AREA)
+    wide_mask = (wide_mask > 127).astype(region.dtype) * 255
+    return cand, median_w, wide_mask, axis_pts
 
 
 def _skeleton_satin(region, mm_per_px: float, spacing_px: int, max_step_px: int, extra_half_px: float = 0.0):
