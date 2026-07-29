@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from itertools import pairwise
+
 import cv2
 import numpy as np
 import pytest
@@ -99,3 +101,111 @@ def test_rotated_bar_becomes_satin_with_angle():
 def test_wide_square_stays_tatami():
     d = digitize_image(_test_image(), "cotton", "100x100")
     assert all(o.stitch_type == "TATAMI" for o in d.objects)
+
+
+# ── v2 Part 4: edge-bounded satin ────────────────────────────────────────────
+
+
+def _ring_image(thickness: int = 8) -> bytes:
+    """An annulus — a stroke with NO terminals, the closed-loop case."""
+    img = np.full((240, 240, 3), 255, np.uint8)
+    cv2.circle(img, (120, 120), 80, (40, 40, 40), thickness=thickness)
+    ok, buf = cv2.imencode(".png", img)
+    assert ok
+    return buf.tobytes()
+
+
+def test_ring_satin_closes_without_a_seam():
+    """A ring has no cap, so its columns must wrap all the way round."""
+    d = digitize_image(_ring_image(), "cotton", "100x100", max_colors=2)
+    satins = [o for o in d.objects if o.stitch_type == "SATIN"]
+    assert satins, "an 8px annulus is a stroke and must be satin"
+    # No stitch spans the ring's hole: the closed-loop path must not join across
+    # the centre the way a bounding-rect midline would.
+    for a, b in zip(d.stitches, d.stitches[1:]):
+        if a.command == "STITCH" and b.command == "STITCH":
+            assert ((a.x - b.x) ** 2 + (a.y - b.y) ** 2) ** 0.5 <= 12.7
+
+
+def test_closed_loop_branch_is_detected_and_wraps():
+    """The ring special case fires, and covers one full turn."""
+    from app.services.digitizer import (
+        CLOSED_LOOP_TOL_PX,
+        _assign_boundary,
+        _axis_branches,
+        _axis_frame,
+        _boundary_points,
+        _column_ends,
+    )
+
+    mask = np.zeros((240, 240), np.uint8)
+    cv2.circle(mask, (120, 120), 80, 255, thickness=8)
+    dist = cv2.distanceTransform((mask > 0).astype(np.uint8), cv2.DIST_L2, 5)
+    _skel, branches = _axis_branches((mask > 0).astype(np.uint8), dist, 0.25)
+    assert branches
+    frames = [_axis_frame(b) for b in branches]
+    closed = [f for f in frames if float(np.hypot(*(f[0][0] - f[0][-1]))) <= CLOSED_LOOP_TOL_PX]
+    assert closed, "a circle's medial axis must come back to where it started"
+    owned = _assign_boundary(_boundary_points(mask), frames)
+    pairs = _column_ends(frames[0], owned[0], 3.0, 20.0, 0.0)
+    assert len(pairs) > 20
+    # Both ends of every column sit on the annulus, not across its hole.
+    for a, b in pairs:
+        assert ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2) ** 0.5 < 40.0
+
+
+def test_open_stroke_columns_reach_the_terminal_cap():
+    """Column ends must cover a stroke's END, not stop a half-width short."""
+    from app.services.digitizer import (
+        _assign_boundary,
+        _axis_branches,
+        _axis_frame,
+        _boundary_points,
+        _column_ends,
+    )
+
+    mask = np.zeros((160, 160), np.uint8)
+    cv2.line(mask, (30, 80), (130, 80), 255, thickness=9)
+    dist = cv2.distanceTransform((mask > 0).astype(np.uint8), cv2.DIST_L2, 5)
+    _skel, branches = _axis_branches((mask > 0).astype(np.uint8), dist, 0.25)
+    frames = [_axis_frame(b) for b in branches]
+    owned = _assign_boundary(_boundary_points(mask), frames)
+    pairs = _column_ends(frames[0], owned[0], 2.0, 20.0, 0.0)
+    assert pairs
+    xs = [x for pair in pairs for (x, _y) in pair]
+    # The bar spans x=30..130; columns must reach within a pixel of both ends.
+    assert min(xs) <= 31.0, f"left cap not reached: {min(xs)}"
+    assert max(xs) >= 129.0, f"right cap not reached: {max(xs)}"
+
+
+def test_raycast_fallback_still_produces_columns():
+    """The per-branch fallback must keep stitching when a boundary cannot be paired."""
+    from app.services.digitizer import _raycast_columns
+
+    mask = np.zeros((60, 60), np.uint8)
+    cv2.line(mask, (10, 30), (50, 30), 255, thickness=7)
+    samples = [(x, 30) for x in range(12, 49, 2)]
+    pairs = _raycast_columns((mask > 0).astype(np.uint8), samples, 10.0, 0.0)
+    assert len(pairs) == len(samples)
+    for a, b in pairs:
+        assert 1.0 < ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2) ** 0.5 <= 21.0
+
+
+def test_satin_path_has_no_along_edge_micro_stitches():
+    """Every satin path step is a CROSSING; none is a sub-pitch hop along one edge.
+
+    Emitting both ends of each column with an alternating lead put two
+    penetrations one pitch apart back-to-back in the path — under the 0.5mm
+    minimum, so they were coalesced away and each boundary lost half its
+    penetrations.
+    """
+    d = digitize_image(_bar_image(), "cotton", "100x100", max_colors=2)
+    satins = [o for o in d.objects if o.stitch_type == "SATIN"]
+    assert satins
+    runs = [s for s in d.stitches if s.command == "STITCH"]
+    lengths = [((a.x - b.x) ** 2 + (a.y - b.y) ** 2) ** 0.5 for a, b in pairwise(runs)]
+    assert lengths
+    # A satin crossing is at least a millimetre; the defect showed up as a large
+    # population of ~0.4mm steps.
+    tiny = sum(1 for x in lengths if x < 0.5)
+    assert tiny / len(lengths) < 0.05, f"{tiny}/{len(lengths)} sub-0.5mm steps"
