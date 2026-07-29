@@ -327,3 +327,101 @@ def test_floor_repair_ignores_a_running_stitch():
 
     pts = [(float(i) * 0.2, 0.0, i == 0) for i in range(12)]
     assert D._coalesce_short(pts, 0.5, floor_px=0.3) == D._coalesce_short(pts, 0.5)
+
+
+def test_the_zigzag_ratio_is_defined_once():
+    """v2 Part 11: the metric imports the pipeline's constant, it does not copy it.
+
+    Two 0.9s in two files encode the same "does this triple zigzag" test, and
+    nothing stopped them drifting apart. Pinning identity (not equality) means a
+    future edit to one is an edit to both.
+    """
+    import measure_stitch_quality as M
+
+    from app.services import digitizer as D
+
+    assert M.ZIGZAG_RATIO is D.ZIGZAG_RATIO
+    assert not hasattr(D, "COALESCE_ZIGZAG"), "the old duplicate name should be gone"
+
+
+# ── v2 Part 11: running-stitch reversal repair ───────────────────────────────
+
+
+def _reversal(step: float = 2.0, n: int = 4):
+    """An underlay walking out along a line and back — the branch-tip double-back.
+
+    The two points either side of the turnaround coincide exactly, so the metric
+    sees a same-side gap of 0.0mm.
+    """
+    outbound = [(i * step, 0.0, i == 0) for i in range(n + 1)]
+    back = [(i * step, 0.0, False) for i in range(n - 1, -1, -1)]
+    return outbound + back
+
+
+def test_underlay_reversal_produces_a_zero_same_side_gap():
+    """The defect, before the repair: a turnaround reads as a 0.0mm penetration pair."""
+    pts = _reversal()
+    gaps = same_side_spacings([_S(x, y) for x, y, _ in pts])
+    assert gaps and min(gaps) == pytest.approx(0.0, abs=1e-9)
+
+
+def test_reversal_repair_removes_the_coincident_penetration():
+    """v2 Part 11: drop one point of the coincident pair, keep the thread on the line."""
+    from app.services import digitizer as D
+
+    pts = _reversal()
+    fixed = D._drop_floor_reversals(pts, floor_px=0.3, max_px=6.0)
+    assert len(fixed) == len(pts) - 1, f"exactly one point should go: {fixed}"
+    gaps = same_side_spacings([_S(x, y) for x, y, _ in fixed])
+    assert not [g for g in gaps if g < 0.3], f"no sub-floor pair should remain: {gaps}"
+
+
+def test_reversal_repair_is_a_no_op_on_a_plain_running_stitch():
+    """A running stitch that never doubles back must come through untouched."""
+    from app.services import digitizer as D
+
+    pts = [(float(i) * 2.0, 0.0, i == 0) for i in range(12)]
+    assert D._drop_floor_reversals(pts, floor_px=0.3, max_px=6.0) == pts
+
+
+def test_reversal_repair_refuses_to_exceed_the_machine_stitch_limit():
+    """Closing the gap must never be paid for with an over-length stitch.
+
+    With `max_px` below the merged span, the point is kept and the violation is
+    reported honestly rather than traded away.
+    """
+    from app.services import digitizer as D
+
+    pts = _reversal(step=4.0)
+    assert D._drop_floor_reversals(pts, floor_px=0.3, max_px=1.0) == pts
+
+
+def test_reversal_repair_does_not_swallow_a_jump():
+    """A jump breaks the run, so the metric never sees the triple and the flag stays."""
+    from app.services import digitizer as D
+
+    pts = [(0.0, 0.0, True), (2.0, 0.0, False), (4.0, 0.0, False),
+           (2.0, 0.0, False), (99.0, 99.0, True), (99.0, 97.0, False)]
+    fixed = D._drop_floor_reversals(pts, floor_px=0.3, max_px=6.0)
+    assert [p[2] for p in fixed].count(True) == 2, f"both jumps must survive: {fixed}"
+
+
+def test_fixture_07_underlay_has_no_floor_violations():
+    """End-to-end: the last two corpus violations, unfixed since Part 5, are closed.
+
+    Both were medial-axis underlay turnarounds in 07 (`Satin 1` 0.1828mm and
+    `Satin 13` 0.0000mm), not satin columns.
+    """
+    from run_quality_bench import DEFAULT_PARAMS, FIXTURE_DIR, FIXTURE_PARAMS, RNG_SEED
+
+    path = FIXTURE_DIR / "07_circular_badge.png"
+    params = FIXTURE_PARAMS.get(path.stem, DEFAULT_PARAMS)
+    cv2.setRNGSeed(RNG_SEED)
+    design = digitize_image(
+        path.read_bytes(), fabric_type=params["fabric"], hoop_size=params["hoop"],
+        max_colors=params["colors"], text_mode=bool(params.get("text", False)),
+    )
+    pen = penetration_metrics(design, 0.4, MIN_PENETRATION_MM)
+    assert pen["below_floor"] == 0, [
+        (o["name"], o["min_mm"]) for o in pen["per_object"] if o["below_floor"]
+    ]

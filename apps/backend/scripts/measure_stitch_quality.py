@@ -60,9 +60,15 @@ PX_PER_MM = 10.0        # raster resolution for the coverage masks
 THREAD_WIDTH_MM = 0.4   # 40wt thread
 EROSION_MM = 0.6        # interior = outline eroded by this; the rest is edge band
 MIN_INTERIOR_FRAC = 0.05  # below this the shape has no interior to speak of
+
 # A satin triple must actually zigzag to count as a same-side penetration pair.
 # Guards against reading a running-stitch underlay or a tatami row as satin.
-ZIGZAG_RATIO = 0.9
+#
+# IMPORTED, not redefined. The pipeline enforces the same test in `_coalesce_short`
+# and `_axis_underlay`, and until v2 Part 11 both files carried their own 0.9 —
+# a metric and the code it grades free to drift apart silently. The digitizer owns
+# the value; see the comment there for why that direction and not the other.
+from app.services.digitizer import ZIGZAG_RATIO
 
 
 def _cmd(stitch) -> str:

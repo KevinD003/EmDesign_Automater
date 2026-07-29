@@ -532,7 +532,11 @@ def digitize_image(
                 # itself is retained: `rebuild_design` still uses it for objects
                 # a user explicitly sets to SATIN.)
                 # Centre-walk ALONG THE MEDIAL AXIS, not the bounding-rect midline.
-                under = _axis_underlay(axis_pts, UNDERLAY_STEP_MM / mm_per_px, connect_px)
+                under = _axis_underlay(
+                    axis_pts, UNDERLAY_STEP_MM / mm_per_px, connect_px,
+                    (_PENETRATION_FLOOR_MM / mm_per_px) if _PENETRATION_FLOOR_MM else 0.0,
+                    MAX_STITCH_MM / mm_per_px,
+                )
                 pts = _with_underlay(under, skel_pts, connect_px)
                 underlay = UnderlayType.CENTER_WALK
             else:
@@ -737,7 +741,7 @@ def _restore_for_floor(out, dropped, floor_px: float):
         for i in range(1, len(out) - 1):
             a, b, c = out[i - 1], out[i], out[i + 1]
             gap = _dist(a, c)
-            if gap >= floor_px or gap >= COALESCE_ZIGZAG * min(_dist(a, b), _dist(b, c)):
+            if gap >= floor_px or gap >= ZIGZAG_RATIO * min(_dist(a, b), _dist(b, c)):
                 continue
             for k in (i - 1, i):
                 if dropped[k]:
@@ -861,22 +865,20 @@ PROJECT_CHUNK = 256        # contour points per distance-matrix chunk (memory)
 # A sharp vertex stalls its inner boundary for many columns in a row; a straight
 # stroke only ever throws isolated short steps, and mitring those is pure damage.
 MITRE_MIN_STALLED = 3
-# A coalesced-away point is restored only when its absence leaves a same-side pair
-# under the floor. The triple must ZIGZAG to count, mirroring the metric's own
-# test, so a running-stitch underlay cannot trigger a spurious restore.
-COALESCE_ZIGZAG = 0.9
+# A same-side penetration pair only counts when the triple actually ZIGZAGS: the
+# same-side gap must be shorter than either crossing. True of a satin column pair,
+# false of any stitch sequence advancing along a line.
+#
+# THIS MODULE OWNS THE VALUE. `scripts/measure_stitch_quality.py` imports it as
+# `ZIGZAG_RATIO` rather than keeping its own copy (v2 Part 10 §6 item 1 flagged the
+# duplicate). The pipeline owns it because `scripts/` is not a package — it is a
+# dev CLI that inserts the backend root on `sys.path` — so a shipped service
+# importing from it would invert the dependency. The direction here is the one
+# already in use: `run_quality_bench.py` imports MIN_PENETRATION_MM and
+# SATIN_SPACING_MM from this module.
+ZIGZAG_RATIO = 0.9
 COALESCE_REPAIR_PASSES = 200   # bound; each pass restores at most one point
-# Endpoints the mitre moved, for the current object only. `_coalesce_short` must
-# not drop these (see `_mitre_one_side`), and threading a flag through
-# _column_ends -> _emit_columns -> _skeleton_satin -> digitize_image would mean
-# four signature changes to carry one bit. Module-level state follows the
-# precedent `_CLASSIFICATION_LOG` already sets in this file; `_satin_columns`
-# clears it at the start of every object so it cannot leak between them.
-_MITRED_POINTS: set[tuple[float, float]] = set()
-
-
-def _mitre_key(pt) -> tuple[float, float]:
-    return (round(float(pt[0]), 4), round(float(pt[1]), 4))
+UNDERLAY_REPAIR_PASSES = 200   # bound; each pass drops at most one point
 # NO outward bias is applied to column ends. One was tried — a contour point is
 # the centre of the outermost pixel still inside the shape, so half a pixel of
 # reach is arguably owed — and while the coalescing defect below was still in
@@ -1917,7 +1919,8 @@ def _center_walk(region, rect, step_px: int, connect_px: float):
     return pts
 
 
-def _axis_underlay(axis_pts, step_px: float, connect_px: float):
+def _axis_underlay(axis_pts, step_px: float, connect_px: float,
+                   floor_px: float = 0.0, max_px: float = 0.0):
     """Running-stitch underlay along a medial axis. Returns [(x_px, y_px, is_jump)].
 
     Decimation is by DISTANCE, not by list index. Consecutive axis samples are one
@@ -1948,6 +1951,54 @@ def _axis_underlay(axis_pts, step_px: float, connect_px: float):
         if gap >= step_px:
             out.append((float(x), float(y), gap > connect_px))
             last = (float(x), float(y))
+    return _drop_floor_reversals(out, floor_px, max_px)
+
+
+def _drop_floor_reversals(pts, floor_px: float, max_px: float):
+    """Drop the return point of a running-stitch reversal that lands a same-side
+    pair under the penetration floor (v2 Part 11).
+
+    Where a medial-axis branch dead-ends, the underlay walks out to the tip and
+    back down the SAME line, so the points either side of the turnaround coincide:
+    ``... 57.0, 59.2, 61.4(tip), 59.2, 57.0 ...`` puts two penetrations 0.0mm
+    apart. Locally that triple is indistinguishable from a satin column whose
+    pitch has collapsed — same shape, same test — so the metric counts it, and it
+    was the last floor violation left in the corpus after Part 10.
+
+    The repair mirrors Part 10's: touch only what actually violates. One point of
+    the coincident pair is removed, which restores the spacing while leaving the
+    thread on the same line; the merged stitch must stay within ``MAX_STITCH_MM``
+    or the point is kept and the violation reported honestly rather than traded
+    for a long stitch. Triples containing a jump are skipped — a jump breaks the
+    run, so the metric never sees them and the flag has to survive.
+    """
+    if floor_px <= 0.0 or len(pts) < 3:
+        return pts
+    out = list(pts)
+    for _ in range(UNDERLAY_REPAIR_PASSES):
+        dropped = False
+        for i in range(1, len(out) - 1):
+            a, b, c = out[i - 1], out[i], out[i + 1]
+            if a[2] or b[2] or c[2]:
+                continue
+            gap = _dist(a, c)
+            if gap >= floor_px or gap >= ZIGZAG_RATIO * min(_dist(a, b), _dist(b, c)):
+                continue
+            # Prefer dropping the return point; fall back to the outbound one.
+            for k in (i + 1, i - 1):
+                nxt = out[k + 1] if k + 1 < len(out) else None
+                prv = out[k - 1] if k > 0 else None
+                if nxt is not None and nxt[2]:
+                    continue          # would swallow a jump
+                if prv is not None and nxt is not None and _dist(prv, nxt) > max_px:
+                    continue          # would exceed the machine-safe stitch length
+                del out[k]
+                dropped = True
+                break
+            if dropped:
+                break
+        if not dropped:
+            break
     return out
 
 
