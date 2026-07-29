@@ -127,6 +127,9 @@ class FixtureResult:
     # calls it rather than carrying a second copy that could drift from the audits.
     coverage: dict = field(default_factory=dict)
     penetration: dict = field(default_factory=dict)
+    # Penetration accumulation per cell (v2 Part 12) — the successor safety
+    # constraint now that the same-side floor sits at zero corpus-wide.
+    density: dict = field(default_factory=dict)
     output_png: str | None = None
 
 
@@ -255,14 +258,15 @@ def run_fixture(path: Path, out_dir: Path) -> FixtureResult:
     except Exception:  # noqa: BLE001 - diagnostic only
         res.classification = []
     try:
-        from measure_stitch_quality import coverage_metrics, penetration_metrics
+        from measure_stitch_quality import coverage_metrics, density_metrics, penetration_metrics
 
         from app.services.digitizer import MIN_PENETRATION_MM, SATIN_SPACING_MM
 
         res.coverage = coverage_metrics(design)
         res.penetration = penetration_metrics(design, SATIN_SPACING_MM, MIN_PENETRATION_MM)
+        res.density = density_metrics(design)
     except Exception:  # noqa: BLE001 - diagnostic only
-        res.coverage, res.penetration = {}, {}
+        res.coverage, res.penetration, res.density = {}, {}, {}
 
     res.width_mm, res.height_mm = design.width_mm, design.height_mm
     res.est_minutes = round(design.stitch_count / SPM, 2)

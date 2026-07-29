@@ -24,6 +24,13 @@ jobs:
             apps/backend/requirements-dev.txt
       - run: pip install -r requirements.txt -r requirements-dev.txt
       - run: python -m pytest tests -q
+      # Audit lint claims are machine-checked (v2 Part 12): any audit carrying a
+      # LINT-VERIFY marker has its claimed ruff count re-run and compared, so a
+      # miscounted "N findings over every touched file" fails CI instead of
+      # surviving four parts the way Parts 7-10's did. Deliberately NOT a bare
+      # `ruff check .` gate — digitizer.py carries 14 documented pre-existing
+      # findings, and gating on zero would fail every build until they're fixed.
+      - run: python scripts/verify_lint_claim.py ../../docs/benchmarks
 
   frontend:
     runs-on: ubuntu-latest

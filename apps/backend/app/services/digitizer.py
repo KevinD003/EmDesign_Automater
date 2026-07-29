@@ -541,7 +541,11 @@ def digitize_image(
                 underlay = UnderlayType.CENTER_WALK
             else:
                 inset_px = max(1, round(EDGE_INSET_MM / mm_per_px))
-                under = _edge_walk(region, inset_px, under_step_px, connect_px)
+                under = _edge_walk(
+                    region, inset_px, under_step_px, connect_px,
+                    (_PENETRATION_FLOOR_MM / mm_per_px) if _PENETRATION_FLOOR_MM else 0.0,
+                    MAX_STITCH_MM / mm_per_px,
+                )
                 pts = _with_underlay(under, _scanline_fill(top_region, row_px, max_step_px, connect_px), connect_px)
                 underlay = UnderlayType.EDGE_WALK
             # The floor is passed only for SATIN. A tatami row advances along a
@@ -672,6 +676,15 @@ MIN_STITCH_MM = 0.5  # below this a needle penetration risks thread break / need
 # unmeasured. Boundary-paced pitch reaches it on the concave side of a tight
 # curve, where the inner boundary is much shorter than the outer one that sets
 # the pitch.
+#
+# Reconciliation with the industry "running stitch never below 0.5mm" guidance
+# (v2 Part 12): that guidance is a STITCH-LENGTH rule — needle travel between
+# consecutive penetrations — and this codebase enforces it as MIN_STITCH_MM =
+# 0.5, exactly the cited value. 0.30 here is not a more permissive version of
+# that rule; it bounds a different quantity (same-side spacing, which consecutive
+# stitch length cannot see) that the industry guides do not measure at all. Both
+# values remain unvalidated on fabric — docs/FABRIC_TEST_PROTOCOL.md is the
+# procedure for settling them empirically.
 MIN_PENETRATION_MM = 0.30
 # ENFORCED since v2 Part 6. Part 5 built the metric, measured the damage and left
 # enforcement off so the decision could be taken on its own evidence rather than
@@ -1861,9 +1874,21 @@ def _satin_border(poly_px, width_px: float, step_px: int, connect_px: float):
     return out
 
 
-def _edge_walk(region, inset_px: int, step_px: int, connect_px: float):
+def _edge_walk(region, inset_px: int, step_px: int, connect_px: float,
+               floor_px: float = 0.0, max_px: float = 0.0):
     """Edge-walk underlay: a running stitch along the region outline, inset inside
-    the edge (spec §4.6). Returns [(x_px, y_px, is_jump)]."""
+    the edge (spec §4.6). Returns [(x_px, y_px, is_jump)].
+
+    The reversal repair applies here too (v2 Part 12): where erosion leaves a
+    hairline spike, the contour walks out the spike and back along the adjacent
+    pixel row — the same out-and-back geometry as a medial-axis branch tip, and
+    the same needle-in-the-same-hole result. No corpus fixture currently
+    produces one, but "does not violate on this corpus" is not "cannot violate";
+    the adversarial spike test pins the case. (``_center_walk`` is deliberately
+    NOT wired: its emitted points advance monotonically in rotated-x by
+    ``step_px`` per point, the un-rotation is an isometry, so any same-side pair
+    is at least ``2 * step_px`` apart — ~13x the floor. A property test pins
+    that impossibility instead.)"""
     import cv2
     import numpy as np
 
@@ -1891,7 +1916,7 @@ def _edge_walk(region, inset_px: int, step_px: int, connect_px: float):
                 acc = 0.0
         if pts and pts[-1][:2] != poly[-1]:
             pts.append((poly[-1][0], poly[-1][1], False))
-    return pts
+    return _drop_floor_reversals(pts, floor_px, max_px)
 
 
 def _center_walk(region, rect, step_px: int, connect_px: float):
@@ -1955,8 +1980,8 @@ def _axis_underlay(axis_pts, step_px: float, connect_px: float,
 
 
 def _drop_floor_reversals(pts, floor_px: float, max_px: float):
-    """Drop the return point of a running-stitch reversal that lands a same-side
-    pair under the penetration floor (v2 Part 11).
+    """Drop one point of a running-stitch reversal that lands a same-side pair
+    under the penetration floor (v2 Part 11; side choice made adaptive in 12).
 
     Where a medial-axis branch dead-ends, the underlay walks out to the tip and
     back down the SAME line, so the points either side of the turnaround coincide:
@@ -1984,18 +2009,23 @@ def _drop_floor_reversals(pts, floor_px: float, max_px: float):
             gap = _dist(a, c)
             if gap >= floor_px or gap >= ZIGZAG_RATIO * min(_dist(a, b), _dist(b, c)):
                 continue
-            # Prefer dropping the return point; fall back to the outbound one.
+            # Drop whichever side leaves the SMALLER merged stitch (v2 Part 12):
+            # Part 11's fixed return-preference creates the longer merged span in
+            # 49.5% of measured asymmetric turnarounds (Part 12 audit §2). Ties
+            # keep the return side, preserving Part 11's output byte-for-byte.
+            cand = []
             for k in (i + 1, i - 1):
                 nxt = out[k + 1] if k + 1 < len(out) else None
                 prv = out[k - 1] if k > 0 else None
                 if nxt is not None and nxt[2]:
                     continue          # would swallow a jump
-                if prv is not None and nxt is not None and _dist(prv, nxt) > max_px:
+                merged = _dist(prv, nxt) if prv is not None and nxt is not None else 0.0
+                if merged > max_px:
                     continue          # would exceed the machine-safe stitch length
-                del out[k]
+                cand.append((merged, k))
+            if cand:
+                del out[min(cand, key=lambda mk: mk[0])[1]]
                 dropped = True
-                break
-            if dropped:
                 break
         if not dropped:
             break
@@ -2113,7 +2143,12 @@ def rebuild_design(design: Design) -> Design:
                 pts = _scanline_angled(top, float(o.stitch_angle), spacing_px, max_step_px, connect_px)
                 if ut and ut != "NONE":  # any non-NONE underlay → edge-walk for fills
                     inset_px = max(1, round(EDGE_INSET_MM / mm_per_px))
-                    pts = _with_underlay(_edge_walk(mask, inset_px, under_step_px, connect_px), pts, connect_px)
+                    under = _edge_walk(
+                        mask, inset_px, under_step_px, connect_px,
+                        (_PENETRATION_FLOOR_MM / mm_per_px) if _PENETRATION_FLOOR_MM else 0.0,
+                        MAX_STITCH_MM / mm_per_px,
+                    )
+                    pts = _with_underlay(under, pts, connect_px)
             pts = _coalesce_short(pts, MIN_STITCH_MM / mm_per_px)
             if len(pts) < 2:
                 continue

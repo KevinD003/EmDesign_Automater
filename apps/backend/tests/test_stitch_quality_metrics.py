@@ -6,6 +6,7 @@ would silently move every audit number. These pin the definitions.
 
 from __future__ import annotations
 
+import math
 import sys
 from pathlib import Path
 
@@ -404,6 +405,160 @@ def test_reversal_repair_does_not_swallow_a_jump():
            (2.0, 0.0, False), (99.0, 99.0, True), (99.0, 97.0, False)]
     fixed = D._drop_floor_reversals(pts, floor_px=0.3, max_px=6.0)
     assert [p[2] for p in fixed].count(True) == 2, f"both jumps must survive: {fixed}"
+
+
+# ── v2 Part 12: adaptive side choice + edge-walk wiring + center-walk proof ──
+
+
+def test_reversal_repair_drops_the_side_with_the_smaller_merged_stitch():
+    """v2 Part 12: the drop side is chosen adaptively, not fixed.
+
+    Part 11 always dropped the return point. Measured over 3,552 violating
+    asymmetric turnarounds, that fixed choice creates the longer merged span
+    49.5% of the time (mean excess 0.58mm, max 1.79mm). Here the outbound leg is
+    short and the return leg long, so dropping the OUTBOUND point merges
+    p->b = 1.7 while Part 11's return-drop would have merged b->d ~= 2.99 —
+    the losing case, pinned.
+    """
+    from app.services import digitizer as D
+
+    p, a, b = (0.3, 0.0), (1.0, 0.0), (2.0, 0.0)
+    c, d = (1.02, 0.1), (-0.97, 0.303)
+    run = [(*p, True), (*a, False), (*b, False), (*c, False), (*d, False)]
+    fixed = D._drop_floor_reversals(run, floor_px=0.3, max_px=6.0)
+    assert len(fixed) == 4
+    assert (*a, False) not in fixed, f"the outbound point should be the one dropped: {fixed}"
+    assert (*c, False) in fixed
+    gaps = same_side_spacings([_S(x, y) for x, y, _ in fixed])
+    assert not [g for g in gaps if g < 0.3]
+
+
+def test_edge_walk_spike_reversal_is_repaired():
+    """v2 Part 12: the repair is wired into `_edge_walk` and closes a real case.
+
+    Where erosion leaves a hairline spike, the contour walks out the spike and
+    back 2px away — the same out-and-back geometry as a medial-axis branch tip.
+    No corpus fixture produces one, so this sweep constructs it: across spike
+    lengths, at least one sampling phase must land a point at the tip, and the
+    wired floor must then remove every violation the raw walk produced.
+    """
+    from app.services.digitizer import _edge_walk
+
+    def violations(pts, floor):
+        found = []
+        for i in range(1, len(pts) - 1):
+            a, b, c = pts[i - 1], pts[i], pts[i + 1]
+            if a[2] or b[2] or c[2]:
+                continue
+            gap = ((a[0] - c[0]) ** 2 + (a[1] - c[1]) ** 2) ** 0.5
+            legs = min(((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2) ** 0.5,
+                       ((b[0] - c[0]) ** 2 + (b[1] - c[1]) ** 2) ** 0.5)
+            if gap < floor and gap < 0.9 * legs:
+                found.append((i, gap))
+        return found
+
+    raw_total, wired_total = 0, 0
+    for spike_len in range(30, 72, 2):
+        mask = np.zeros((220, 200), np.uint8)
+        cv2.rectangle(mask, (30, 40), (170, 120), 255, -1)
+        cv2.line(mask, (100, 120), (100, 120 + spike_len), 255, 3)
+        raw_total += len(violations(_edge_walk(mask, 1, 20, 30.0), 3.0))
+        wired_total += len(violations(_edge_walk(mask, 1, 20, 30.0, floor_px=3.0, max_px=60.0), 3.0))
+    assert raw_total > 0, "the adversarial spike must actually reproduce the defect"
+    assert wired_total == 0, "the wired floor must close every case the sweep produces"
+
+
+def test_center_walk_cannot_zigzag():
+    """v2 Part 12: `_center_walk` is deliberately NOT wired, and this is why.
+
+    Its emitted points advance monotonically in rotated-x by `step_px` per
+    point, and the un-rotation is an isometry, so any same-side pair is at
+    least 2*step_px apart — the zigzag triple test can never pass. Property-
+    checked over seeded random blob masks rather than asserted.
+    """
+    from app.services.digitizer import _center_walk
+
+    rng = np.random.default_rng(20260729)
+    for _ in range(30):
+        mask = np.zeros((160, 160), np.uint8)
+        for _blob in range(6):
+            cv2.circle(mask, (int(rng.uniform(30, 130)), int(rng.uniform(30, 130))),
+                       int(rng.uniform(10, 40)), 255, -1)
+        rect = cv2.minAreaRect(np.argwhere(mask > 0)[:, ::-1].astype(np.float32))
+        pts = _center_walk(mask, rect, 20, 30.0)
+        gaps = same_side_spacings([_S(x, y) for x, y, _ in pts])
+        assert gaps == [], f"a center-walk emission zigzagged: {gaps}"
+
+
+# ── v2 Part 12: penetration-accumulation (density) metric ────────────────────
+
+
+class _D:
+    def __init__(self, stitches):
+        self.stitches = stitches
+
+
+def test_density_flags_a_pile_up():
+    """15 penetrations into one 0.5mm cell — a stacked-object pile-up — must flag."""
+    from measure_stitch_quality import DENSITY_FLAG_PER_CELL, density_metrics
+
+    pile = [_S(10.1 + (i % 3) * 0.05, 10.1 + (i // 3) * 0.05) for i in range(15)]
+    spread = [_S(30.0 + i * 2.0, 30.0) for i in range(10)]
+    m = density_metrics(_D(pile + spread))
+    assert m["max_per_cell"] == 15
+    assert m["flagged_cells"] == 1
+    assert m["flag_at"] == DENSITY_FLAG_PER_CELL
+    assert m["hottest"][0]["count"] == 15
+
+
+def test_density_does_not_flag_a_healthy_satin_path():
+    m = __import__("measure_stitch_quality").density_metrics(_D(_satin_path(0.4, 3.0, 40)))
+    assert m["flagged_cells"] == 0
+    assert m["max_per_cell"] <= 4
+
+
+def test_density_is_order_independent_where_the_triple_test_is_blind():
+    """The defect class the triple metric structurally cannot see (v2 Part 12).
+
+    An edge-walk contour seam puts the first and last penetrations of a loop in
+    the same hole — adjacent in space, far apart in the stream, so no
+    consecutive triple ever contains the pair and `same_side_spacings` returns
+    nothing. The cell count sees them regardless of stream order.
+    """
+    from measure_stitch_quality import density_metrics
+
+    loop = [_S(20.0 + math.cos(t / 20.0 * 2 * math.pi) * 5.0,
+               20.0 + math.sin(t / 20.0 * 2 * math.pi) * 5.0) for t in range(20)]
+    loop.append(_S(loop[0].x + 0.05, loop[0].y + 0.05))  # seam: re-enters the first hole
+    assert same_side_spacings(loop) == [] or min(same_side_spacings(loop)) > 0.3
+    m = density_metrics(_D(loop))
+    seam_cell = [h for h in m["hottest"] if h["count"] >= 2]
+    assert seam_cell, f"the seam pair must be visible to the cell count: {m['hottest']}"
+
+
+def test_density_corpus_health_is_pinned():
+    """Fixture 08 is the corpus's densest; it must stay far below the flag.
+
+    The exact max differs by background-separation path (7 WITH rembg, 6
+    WITHOUT — segmentation differs, so stitches do), so the pin brackets both.
+    What must hold on either path: the healthy corpus peaks at half the flag
+    level, which is what makes 14 = "a second full layer on the worst healthy
+    cell" keep meaning what the Part 12 audit says it means.
+    """
+    from measure_stitch_quality import DENSITY_FLAG_PER_CELL, density_metrics
+    from run_quality_bench import DEFAULT_PARAMS, FIXTURE_DIR, FIXTURE_PARAMS, RNG_SEED
+
+    path = FIXTURE_DIR / "08_mascot_detail.png"
+    params = FIXTURE_PARAMS.get(path.stem, DEFAULT_PARAMS)
+    cv2.setRNGSeed(RNG_SEED)
+    design = digitize_image(
+        path.read_bytes(), fabric_type=params["fabric"], hoop_size=params["hoop"],
+        max_colors=params["colors"], text_mode=bool(params.get("text", False)),
+    )
+    m = density_metrics(design)
+    assert m["max_per_cell"] in (6, 7)
+    assert m["max_per_cell"] * 2 == DENSITY_FLAG_PER_CELL or m["max_per_cell"] < 7
+    assert m["flagged_cells"] == 0
 
 
 def test_fixture_07_underlay_has_no_floor_violations():

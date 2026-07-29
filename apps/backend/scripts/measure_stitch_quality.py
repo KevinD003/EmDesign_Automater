@@ -110,6 +110,55 @@ def same_side_spacings(stitches) -> list[float]:
     return out
 
 
+# ── Penetration accumulation (density per cell) ──────────────────────────────
+
+# Cell edge for the accumulation metric: roughly one thread width plus one satin
+# pitch, so a cell holds what one healthy column crossing deposits locally.
+DENSITY_CELL_MM = 0.5
+# PROVISIONAL flag level, unvalidated on fabric (same standing caveat as
+# MIN_PENETRATION_MM, same protocol: docs/FABRIC_TEST_PROTOCOL.md). Grounding:
+# the healthy ten-fixture corpus maxes at 7 penetrations per cell (fixture 08;
+# most fixtures peak at 2-4), so 14 is a second full layer stacked on the worst
+# healthy cell — the stacked-object / repeated-pass pile-up this metric exists
+# to catch, and the mechanism that actually perforates fabric.
+DENSITY_FLAG_PER_CELL = 14
+
+
+def density_metrics(design) -> dict:
+    """Needle penetrations per ``DENSITY_CELL_MM`` cell (v2 Part 12).
+
+    The successor safety constraint to the same-side floor, which reached zero
+    corpus-wide in Part 11 and stopped discriminating. Where the floor tests one
+    consecutive triple, this counts every STITCH into a spatial grid — so it is
+    ORDER-INDEPENDENT and sees what the triple test structurally cannot: pile-up
+    from stacked objects, repeated passes, and same-hole pairs that are far
+    apart in the stream (e.g. the two sides of an edge-walk contour seam).
+    """
+    from collections import Counter
+
+    cells: Counter = Counter()
+    for s in design.stitches:
+        if _cmd(s) == "STITCH":
+            cells[(int(s.x / DENSITY_CELL_MM), int(s.y / DENSITY_CELL_MM))] += 1
+    if not cells:
+        return {}
+    counts = sorted(cells.values(), reverse=True)
+    hot = [
+        {"x_mm": round((cx + 0.5) * DENSITY_CELL_MM, 1),
+         "y_mm": round((cy + 0.5) * DENSITY_CELL_MM, 1), "count": n}
+        for (cx, cy), n in cells.most_common(5)
+    ]
+    return {
+        "cell_mm": DENSITY_CELL_MM,
+        "cells": len(counts),
+        "max_per_cell": counts[0],
+        "p99_per_cell": counts[len(counts) // 100],
+        "flag_at": DENSITY_FLAG_PER_CELL,
+        "flagged_cells": sum(1 for n in counts if n >= DENSITY_FLAG_PER_CELL),
+        "hottest": hot,
+    }
+
+
 def penetration_metrics(design, pitch_mm: float, floor_mm: float) -> dict:
     """Same-side penetration spacing for the design and for its tightest object.
 
@@ -288,7 +337,11 @@ def paint_uncovered(design, path: Path) -> dict:
 
 def measure(design, pitch_mm: float, floor_mm: float) -> dict:
     """Every metric in this module for one design."""
-    return {"coverage": coverage_metrics(design), "penetration": penetration_metrics(design, pitch_mm, floor_mm)}
+    return {
+        "coverage": coverage_metrics(design),
+        "penetration": penetration_metrics(design, pitch_mm, floor_mm),
+        "density": density_metrics(design),
+    }
 
 
 # ── CLI ──────────────────────────────────────────────────────────────────────
