@@ -214,3 +214,69 @@ def test_bench_records_coverage_and_penetration(tmp_path):
     assert result.penetration["nominal_pitch_mm"] == 0.4
     # The safety number must be present even when nothing violates the floor.
     assert "min_spacing_mm" in result.penetration
+
+
+def test_mitre_closes_a_sharp_apex_without_breaking_the_floor():
+    """v2 Part 8: a sharp vertex must be covered, and still honour the floor."""
+    import math
+
+    img = np.full((320, 320, 3), 255, np.uint8)
+    apex = (160, 250)
+    cv2.line(img, (apex[0] - 60, apex[1] - 150), apex, (30, 30, 40), thickness=12)
+    cv2.line(img, apex, (apex[0] + 60, apex[1] - 150), (30, 30, 40), thickness=12)
+    ok, buf = cv2.imencode(".png", img)
+    assert ok
+    from app.services import digitizer as D
+
+    art = buf.tobytes()
+    keep = D.MITRE_MIN_STALLED
+    try:
+        D.MITRE_MIN_STALLED = 10 ** 9          # effectively disabled
+        without = coverage_metrics(digitize_image(art, "cotton", "100x100", max_colors=2))
+        D.MITRE_MIN_STALLED = keep
+        design = digitize_image(art, "cotton", "100x100", max_colors=2)
+    finally:
+        D.MITRE_MIN_STALLED = keep
+
+    assert [o for o in design.objects if o.stitch_type == "SATIN"]
+    cov = coverage_metrics(design)
+    # CHARACTERISATION, not a win. On this butt-jointed V — two separate strokes
+    # meeting with no rounded join — the mitre measures WORSE than leaving it off
+    # (97.3 -> 95.1 interior), the opposite of the letter probe's joined apexes
+    # (apex_M 96.6 -> 97.9, apex_V 98.1 -> 98.7). The shape is pinned here so the
+    # regression is visible rather than tuned away; see the Part 8 audit.
+    assert cov["interior_pct"] > 90.0
+    assert without["interior_pct"] > 90.0
+    pen = penetration_metrics(design, 0.4, MIN_PENETRATION_MM)
+    assert pen["below_floor"] == 0, f"mitre broke the floor: {pen['below_floor']}"
+    assert math.isfinite(cov["spill_pct"])
+
+
+def test_mitre_leaves_a_straight_stroke_alone():
+    """The mitre must only fire inside a RUN of stalled stations, not on a straight bar."""
+    from app.services.digitizer import MITRE_MIN_STALLED, _mitre_stalled_side
+
+    n = 12
+    a = np.array([[float(i), 0.0] for i in range(n)])       # both boundaries advancing
+    b = np.array([[float(i), 4.0] for i in range(n)])
+    mid = np.array([[float(i), 2.0] for i in range(n)])
+    before = a.copy(), b.copy()
+    moved = _mitre_stalled_side(a, b, mid, 0.5, 1.0)
+    assert moved == 0, "a straight stroke has no stalled run to mitre"
+    assert np.allclose(a, before[0]) and np.allclose(b, before[1])
+    assert MITRE_MIN_STALLED >= 2
+
+
+def test_paint_uncovered_writes_a_picture(tmp_path):
+    """The uncovered-pixel painter is binding practice, so it is pinned by a test."""
+    from measure_stitch_quality import paint_uncovered
+
+    img = np.full((200, 200, 3), 255, np.uint8)
+    cv2.rectangle(img, (40, 40), (160, 160), (40, 40, 200), thickness=-1)
+    ok, buf = cv2.imencode(".png", img)
+    assert ok
+    design = digitize_image(buf.tobytes(), "cotton", "100x100", max_colors=2)
+    out = tmp_path / "painted.png"
+    stats = paint_uncovered(design, out)
+    assert out.exists() and out.stat().st_size > 0
+    assert stats["missed_interior_px"] >= 0 and stats["missed_band_px"] >= 0

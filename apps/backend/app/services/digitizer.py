@@ -808,6 +808,10 @@ CLOSED_LOOP_TOL_PX = 2.5   # axis start/end within this = a ring, no terminals
 MIN_ARC_SAMPLES = 4        # a boundary arc needs this many points to be usable
 CAP_EXTRA_COLUMNS = 2      # columns added past each terminal to close the cap
 PROJECT_CHUNK = 256        # contour points per distance-matrix chunk (memory)
+# Consecutive stalled stations on one boundary before a mitre engages (v2 Part 8).
+# A sharp vertex stalls its inner boundary for many columns in a row; a straight
+# stroke only ever throws isolated short steps, and mitring those is pure damage.
+MITRE_MIN_STALLED = 3
 # NO outward bias is applied to column ends. One was tried — a contour point is
 # the centre of the outermost pixel still inside the shape, so half a pixel of
 # reach is arguably owed — and while the coalescing defect below was still in
@@ -1260,6 +1264,80 @@ def _pace_by_boundary(tl, pl, tr, pr, grid, period: float | None, pitch: float, 
     return fine[keep], a_all[keep], b_all[keep]
 
 
+def _min_stitch_px(pitch_px: float) -> float:
+    """MIN_STITCH_MM in the caller's pixels, derived from the satin pitch.
+
+    Avoids re-deriving mm_per_px inside the column geometry, where it is not
+    otherwise needed, and keeps the ratio explicit rather than a bare number.
+    """
+    return pitch_px * (MIN_STITCH_MM / SATIN_SPACING_MM)
+
+
+def _mitre_one_side(end, other, mid, floor_px: float, min_len_px: float) -> int:
+    """Move one boundary's stalled ends onto the axis. Modifies `end` in place."""
+    import numpy as np
+
+    original = end.copy()
+    stalled = np.hypot(*(np.diff(end, axis=0).T)) < floor_px
+    touched: list[int] = []
+    run = 0
+    for i in range(1, len(end)):
+        # Only inside a RUN of stalled stations. A sharp vertex stalls one
+        # boundary for several columns in a row; a straight stroke only throws
+        # isolated short steps, and mitring those moved an end off its own outline
+        # for nothing — measured as fresh dashes of missed edge band along every
+        # arm of the letter probe.
+        run = run + 1 if stalled[i - 1] else 0
+        if run < MITRE_MIN_STALLED:
+            continue
+        # The AXIS must itself be advancing. Past a terminal the grid runs into the
+        # cap padding, where `mid` is clamped to the axis end point and consecutive
+        # stations share one coordinate — mitring there stamps ends into one hole.
+        if float(np.hypot(*(mid[i] - mid[i - 1]))) < floor_px:
+            continue
+        if float(np.hypot(*(mid[i] - end[i - 1]))) < floor_px:
+            continue          # the axis is no better here; leave it to the floor
+        # A mitred column is SHORTER, because one end moves in to the axis. Let it
+        # fall under the minimum stitch length and `_coalesce_short` removes a
+        # point further down the pipeline, breaking the strict A-B-A-B alternation
+        # and manufacturing fresh same-side adjacencies — the identical failure
+        # Part 6 measured when it tried retraction. Measured here: without this
+        # guard the corpus carries 7 residual floor violations instead of 5.
+        if float(np.hypot(*(mid[i] - other[i]))) < min_len_px:
+            continue
+        end[i] = mid[i]
+        touched.append(i)
+    # REVERT anything the mitre made worse: `stalled` is computed once and goes
+    # stale as points move, so a mitred end can crowd a column further along.
+    moved = len(touched)
+    for i in touched:
+        prv = float(np.hypot(*(end[i] - end[i - 1])))
+        nxt = float(np.hypot(*(end[i] - end[i + 1]))) if i + 1 < len(end) else floor_px
+        if min(prv, nxt) < floor_px:
+            end[i] = original[i]
+            moved -= 1
+    return moved
+
+
+def _mitre_stalled_side(a, b, mid, floor_px: float, min_len_px: float) -> int:
+    """Walk stalled column ends back onto the medial axis — a satin mitre (v2 Part 8).
+
+    At a sharp vertex the two boundaries are in direct conflict: the OUTER arc
+    sweeps right around the corner and needs a column every pitch to cover it,
+    while every one of those columns wants its INNER end on the reflex point, so
+    the inner penetrations pile into a spot far tighter than the floor allows.
+    Dropping the offending columns (what `_enforce_floor` does) opens the outer
+    fan and leaves the apex bare; keeping them violates the floor.
+
+    A hand digitizer resolves this with a mitre: the inner ends are laid along the
+    corner's BISECTOR instead of into its point. The medial axis IS that bisector,
+    by definition, and it advances station to station even where the boundary does
+    not. Returns how many ends were moved.
+    """
+    return _mitre_one_side(a, b, mid, floor_px, min_len_px) + \
+        _mitre_one_side(b, a, mid, floor_px, min_len_px)
+
+
 def _enforce_floor(pairs, floor_px: float, closed: bool):
     """Drop columns whose penetrations would land closer than ``floor_px`` on either side.
 
@@ -1350,6 +1428,8 @@ def _column_ends(frame, assigned, spacing_px: float, max_half_px: float, extra_p
         end[over] = mid[over] + v[over] / d[over, None] * max_half_px
         grow = (d + extra_px) / d                    # pull compensation, outward
         end[~over] = mid[~over] + v[~over] * grow[~over, None]
+    if floor_px > 0.0:
+        _mitre_stalled_side(a, b, mid, floor_px, _min_stitch_px(pitch))
     pairs = [((float(p[0]), float(p[1])), (float(q[0]), float(q[1]))) for p, q in zip(a, b)]
     return _enforce_floor(pairs, floor_px, closed)
 

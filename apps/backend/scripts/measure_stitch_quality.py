@@ -53,6 +53,7 @@ if str(BACKEND_ROOT) not in sys.path:
 PROBE_DIRS = {
     "curvature": BACKEND_ROOT / "tests" / "fixtures" / "curvature_probe",
     "junction": BACKEND_ROOT / "tests" / "fixtures" / "junction_probe",
+    "letter": BACKEND_ROOT / "tests" / "fixtures" / "letter_probe",
 }
 
 PX_PER_MM = 10.0        # raster resolution for the coverage masks
@@ -244,6 +245,41 @@ def coverage_metrics(design) -> dict:
     }
 
 
+def paint_uncovered(design, path: Path) -> dict:
+    """Write a picture of what the stitches MISS. Binding practice since v2 Part 8.
+
+    Grey = thread, RED = interior the thread never reaches, ORANGE = edge band it
+    never reaches, BLUE = spill outside the outline. Three audits in a row
+    (Parts 4, 6, 7) attributed a coverage change to the wrong mechanism and were
+    only corrected by looking at this picture, so a plausible-sounding theory no
+    longer counts as evidence on its own in this repository.
+    """
+    import cv2
+    import numpy as np
+
+    outline, thread = _rasterise(design)
+    if outline is None:
+        return {}
+    k = max(1, round(EROSION_MM * PX_PER_MM))
+    interior = cv2.erode(outline, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * k + 1, 2 * k + 1)))
+    band = cv2.subtract(outline, interior)
+    img = np.full(outline.shape + (3,), 255, np.uint8)
+    img[thread > 0] = (185, 185, 185)
+    img[(band > 0) & (thread == 0)] = (0, 150, 255)
+    img[(interior > 0) & (thread == 0)] = (0, 0, 220)
+    img[(outline == 0) & (thread > 0)] = (220, 130, 0)
+    ys, xs = np.nonzero(outline)
+    if len(ys):
+        img = img[max(ys.min() - 8, 0):ys.max() + 8, max(xs.min() - 8, 0):xs.max() + 8]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    cv2.imwrite(str(path), img)
+    return {
+        "missed_interior_px": int(((interior > 0) & (thread == 0)).sum()),
+        "missed_band_px": int(((band > 0) & (thread == 0)).sum()),
+        "image": str(path),
+    }
+
+
 def measure(design, pitch_mm: float, floor_mm: float) -> dict:
     """Every metric in this module for one design."""
     return {"coverage": coverage_metrics(design), "penetration": penetration_metrics(design, pitch_mm, floor_mm)}
@@ -262,6 +298,8 @@ def _parse_args():
     ap.add_argument("--no-floor", action="store_true",
                     help="disable penetration-floor enforcement (to reproduce before/after)")
     ap.add_argument("--json", type=Path, help="write the full result here")
+    ap.add_argument("--paint", type=Path,
+                    help="directory to write per-fixture uncovered-pixel pictures into")
     return ap.parse_args()
 
 
@@ -343,6 +381,8 @@ def _main() -> int:
             text_mode=bool(params.get("text", False)),
         )
         results[path.stem] = measure(design, SATIN_SPACING_MM, floor_report)
+        if args.paint:
+            results[path.stem]["painted"] = paint_uncovered(design, args.paint / f"{path.stem}.png")
         _print_row(path.stem, results[path.stem])
 
     _print_detail(results, per_object=bool(args.probe or args.fixture))
