@@ -48,7 +48,12 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-PROBE_DIR = BACKEND_ROOT / "tests" / "fixtures" / "curvature_probe"
+# Targeted instruments, deliberately OUTSIDE the ten-fixture bench corpus so that
+# "the corpus" keeps meaning the same ten fixtures every audit has diffed against.
+PROBE_DIRS = {
+    "curvature": BACKEND_ROOT / "tests" / "fixtures" / "curvature_probe",
+    "junction": BACKEND_ROOT / "tests" / "fixtures" / "junction_probe",
+}
 
 PX_PER_MM = 10.0        # raster resolution for the coverage masks
 THREAD_WIDTH_MM = 0.4   # 40wt thread
@@ -250,8 +255,8 @@ def measure(design, pitch_mm: float, floor_mm: float) -> dict:
 def _parse_args():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--fixture", help="measure only this fixture stem")
-    ap.add_argument("--probe", action="store_true",
-                    help="measure the curvature probe instead of the bench corpus")
+    ap.add_argument("--probe", choices=sorted(PROBE_DIRS), nargs="?", const="curvature",
+                    help="measure a targeted probe instead of the bench corpus")
     ap.add_argument("--floor-mm", type=float, default=None,
                     help="override the shipped penetration floor for this run")
     ap.add_argument("--no-floor", action="store_true",
@@ -316,7 +321,7 @@ def _main() -> int:
     floor_report = _apply_floor(args, set_penetration_floor, MIN_PENETRATION_MM)
 
     results = {}
-    src = PROBE_DIR if args.probe else FIXTURE_DIR
+    src = PROBE_DIRS[args.probe] if args.probe else FIXTURE_DIR
     paths = sorted(src.glob("*.png"))
     if args.fixture:
         paths = [p for p in paths if p.stem == args.fixture]

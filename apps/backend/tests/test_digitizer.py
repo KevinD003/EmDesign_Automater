@@ -143,7 +143,7 @@ def test_closed_loop_branch_is_detected_and_wraps():
     dist = cv2.distanceTransform((mask > 0).astype(np.uint8), cv2.DIST_L2, 5)
     _skel, branches = _axis_branches((mask > 0).astype(np.uint8), dist, 0.25)
     assert branches
-    frames = [_axis_frame(b) for b in branches]
+    frames = [_axis_frame(b, dist) for b in branches]
     closed = [f for f in frames if float(np.hypot(*(f[0][0] - f[0][-1]))) <= CLOSED_LOOP_TOL_PX]
     assert closed, "a circle's medial axis must come back to where it started"
     owned = _assign_boundary(_boundary_points(mask), frames)
@@ -168,7 +168,7 @@ def test_open_stroke_columns_reach_the_terminal_cap():
     cv2.line(mask, (30, 80), (130, 80), 255, thickness=9)
     dist = cv2.distanceTransform((mask > 0).astype(np.uint8), cv2.DIST_L2, 5)
     _skel, branches = _axis_branches((mask > 0).astype(np.uint8), dist, 0.25)
-    frames = [_axis_frame(b) for b in branches]
+    frames = [_axis_frame(b, dist) for b in branches]
     owned = _assign_boundary(_boundary_points(mask), frames)
     pairs = _column_ends(frames[0], owned[0], 2.0, 20.0, 0.0)
     assert pairs
@@ -209,3 +209,88 @@ def test_satin_path_has_no_along_edge_micro_stitches():
     # population of ~0.4mm steps.
     tiny = sum(1 for x in lengths if x < 0.5)
     assert tiny / len(lengths) < 0.05, f"{tiny}/{len(lengths)} sub-0.5mm steps"
+
+
+# ── v2 Part 7: junction-aware boundary partition ─────────────────────────────
+
+
+def _junction_image(thin_px: int = 4, stem_px: int = 24) -> bytes:
+    """A hairline leaving a thick stem at 30° — the asymmetric junction of Part 4 §11.3.
+
+    640px on a 100mm hoop keeps the 24px stem at 3.75mm, inside the satin cap, so
+    the junction actually reaches the satin path this test is about.
+    """
+    import math
+
+    img = np.full((640, 640, 3), 255, np.uint8)
+    cx = 260
+    cv2.line(img, (cx, 90), (cx, 550), (30, 30, 40), thickness=stem_px)
+    joint = (cx, 340)
+    rad = math.radians(30)
+    tip = (int(joint[0] + 260 * math.sin(rad)), int(joint[1] - 260 * math.cos(rad)))
+    cv2.line(img, joint, tip, (30, 30, 40), thickness=thin_px)
+    ok, buf = cv2.imencode(".png", img)
+    assert ok
+    return buf.tobytes()
+
+
+def test_thick_stem_boundary_is_not_handed_to_a_hairline_branch():
+    """The adversarial junction: raw nearest-branch gives the stem's boundary away.
+
+    A stem boundary pixel sits one stem half-width from the stem axis. With a
+    6:1 thickness ratio that is also roughly its distance to the HAIRLINE axis,
+    so a Voronoi split hands a tall run of stem boundary to the hairline, whose
+    short axis then collapses it all onto one station. Subtracting the local
+    medial radius makes the test scale-free: ~0 for the branch a point actually
+    bounds, positive for any other.
+    """
+    from app.services.digitizer import (
+        _assign_boundary,
+        _axis_branches,
+        _axis_frame,
+        _boundary_points,
+    )
+
+    img = cv2.imdecode(np.frombuffer(_junction_image(), np.uint8), cv2.IMREAD_COLOR)
+    mask = (cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) < 128).astype(np.uint8) * 255
+    binary = (mask > 0).astype(np.uint8)
+    dist = cv2.distanceTransform(binary, cv2.DIST_L2, 5)
+    _skel, branches = _axis_branches(binary, dist, 0.3)
+    frames = [_axis_frame(b, dist) for b in branches]
+    assigned = _assign_boundary(_boundary_points(mask), frames)
+
+    # The hairline is the branch with the smallest median radius.
+    radii = [float(np.median(f[3])) for f in frames]
+    thin = int(np.argmin(radii))
+    assert radii[thin] < 4.0, f"expected a hairline branch, radii={radii}"
+
+    owned = assigned[thin]
+    assert len(owned["t"]), "the hairline must own its own boundary"
+    # Points further than a few hairline-widths from the hairline axis are stem
+    # boundary. Raw nearest-branch hands over 12 of them on this shape; the
+    # radius-normalised rule leaves at most a couple around the fillet itself.
+    reach = radii[thin] * 3.0
+    axis = frames[thin][0]
+    strays = sum(
+        1 for pt in owned["pt"]
+        if float(np.min(np.hypot(axis[:, 0] - pt[0], axis[:, 1] - pt[1]))) > reach
+    )
+    assert strays <= 3, f"hairline owns {strays} stem-boundary points (reach {reach:.1f}px)"
+
+
+def test_junction_shape_still_classifies_and_stitches():
+    """End to end: the junction shape stays satin and honours the penetration floor."""
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+    from measure_stitch_quality import penetration_metrics
+
+    from app.services.digitizer import MIN_PENETRATION_MM
+
+    d = digitize_image(_junction_image(), "cotton", "100x100", max_colors=2)
+    assert [o for o in d.objects if o.stitch_type == "SATIN"], (
+        f"expected satin, got {[o.stitch_type for o in d.objects]}"
+    )
+    pen = penetration_metrics(d, 0.4, MIN_PENETRATION_MM)
+    assert pen["below_floor"] == 0, f"{pen['below_floor']} penetrations under the floor"

@@ -1039,11 +1039,15 @@ def _boundary_points(region):
     return np.vstack(arcs) if arcs else np.zeros((0, 2), dtype=np.float64)
 
 
-def _axis_frame(samples):
-    """Turn an axis polyline into (points, arc-length, unit tangents).
+def _axis_frame(samples, dist=None):
+    """Turn an axis polyline into (points, arc-length, unit tangents, radii).
 
     Tangents use the same ±`TANGENT_WINDOW` smoothing the ray-cast columns used,
     for the same reason: a ±1 estimate on a stair-stepped skeleton swings 45°.
+
+    ``radii`` is the distance transform at each sample — the radius of the
+    maximal inscribed disc there — which is what makes the boundary partition
+    scale-aware (see `_nearest_axis`). Zero when no transform is supplied.
     """
     import numpy as np
 
@@ -1055,11 +1059,29 @@ def _axis_frame(samples):
     delta = pts[hi] - pts[lo]
     norm = np.linalg.norm(delta, axis=1)
     norm[norm < 1e-9] = 1.0
-    return pts, lengths, delta / norm[:, None]
+    if dist is None:
+        radii = np.zeros(len(pts))
+    else:
+        radii = dist[pts[:, 1].astype(np.int64), pts[:, 0].astype(np.int64)].astype(np.float64)
+    return pts, lengths, delta / norm[:, None], radii
 
 
 def _nearest_axis(bpts, frames):
-    """Nearest axis sample across ALL branches, as (branch id, sample id, flat index).
+    """Owning axis sample for each boundary point, as (branch id, sample id, flat index).
+
+    NOT nearest by raw distance (v2 Part 7). Raw distance is a Voronoi split, and
+    a Voronoi split is wrong wherever two branches differ in thickness: where a
+    6px hairline meets a 34px stem, a stem boundary pixel is 17px from the stem
+    axis but only ~17px from the hairline axis too, so a tall run of the STEM's
+    boundary gets handed to the HAIRLINE. Those pixels then all project to nearly
+    one station on the hairline's short axis — the stall Part 6 §4 exposed once
+    the penetration floor stopped the surplus columns from papering over it.
+
+    The medial axis already defines the right answer. A boundary point p lies at
+    exactly the local radius r(a) from the axis point a whose maximal inscribed
+    disc touches it, and strictly further from every other axis point. So minimise
+    ``|p - a| - r(a)``: it is ~0 for the branch p actually bounds and positive for
+    any other, at any thickness ratio. Worked example in the Part 7 audit.
 
     Chunked because the full boundary x axis distance matrix runs to hundreds of
     megabytes on a large ring.
@@ -1067,12 +1089,14 @@ def _nearest_axis(bpts, frames):
     import numpy as np
 
     axis_all = np.vstack([f[0] for f in frames])
+    radii_all = np.concatenate([f[3] for f in frames])
     owner = np.concatenate([np.full(len(f[0]), i, dtype=np.int64) for i, f in enumerate(frames)])
     local = np.concatenate([np.arange(len(f[0]), dtype=np.int64) for f in frames])
     nearest = np.empty(len(bpts), dtype=np.int64)
     for i in range(0, len(bpts), PROJECT_CHUNK):
         diff = bpts[i:i + PROJECT_CHUNK, None, :] - axis_all[None, :, :]
-        nearest[i:i + PROJECT_CHUNK] = np.argmin((diff * diff).sum(-1), axis=1)
+        gap = np.sqrt((diff * diff).sum(-1)) - radii_all[None, :]
+        nearest[i:i + PROJECT_CHUNK] = np.argmin(gap, axis=1)
     return owner, local, nearest
 
 
@@ -1105,7 +1129,7 @@ def _assign_boundary(bpts, frames):
 
     out = []
     for b, frame in enumerate(frames):
-        pts, lengths, tan = frame
+        pts, lengths, tan, _radii = frame
         sel = np.flatnonzero(owner[nearest] == b)
         if len(sel) == 0:
             out.append([])
@@ -1165,24 +1189,34 @@ def _arc_at(t_src, p_src, t_query, period: float | None):
     return np.stack([x, y], axis=1)
 
 
-def _column_grid(sides, period: float | None, pitch: float):
+def _column_grid(sides, period: float | None, pitch: float, free_ends=(True, True)):
     """The parameter stations columns are laid at — where terminals and rings differ.
 
     A ring has no terminals, so the grid covers exactly one turn and stops one
     pitch short of closing; the last column then sits beside the first.
 
-    An open stroke runs PAST both terminals by `CAP_EXTRA_COLUMNS`. Beyond the tip
-    both boundary arcs clamp to their own end point, so the pair converges onto
-    the cap and the terminal is stitched rather than left a half-width short.
-    That is the whole of the cap handling — no separate cap code path.
+    A FREE stroke end runs PAST the terminal by `CAP_EXTRA_COLUMNS`. Beyond the
+    tip both boundary arcs clamp to their own end point, so the pair converges
+    onto the cap and the terminal is stitched rather than left a half-width short.
+
+    A JUNCTION end gets no such padding, and that distinction is the point of
+    v2 Part 7. At a free end the outline really does wrap around the tip, so
+    converging the two arcs there is correct. At an interior vertex — an 'M'
+    apex, a 'U' bowl join, a 'T' crossing — the axis ends inside the shape and
+    the outline does NOT converge; it carries on around the corner. Padding
+    there fabricates a fan of columns onto a point that is not a cap. Before the
+    penetration floor those coincident columns overlapped and painted the corner
+    in; with the floor on they are dropped and the corner shows as a wedge-shaped
+    hole. Measured on fixture 05: the fans in the 'M' apexes and the 'U' join are
+    exactly these, not the boundary mis-assignment Part 6 §4 assumed.
     """
     import numpy as np
 
     if period:
         return np.arange(0.0, period, pitch) if period >= pitch * 2 else None
     pad = CAP_EXTRA_COLUMNS * pitch
-    lo = min(s["t"].min() for s in sides) - pad
-    hi = max(s["t"].max() for s in sides) + pad
+    lo = min(s["t"].min() for s in sides) - (pad if free_ends[0] else 0.0)
+    hi = max(s["t"].max() for s in sides) + (pad if free_ends[1] else 0.0)
     return np.arange(lo, hi + 1e-9, pitch)
 
 
@@ -1196,13 +1230,15 @@ def _pace_by_boundary(tl, pl, tr, pr, grid, period: float | None, pitch: float, 
     05/07/08 as a 0.6-1.3 point INTERIOR coverage loss. Oversample the parameter,
     then keep a column only once either side has moved a full pitch.
 
-    ``floor_px`` is the penetration-density safety floor (v2 Part 5). Pacing by
-    the faster boundary means the SLOWER one — the concave side of a curve — can
-    advance far less than a pitch between columns, packing its penetrations
-    together; past a stroke terminal both arcs are clamped and advance zero, so
-    the cap columns land in the same holes. With a floor set, a column is kept
-    only if BOTH sides have also moved at least that far, which is exactly the
-    condition the metric measures. Default 0.0 = report, do not enforce.
+    ``floor_px`` bounds only the TAIL column here (v2 Part 7). Part 5 also gated
+    every column on ``min(moved_a, moved_b) >= floor_px``, requiring the slow side
+    to advance too. That is right on a curve and catastrophic at a junction: where
+    one arc STALLS, the minimum never reaches the floor, so the branch emits no
+    columns at all over that stretch — the wedge-shaped holes at fixture 05's 'M'
+    apexes and 'U' join. Only 5.5% of that fixture's columns were being dropped by
+    `_enforce_floor`; the rest of the hole was columns never generated. The safety
+    guarantee is unaffected: `_enforce_floor` still applies the floor to the final
+    endpoints, which is what the metric actually measures.
     """
     import numpy as np
 
@@ -1213,7 +1249,7 @@ def _pace_by_boundary(tl, pl, tr, pr, grid, period: float | None, pitch: float, 
         last = keep[-1]
         moved_a = float(np.hypot(*(a_all[i] - a_all[last])))
         moved_b = float(np.hypot(*(b_all[i] - b_all[last])))
-        if max(moved_a, moved_b) >= pitch and min(moved_a, moved_b) >= floor_px:
+        if max(moved_a, moved_b) >= pitch:
             keep.append(i)
     if keep[-1] != len(fine) - 1:
         tail = len(fine) - 1
@@ -1269,7 +1305,8 @@ def _enforce_floor(pairs, floor_px: float, closed: bool):
     return kept
 
 
-def _column_ends(frame, assigned, spacing_px: float, max_half_px: float, extra_px: float, floor_px: float = 0.0):
+def _column_ends(frame, assigned, spacing_px: float, max_half_px: float, extra_px: float,
+                 floor_px: float = 0.0, free_ends=(True, True)):
     """Column endpoint pairs for one branch, taken from its two boundary arcs.
 
     Returns ``[((x0, y0), (x1, y1)), ...]``, or ``[]`` when the branch's boundary
@@ -1278,7 +1315,7 @@ def _column_ends(frame, assigned, spacing_px: float, max_half_px: float, extra_p
     """
     import numpy as np
 
-    pts, lengths, _ = frame
+    pts, lengths = frame[0], frame[1]
     if not assigned:
         return []
     closed = len(pts) > 2 and float(np.hypot(*(pts[0] - pts[-1]))) <= CLOSED_LOOP_TOL_PX
@@ -1288,12 +1325,17 @@ def _column_ends(frame, assigned, spacing_px: float, max_half_px: float, extra_p
 
     period = float(lengths[-1]) if closed else None
     pitch = max(spacing_px, 1e-3)
-    grid = _column_grid(sides, period, pitch)
+    grid = _column_grid(sides, period, pitch, free_ends)
     if grid is None or len(grid) < 2:
         return []
 
     tl, pl = _extreme_per_station(sides[0], grid, period)
     tr, pr = _extreme_per_station(sides[1], grid, period)
+    # Restricting the dropped slow-side gate to closed loops was tried, to spare the
+    # ring probe's edge band. It changed nothing measurable: after
+    # `_extend_branch_ends` pushes samples past the skeleton, almost no annulus
+    # still closes within CLOSED_LOOP_TOL_PX, so `closed` was false for both the
+    # probe rings and fixture 03. Removed rather than left as a no-op.
     grid, a, b = _pace_by_boundary(tl, pl, tr, pr, grid, period, pitch, floor_px)
     # Clamp to the satin cap about the axis, exactly as the ray-cast columns did:
     # at a junction the two boundaries are genuinely far apart, and an unclamped
@@ -1396,16 +1438,47 @@ def _axis_samples(branches, dist, binary, step: int, mm_per_px: float):
     return used, widths, centres
 
 
-def _satin_columns(region, binary, used, step: int, max_step_px: int, max_half_px: float,
+def _free_ends(skel, samples) -> tuple[bool, bool]:
+    """Is each end of this branch a FREE stroke end, or an interior junction?
+
+    A skeleton pixel with two or fewer 8-neighbours is the end of a line; three or
+    more means other strokes continue through it. `_extend_branch_ends` has
+    already pushed the samples past the original endpoint toward the cap, so the
+    test walks back to the last sample that is actually on the skeleton.
+    """
+    import numpy as np
+
+    if skel is None or len(samples) < 2:
+        return True, True
+    h, w = skel.shape[:2]
+
+    def on_skel(pt):
+        x, y = round(pt[0]), round(pt[1])
+        return 0 <= x < w and 0 <= y < h and skel[y, x] > 0
+
+    def free(order):
+        for pt in order:
+            if not on_skel(pt):
+                continue
+            x, y = round(pt[0]), round(pt[1])
+            patch = skel[max(y - 1, 0):y + 2, max(x - 1, 0):x + 2]
+            return int(np.count_nonzero(patch)) - 1 <= 2
+        return True
+
+    return free(samples), free(samples[::-1])
+
+
+def _satin_columns(region, binary, dist, skel, used, step: int, max_step_px: int, max_half_px: float,
                    extra_px: float, floor_px: float = 0.0):
     """Lay every branch's columns between corresponding points on its two boundaries."""
     pts: list[tuple[float, float, bool]] = []
     prev_end: tuple[float, float] | None = None
-    frames = [_axis_frame(s) for s in used]
+    frames = [_axis_frame(s, dist) for s in used]
     assigned = _assign_boundary(_boundary_points(region), frames)
     last_pair = None
     for frame, samples, owned in zip(frames, used, assigned):
-        pairs = _column_ends(frame, owned, float(step), max_half_px, extra_px, floor_px)
+        pairs = _column_ends(frame, owned, float(step), max_half_px, extra_px, floor_px,
+                             _free_ends(skel, samples))
         if not pairs:
             # Boundary too sparse to pair (a two-pixel stub, a region whose
             # contour the thinning did not survive). Fall back to the Part 2.5
@@ -1505,7 +1578,8 @@ def _skeleton_satin(region, mm_per_px: float, spacing_px: int, max_step_px: int,
 
     used, widths, centre_track = _axis_samples(branches, dist, binary, step, mm_per_px)
     floor_px = (_PENETRATION_FLOOR_MM / max(mm_per_px, 1e-6)) if _PENETRATION_FLOOR_MM else 0.0
-    pts = _satin_columns(region, binary, used, step, max_step_px, max_half_px, extra_half_px, floor_px)
+    pts = _satin_columns(region, binary, dist, skel, used, step, max_step_px, max_half_px,
+                         extra_half_px, floor_px)
     # Report the MEDIAN stroke width, not the share of samples over the limit:
     # junction spikes make the mean and the over-limit share useless as a
     # "is this a stroke or a blob?" test.
