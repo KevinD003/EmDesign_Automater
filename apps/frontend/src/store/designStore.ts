@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { ColorStop, Design, DesignObject, Point } from '../types/design';
+import type { ColorStop, Design, DesignObject, Point, QualityReport } from '../types/design';
 import { reorderColorStop } from '../lib/stitches';
 
 const HISTORY_LIMIT = 50;
@@ -18,6 +18,8 @@ interface DesignState {
   /** Active manual-digitizing tool + the points drawn so far (design-mm). */
   activeTool: Tool;
   draft: Point[];
+  /** Latest quality report for the current design (auto after digitize/lettering, or the Quality button). */
+  quality: QualityReport | null;
   past: Design[];
   future: Design[];
   setDesign: (design: Design | null) => void;
@@ -31,6 +33,7 @@ interface DesignState {
   updateColorStop: (stopNumber: number, patch: Partial<ColorStop>) => void;
   updateObject: (sequenceOrder: number, patch: Partial<DesignObject>) => void;
   reorderStop: (stopNumber: number, direction: 'up' | 'down') => void;
+  setQuality: (report: QualityReport | null) => void;
   setTool: (tool: Tool) => void;
   addDraftPoint: (p: Point) => void;
   undoDraftPoint: () => void;
@@ -49,11 +52,13 @@ export const useDesignStore = create<DesignState>((set) => ({
   playHead: null,
   activeTool: 'select',
   draft: [],
+  quality: null,
   past: [],
   future: [],
   setDesign: (design) =>
     // Also drop any in-progress manual draw — a stale tool/draft must never leak onto a
     // freshly loaded design (Open/Load/Digitize/CloudOpen all route through here).
+    // The quality report belongs to the outgoing design, so it goes too.
     set({
       design,
       playHead: null,
@@ -61,6 +66,7 @@ export const useDesignStore = create<DesignState>((set) => ({
       selectedObject: null,
       activeTool: 'select',
       draft: [],
+      quality: null,
       past: [],
       future: [],
     }),
@@ -109,6 +115,7 @@ export const useDesignStore = create<DesignState>((set) => ({
         future: [],
       };
     }),
+  setQuality: (report) => set({ quality: report }),
   setTool: (tool) => set({ activeTool: tool, draft: [] }),
   addDraftPoint: (p) => set((state) => ({ draft: [...state.draft, p] })),
   undoDraftPoint: () => set((state) => ({ draft: state.draft.slice(0, -1) })),

@@ -4,6 +4,7 @@ export interface LetteringParams {
   text: string;
   heightMm: number;
   fabricType: string;
+  letterSpacingMm: number;
 }
 
 interface LetteringDialogProps {
@@ -18,7 +19,9 @@ export function LetteringDialog({ onCancel, onConfirm }: LetteringDialogProps) {
   const [text, setText] = useState('');
   const [heightMm, setHeightMm] = useState(20);
   const [fabricType, setFabricType] = useState('cotton');
-  const valid = text.trim().length > 0 && heightMm >= 5 && heightMm <= 100;
+  const [letterSpacingMm, setLetterSpacingMm] = useState(0);
+  const valid =
+    text.trim().length > 0 && heightMm >= 5 && heightMm <= 100 && letterSpacingMm >= -2 && letterSpacingMm <= 10;
 
   return (
     <div className="dialog-overlay" role="dialog" aria-modal="true">
@@ -46,6 +49,17 @@ export function LetteringDialog({ onCancel, onConfirm }: LetteringDialogProps) {
           />
         </label>
         <label className="prop-row">
+          <span>Letter spacing (mm)</span>
+          <input
+            type="number"
+            min={-2}
+            max={10}
+            step={0.1}
+            value={letterSpacingMm}
+            onChange={(e) => setLetterSpacingMm(Number(e.target.value) || 0)}
+          />
+        </label>
+        <label className="prop-row">
           <span>Fabric</span>
           <select value={fabricType} onChange={(e) => setFabricType(e.target.value)}>
             {FABRICS.map((f) => (
@@ -64,7 +78,7 @@ export function LetteringDialog({ onCancel, onConfirm }: LetteringDialogProps) {
             type="button"
             className="primary"
             disabled={!valid}
-            onClick={() => onConfirm({ text: text.trim(), heightMm, fabricType })}
+            onClick={() => onConfirm({ text: text.trim(), heightMm, fabricType, letterSpacingMm })}
           >
             Generate
           </button>

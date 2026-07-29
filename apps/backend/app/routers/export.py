@@ -9,16 +9,27 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
 from app.models.design import Design, ValidationReport
-from app.services import embroidery_io, package as package_svc
+from app.services import embroidery_io
+from app.services import package as package_svc
+from app.services.optimizer import parse_hoop
 
 router = APIRouter(tags=["export"])
+
+# Machine formats we ADVERTISE for export, in recommendation order (spec §4.8).
+# The endpoint intersects this with pyembroidery's actual writer table, so a format
+# the library cannot write can never be advertised (advertising one is a guaranteed
+# 415 at export time). "vip" and "hus" are deliberately absent: pyembroidery reads
+# both but has writers for neither (HUS is import-only; VIP export is unsupported).
+# Internal formats (json/svg/png/txt/gcode) are writable but stay unadvertised.
+MACHINE_EXPORT_FORMATS: tuple[str, ...] = ("dst", "pes", "pec", "jef", "exp", "vp3", "xxx", "u01", "csv")
 
 
 @router.get("/formats")
 async def formats() -> dict[str, object]:
     """Supported export formats + machine-brand recommendation table (spec §4.8)."""
+    writable = embroidery_io.supported_write_exts()
     return {
-        "export": ["dst", "pes", "jef", "exp", "vp3", "pec", "xxx", "vip", "csv"],
+        "export": [f for f in MACHINE_EXPORT_FORMATS if f in writable],
         "brands": package_svc.BRAND_FORMATS,
     }
 
@@ -31,7 +42,7 @@ async def export_package(design: Design, format: str = Query("dst")) -> Streamin
         data = package_svc.build_package(design, format)
     except ValueError as exc:
         raise HTTPException(status_code=415, detail=str(exc)) from exc
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Package build failed: {exc}") from exc
     stem = package_svc._stem(design.name)
     return StreamingResponse(
@@ -48,17 +59,6 @@ def _cmd(stitch) -> str:
     return c.value if hasattr(c, "value") else c
 
 
-def _parse_hoop(hoop_size: str | None) -> tuple[float, float] | None:
-    """Parse a '100x100' / '130x180mm' hoop string → (w, h) mm, or None if unset/bad."""
-    if not hoop_size:
-        return None
-    try:
-        w, h = hoop_size.lower().replace("mm", "").split("x")
-        return float(w), float(h)
-    except (ValueError, AttributeError):
-        return None
-
-
 @router.post("/export")
 async def export_design(design: Design, format: str = Query("dst")) -> StreamingResponse:
     """Encode a Design to a machine file and stream it back."""
@@ -66,7 +66,7 @@ async def export_design(design: Design, format: str = Query("dst")) -> Streaming
         data = embroidery_io.write_embroidery(design, format)
     except ValueError as exc:
         raise HTTPException(status_code=415, detail=str(exc)) from exc
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Export failed: {exc}") from exc
 
     stem = (design.name or "design").rsplit(".", 1)[0]
@@ -89,7 +89,7 @@ async def validate(design: Design) -> ValidationReport:
 
     # If a hoop is specified, a design that doesn't fit is a BLOCKING issue (it can't be
     # stitched). Otherwise fall back to a generic 200mm warning.
-    hoop = _parse_hoop(design.hoop_size)
+    hoop = parse_hoop(design.hoop_size)
     if hoop is not None:
         hw, hh = hoop
         if design.width_mm > hw or design.height_mm > hh:
@@ -106,9 +106,12 @@ async def validate(design: Design) -> ValidationReport:
     long_stitches = 0
     prev = None
     for s in design.stitches:
-        if _cmd(s) == "STITCH" and prev is not None:
-            if math.hypot(s.x - prev[0], s.y - prev[1]) > _MAX_STITCH_MM:
-                long_stitches += 1
+        if (
+            _cmd(s) == "STITCH"
+            and prev is not None
+            and math.hypot(s.x - prev[0], s.y - prev[1]) > _MAX_STITCH_MM
+        ):
+            long_stitches += 1
         prev = (s.x, s.y)
     if long_stitches:
         warnings.append(f"{long_stitches} stitches exceed {_MAX_STITCH_MM}mm (thread-break risk).")

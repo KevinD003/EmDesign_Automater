@@ -52,6 +52,15 @@ def test_roundtrip_preserves_bounds(tmp_path):
     assert abs(again.height_mm - design.height_mm) < 1.0
 
 
+@pytest.mark.parametrize("fmt", ["jef", "exp", "vp3", "xxx", "pec"])
+def test_roundtrip_preserves_bounds_across_formats(tmp_path, fmt):
+    # Same invariant (and tolerances) as the DST round-trip: write → read → bounds.
+    design = embroidery_io.read_embroidery(_dst_bytes(tmp_path), "dst")
+    again = embroidery_io.read_embroidery(embroidery_io.write_embroidery(design, fmt), fmt)
+    assert abs(again.width_mm - design.width_mm) < 1.0
+    assert abs(again.height_mm - design.height_mm) < 1.0
+
+
 def test_pes_preserves_threads(tmp_path):
     f = tmp_path / "x.pes"
     pe.write_pes(_pattern(), str(f))

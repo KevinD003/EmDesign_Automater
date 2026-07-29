@@ -28,10 +28,31 @@ from app.services import digitizer
 
 LONG_STITCH_MM = 12.7  # most machines choke above ~12.7mm (0.5")
 TINY_STITCH_MM = 0.5    # below this, thread shreds / needle deflects
+# No published industry benchmark for jumps-per-1,000 exists (verified by web research,
+# 2026-07-29 — docs/COMPETITOR-COMPARISON.md §"what the research corrects" item 1);
+# production guidance is expressed as TRIM cost: ~3-7s per trim, machine stops 6-20s.
+# The rate is therefore reported as an internal, comparable-over-time metric only.
+TRIM_COST_S = "3-7"  # seconds per trim, the cited production cost of a jump that needs trimming
+HOOP_OVERFLOW_PENALTY = 25  # a design that cannot be hooped cannot be stitched — near-failing
 
 
 def _dist(ax: float, ay: float, bx: float, by: float) -> float:
     return math.hypot(ax - bx, ay - by)
+
+
+def parse_hoop(hoop_size: str | None) -> tuple[float, float] | None:
+    """Parse a '100x100' / '130x180mm' hoop string → (w, h) mm, or None if unset/bad.
+
+    Shared by quality analysis and the export validator — one tolerant parse,
+    one behavior: an absent or malformed hoop is "unknown", never an error.
+    """
+    if not hoop_size:
+        return None
+    try:
+        w, h = hoop_size.lower().replace("mm", "").split("x")
+        return float(w), float(h)
+    except (ValueError, AttributeError):
+        return None
 
 
 def _centroid(contour) -> tuple[float, float]:
@@ -136,12 +157,15 @@ def _grade(score: int) -> str:
     return "F"
 
 
-def analyze_quality(design: Design) -> QualityReport:
-    """Deterministic quality score + findings from the stitch stream."""
-    stitches = design.stitches
-    metrics = path_metrics(design)
+def _stream_stats(stitches) -> tuple[int, int, float, float]:
+    """One pass over the stream → (long_ct, tiny_ct, max_stitch_mm, mean_stitch_mm).
 
-    long_ct = tiny_ct = 0
+    long/tiny counts keep their historical basis (a STITCH landing after a STITCH
+    or JUMP); max/mean cover true STITCH-to-STITCH steps only, so jump landings
+    don't inflate the reported stitch lengths.
+    """
+    long_ct = tiny_ct = seg_ct = 0
+    seg_sum = max_mm = 0.0
     prev = None
     for s in stitches:
         if prev is not None and s.command == "STITCH" and prev.command in ("STITCH", "JUMP"):
@@ -150,37 +174,87 @@ def analyze_quality(design: Design) -> QualityReport:
                 long_ct += 1
             elif 0 < d < TINY_STITCH_MM:
                 tiny_ct += 1
+            if prev.command == "STITCH":
+                seg_ct += 1
+                seg_sum += d
+                max_mm = max(max_mm, d)
         prev = s
+    return long_ct, tiny_ct, max_mm, (seg_sum / seg_ct if seg_ct else 0.0)
 
+
+def _hoop_fit(design: Design) -> tuple[bool | None, QualityFinding | None]:
+    """(fits?, overflow finding). No/unparseable hoop → (None, None): unknown, no penalty."""
+    hoop = parse_hoop(design.hoop_size)
+    if hoop is None:
+        return None, None
+    hw, hh = hoop
+    if design.width_mm > hw or design.height_mm > hh:
+        return False, QualityFinding(
+            severity="error", code="hoop_overflow", count=1,
+            message=f"Design {design.width_mm}x{design.height_mm}mm exceeds the {design.hoop_size} hoop.",
+        )
+    return True, None
+
+
+def _penalty_findings(design: Design, metrics, long_ct: int, tiny_ct: int) -> tuple[list[QualityFinding], int]:
+    """Score-affecting findings + total penalty. Thresholds unchanged from v1."""
     findings: list[QualityFinding] = []
-    score = 100
-
+    penalty = 0
     if long_ct:
         findings.append(QualityFinding(
             severity="error", code="long_stitch", count=long_ct,
             message=f"{long_ct} stitch(es) exceed {LONG_STITCH_MM}mm — may break or skip.",
         ))
-        score -= min(30, 5 + long_ct)
+        penalty += min(30, 5 + long_ct)
     if tiny_ct:
         findings.append(QualityFinding(
             severity="warn", code="tiny_stitch", count=tiny_ct,
             message=f"{tiny_ct} stitch(es) under {TINY_STITCH_MM}mm — thread shredding / needle wear.",
         ))
-        score -= min(20, tiny_ct // 2)
+        penalty += min(20, tiny_ct // 2)
     if metrics.color_changes > 15:
         findings.append(QualityFinding(
             severity="warn", code="many_colors", count=metrics.color_changes,
             message=f"{metrics.color_changes} color changes — long run-time, many thread swaps.",
         ))
-        score -= 10
-    if stitches and metrics.jump_count > max(20, len(stitches) * 0.1):
+        penalty += 10
+    if design.stitches and metrics.jump_count > max(20, len(design.stitches) * 0.1):
         findings.append(QualityFinding(
             severity="warn", code="many_jumps", count=metrics.jump_count,
             message=f"{metrics.jump_count} jumps ({metrics.travel_mm}mm travel) — try Optimize to cut trims.",
         ))
-        score -= 10
+        penalty += 10
+    return findings, penalty
+
+
+def analyze_quality(design: Design) -> QualityReport:
+    """Deterministic quality score + findings from the stitch stream."""
+    stitches = design.stitches
+    metrics = path_metrics(design)
+    long_ct, tiny_ct, max_mm, mean_mm = _stream_stats(stitches)
+
+    findings, penalty = _penalty_findings(design, metrics, long_ct, tiny_ct)
+    hoop_fit, overflow = _hoop_fit(design)
+    if overflow is not None:
+        findings.append(overflow)
+        penalty += HOOP_OVERFLOW_PENALTY
     if not findings:
         findings.append(QualityFinding(severity="info", code="clean", message="No quality issues detected."))
 
-    score = max(0, min(100, score))
-    return QualityReport(score=score, grade=_grade(score), metrics=metrics, findings=findings)
+    # Informational jump rate — reported alongside (NOT replacing) the many_jumps penalty.
+    jumps_per_1000 = round(metrics.jump_count / max(metrics.stitch_count, 1) * 1000, 1)
+    if stitches:
+        findings.append(QualityFinding(
+            severity="info", code="jump_rate", count=metrics.jump_count,
+            message=(
+                f"{jumps_per_1000} jumps per 1,000 stitches — each trimmed jump costs "
+                f"~{TRIM_COST_S}s of machine time; lower is faster to run."
+            ),
+        ))
+
+    score = max(0, min(100, 100 - penalty))
+    return QualityReport(
+        score=score, grade=_grade(score), metrics=metrics, findings=findings,
+        max_stitch_mm=round(max_mm, 2), mean_stitch_mm=round(mean_mm, 2),
+        jumps_per_1000=jumps_per_1000, hoop_fit=hoop_fit,
+    )

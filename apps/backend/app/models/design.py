@@ -238,3 +238,8 @@ class QualityReport(CamelModel):
     grade: str = "A"  # A/B/C/D/F
     metrics: PathMetrics
     findings: list[QualityFinding] = Field(default_factory=list)
+    # Consolidated stream stats (defaulted so pre-existing payloads stay valid).
+    max_stitch_mm: float = 0.0   # longest STITCH-to-STITCH step
+    mean_stitch_mm: float = 0.0  # average STITCH-to-STITCH step
+    jumps_per_1000: float = 0.0  # jump rate per 1,000 stream entries (target ≤5)
+    hoop_fit: bool | None = None  # None = no/unparseable hoop on the design

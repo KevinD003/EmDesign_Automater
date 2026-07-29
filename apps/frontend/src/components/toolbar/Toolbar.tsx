@@ -3,7 +3,7 @@ import type { ChangeEvent } from 'react';
 import { useDesignStore } from '../../store/designStore';
 import { useAuthStore } from '../../store/authStore';
 import { api } from '../../api/client';
-import type { Design, OptimizeReport, QualityReport, ValidationReport } from '../../types/design';
+import type { Design, OptimizeReport, ValidationReport } from '../../types/design';
 import { browserKV, deleteDesign, listSaved, loadDesign, saveDesign, type SavedMeta } from '../../lib/storage';
 import { isMasterFilename, parseMasterDesign, serializeMasterDesign } from '../../lib/masterFile';
 import { buildManualDesign, isImportedNotEditable, minPointsFor, type ManualTool } from '../../lib/manual';
@@ -46,6 +46,7 @@ export function Toolbar() {
   const setTool = useDesignStore((s) => s.setTool);
   const undoDraftPoint = useDesignStore((s) => s.undoDraftPoint);
   const selectedStop = useDesignStore((s) => s.selectedStop);
+  const setQuality = useDesignStore((s) => s.setQuality);
   const fileRef = useRef<HTMLInputElement>(null);
   const imgRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
@@ -55,7 +56,6 @@ export function Toolbar() {
   const [exportFormat, setExportFormat] = useState('dst');
   const [report, setReport] = useState<ValidationReport | null>(null);
   const [optimizeReport, setOptimizeReport] = useState<OptimizeReport | null>(null);
-  const [quality, setQuality] = useState<QualityReport | null>(null);
   const [saved, setSaved] = useState<SavedMeta[]>([]);
   const [showSaved, setShowSaved] = useState(false);
   const session = useAuthStore((s) => s.session);
@@ -103,16 +103,23 @@ export function Toolbar() {
     if (file) setPendingImage(file); // opens the params dialog
   };
 
+  // Load a freshly generated design and auto-score it — the Quality panel (right side)
+  // shows the result without an extra click.
+  const loadAndScore = async (d: Design) => {
+    setDesign(d);
+    setQuality(await api.analyzeQuality(d));
+  };
+
   const onDigitizeConfirm = (p: DigitizeParams) => {
     const file = pendingImage;
     setPendingImage(null);
     if (!file) return;
-    run(async () => setDesign(await api.digitize(file, p.fabricType, p.hoopSize, p.maxColors)));
+    run(async () => loadAndScore(await api.digitize(file, p.fabricType, p.hoopSize, p.maxColors)));
   };
 
   const onLetteringConfirm = (p: LetteringParams) => {
     setShowLettering(false);
-    run(async () => setDesign(await api.lettering(p.text, p.heightMm, p.fabricType)));
+    run(async () => loadAndScore(await api.lettering(p.text, p.heightMm, p.fabricType, p.letterSpacingMm)));
   };
 
   const stem = (design?.name || 'design').replace(/\.[^.]+$/, '');
@@ -122,8 +129,13 @@ export function Toolbar() {
     run(async () => {
       const result = await api.optimizePath(design);
       setOptimizeReport(result.report);
-      if (result.report.reordered) replaceDesign(result.design); // keeps undo history
+      if (result.report.reordered) {
+        replaceDesign(result.design); // keeps undo history
+        // A visible quality report is now stale — re-score against the reordered design.
+        if (useDesignStore.getState().quality) setQuality(await api.analyzeQuality(result.design));
+      }
     });
+  // Refreshes the Quality panel (right side) — the report itself renders there.
   const onQuality = () => design && run(async () => setQuality(await api.analyzeQuality(design)));
 
   // ── Manual digitizing: draw a Run/Satin/Fill, commit via server rebuild ──
@@ -423,23 +435,6 @@ export function Toolbar() {
           ) : (
             <div className="muted small">{optimizeReport.note}</div>
           )}
-        </div>
-      )}
-      {quality && (
-        <div className={`validation-report${quality.score < 80 ? ' has-issues' : ''}`}>
-          <button type="button" className="vr-close" onClick={() => setQuality(null)} aria-label="Dismiss">
-            ×
-          </button>
-          <strong>Quality {quality.grade} · {quality.score}/100</strong>
-          {quality.findings.map((f, i) => (
-            <div key={`q${i}`} className={f.severity === 'error' ? 'vr-issue' : f.severity === 'warn' ? 'vr-warn' : 'vr-ok'}>
-              {f.message}
-            </div>
-          ))}
-          <div className="muted small">
-            {quality.metrics.stitchCount.toLocaleString()} st · {quality.metrics.colorChanges} color changes ·{' '}
-            {quality.metrics.jumpCount} jumps
-          </div>
         </div>
       )}
       {report && (

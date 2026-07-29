@@ -124,14 +124,50 @@ SMOOTH_MIN_POINTS = 10    # below this a contour is left alone entirely
 # at 0.10mm 27.8%, i.e. parity with v1 while still removing the pixel staircase.
 # Anything stronger trades layer registration for edge smoothness — not worth it.
 
-# Pull compensation (spec §4.6): widen the top fill/satin to counter fabric pull that
-# narrows stitching. Higher for stretchy fabrics. Applied as a dilation (per side, mm).
-PULL_BY_FABRIC = {
-    "cotton": 0.2, "denim": 0.15, "twill": 0.15, "poplin": 0.15, "canvas": 0.15,
-    "polo/knit": 0.4, "knit": 0.4, "jersey": 0.45, "fleece": 0.5,
-    "cap": 0.3, "towel": 0.5, "terry": 0.5,
+# Per-fabric stitch profiles (v2 Part 13). Until now only pull compensation was
+# fabric-aware (the old PULL_BY_FABRIC scalar table); density, underlay step and
+# edge inset were global constants — the single biggest feature gap against every
+# competitor in docs/LAUNCH-READINESS-GAPS.md B1. Fields per fabric:
+#   pull_mm   — pull compensation per side (values carried over from PULL_BY_FABRIC,
+#               which tests/test_pullcomp.py pinned; higher for stretchy fabrics)
+#   row_mm    — tatami fill row pitch (was global ROW_SPACING_MM = 0.45)
+#   satin_mm  — satin zigzag pitch (was global SATIN_SPACING_MM = 0.4)
+#   under_mm  — underlay running-stitch length (was global UNDERLAY_STEP_MM = 2.0);
+#               shorter on high-loft fabrics so the underlay actually tacks the nap
+#   inset_mm  — edge-walk inset (was global EDGE_INSET_MM = 0.6); deeper on loft
+# COTTON IS EXACTLY THE OLD GLOBALS, so the ten-fixture regression corpus (all
+# cotton) is byte-identical across this change — verified by bench diff, not
+# asserted. All non-cotton values are PROVISIONAL from industry digitizing
+# guidance (wovens 0.35-0.45mm, knits 0.45-0.5, fleece 0.5-0.6, terry 0.5-0.7 —
+# citations in docs/COMPETITOR-COMPARISON.md) and carry the same unvalidated-on-
+# fabric status as the floor: docs/FABRIC_TEST_PROTOCOL.md is the procedure.
+# Known conservative approximation: `_min_stitch_px` derives the mitre's minimum
+# column length from the pitch assuming SATIN_SPACING_MM; for a 0.5mm-pitch
+# fabric the guard runs ~25% long (more protective, never less).
+FABRIC_PROFILES: dict[str, dict[str, float]] = {
+    "cotton":    {"pull_mm": 0.2,  "row_mm": 0.45, "satin_mm": 0.4,  "under_mm": 2.0, "inset_mm": 0.6},
+    "denim":     {"pull_mm": 0.15, "row_mm": 0.40, "satin_mm": 0.35, "under_mm": 2.0, "inset_mm": 0.6},
+    "twill":     {"pull_mm": 0.15, "row_mm": 0.40, "satin_mm": 0.35, "under_mm": 2.0, "inset_mm": 0.6},
+    "poplin":    {"pull_mm": 0.15, "row_mm": 0.40, "satin_mm": 0.35, "under_mm": 2.0, "inset_mm": 0.6},
+    "canvas":    {"pull_mm": 0.15, "row_mm": 0.40, "satin_mm": 0.35, "under_mm": 2.0, "inset_mm": 0.6},
+    "polo/knit": {"pull_mm": 0.4,  "row_mm": 0.50, "satin_mm": 0.45, "under_mm": 1.8, "inset_mm": 0.7},
+    "knit":      {"pull_mm": 0.4,  "row_mm": 0.50, "satin_mm": 0.45, "under_mm": 1.8, "inset_mm": 0.7},
+    "jersey":    {"pull_mm": 0.45, "row_mm": 0.55, "satin_mm": 0.5,  "under_mm": 1.8, "inset_mm": 0.7},
+    "fleece":    {"pull_mm": 0.5,  "row_mm": 0.55, "satin_mm": 0.5,  "under_mm": 1.5, "inset_mm": 0.8},
+    "cap":       {"pull_mm": 0.3,  "row_mm": 0.45, "satin_mm": 0.4,  "under_mm": 1.8, "inset_mm": 0.6},
+    # Terry is DENSER than fleece, not sparser: terry-specific guidance says 10-20%
+    # tighter than flat fabrics so the loops cannot separate the stitching, while
+    # loft-generic guides group it with fleece — the sources conflict, and the
+    # protocol's terry sew-out is the tiebreaker (see COMPETITOR-COMPARISON.md).
+    "towel":     {"pull_mm": 0.5,  "row_mm": 0.50, "satin_mm": 0.4,  "under_mm": 1.5, "inset_mm": 0.8},
+    "terry":     {"pull_mm": 0.5,  "row_mm": 0.50, "satin_mm": 0.4,  "under_mm": 1.5, "inset_mm": 0.8},
 }
-PULL_DEFAULT_MM = 0.25
+FABRIC_DEFAULT = {"pull_mm": 0.25, "row_mm": 0.45, "satin_mm": 0.4, "under_mm": 2.0, "inset_mm": 0.6}
+PULL_DEFAULT_MM = FABRIC_DEFAULT["pull_mm"]  # name kept: tests/test_pullcomp.py pins it
+
+
+def _fabric_profile(fabric_type: str) -> dict[str, float]:
+    return FABRIC_PROFILES.get((fabric_type or "").strip().lower(), FABRIC_DEFAULT)
 
 # Per-object classification diagnostics from the most recent digitize_image call.
 # Read by the benchmark harness so the audit can explain every satin/tatami
@@ -145,7 +181,7 @@ def last_classification_log() -> list[dict]:
 
 
 def _default_pull(fabric_type: str) -> float:
-    return PULL_BY_FABRIC.get((fabric_type or "").strip().lower(), PULL_DEFAULT_MM)
+    return _fabric_profile(fabric_type)["pull_mm"]
 
 
 def _dilate_pull(region, pull_mm: float, mm_per_px: float):
@@ -388,7 +424,10 @@ def digitize_image(
     ]
     clusters.sort(key=lambda t: t[0])
 
-    row_px = max(1, round(ROW_SPACING_MM / mm_per_px))
+    # Fabric profile drives density/underlay/inset (v2 Part 13); cotton == the
+    # old globals, so the all-cotton bench corpus is unchanged by construction.
+    prof = _fabric_profile(fabric_type)
+    row_px = max(1, round(prof["row_mm"] / mm_per_px))
     max_step_px = max(2, round(MAX_STITCH_MM / mm_per_px))
     min_area_px = max(0.0, float(min_region_mm2)) / (mm_per_px * mm_per_px)
     connect_px = CONNECT_MM / mm_per_px
@@ -447,8 +486,8 @@ def digitize_image(
                 cv2.drawContours(region, [h], -1, 0, thickness=cv2.FILLED)
 
             rect = cv2.minAreaRect(contour)
-            under_step_px = max(1, round(UNDERLAY_STEP_MM / mm_per_px))
-            pull_mm = _default_pull(fabric_type)
+            under_step_px = max(1, round(prof["under_mm"] / mm_per_px))
+            pull_mm = prof["pull_mm"]
             top_region = _dilate_pull(region, pull_mm, mm_per_px)  # pull comp widens the top layer
 
             # ── Single classification path (v2 Part 3) ─────────────────────────
@@ -464,7 +503,7 @@ def digitize_image(
             # `text_mode` no longer forks this logic. It is still accepted (the
             # lettering service passes it and is out of scope here) but only
             # affects the speck threshold now, not classification.
-            sat_step = max(1, round(SATIN_SPACING_MM / mm_per_px))
+            sat_step = max(1, round(prof["satin_mm"] / mm_per_px))
             skel_pts = None
             median_w = 0.0
             uncovered = 1.0
@@ -506,8 +545,12 @@ def digitize_image(
                 else:
                     reason = "satin"
                     if cv2.countNonZero(wide_mask) > 0:
-                        # Per-segment fallback: tatami only the parts too wide.
-                        cand = cand + _scanline_fill(wide_mask, row_px, max_step_px, connect_px)
+                        # Per-segment fallback: tatami only the parts too wide,
+                        # fragment-by-fragment from wherever the satin ended.
+                        cand = cand + _fill_by_component(
+                            wide_mask, row_px, max_step_px, connect_px,
+                            start=cand[-1][:2] if cand else None,
+                        )
                         skeleton_partial_tatami += 1
                     skel_pts = cand
                     skeleton_satin_used += 1
@@ -533,20 +576,20 @@ def digitize_image(
                 # a user explicitly sets to SATIN.)
                 # Centre-walk ALONG THE MEDIAL AXIS, not the bounding-rect midline.
                 under = _axis_underlay(
-                    axis_pts, UNDERLAY_STEP_MM / mm_per_px, connect_px,
+                    axis_pts, prof["under_mm"] / mm_per_px, connect_px,
                     (_PENETRATION_FLOOR_MM / mm_per_px) if _PENETRATION_FLOOR_MM else 0.0,
                     MAX_STITCH_MM / mm_per_px,
                 )
                 pts = _with_underlay(under, skel_pts, connect_px)
                 underlay = UnderlayType.CENTER_WALK
             else:
-                inset_px = max(1, round(EDGE_INSET_MM / mm_per_px))
+                inset_px = max(1, round(prof["inset_mm"] / mm_per_px))
                 under = _edge_walk(
                     region, inset_px, under_step_px, connect_px,
                     (_PENETRATION_FLOOR_MM / mm_per_px) if _PENETRATION_FLOOR_MM else 0.0,
                     MAX_STITCH_MM / mm_per_px,
                 )
-                pts = _with_underlay(under, _scanline_fill(top_region, row_px, max_step_px, connect_px), connect_px)
+                pts = _with_underlay(under, _fill_by_component(top_region, row_px, max_step_px, connect_px), connect_px)
                 underlay = UnderlayType.EDGE_WALK
             # The floor is passed only for SATIN. A tatami row advances along a
             # line, never zigzags, so the repair could not fire there anyway —
@@ -555,6 +598,17 @@ def digitize_image(
                 pts, MIN_STITCH_MM / mm_per_px,
                 (_PENETRATION_FLOOR_MM / mm_per_px) if (is_satin and _PENETRATION_FLOOR_MM) else 0.0,
             )
+            # Floor BACKSTOP at the last transform (v2 Part 13). Every upstream
+            # repair (_axis_underlay, _edge_walk, _restore_for_floor) runs before
+            # coalescing, and coalescing can manufacture a fresh sub-floor
+            # reversal out of clean inputs — Part 13's branch reordering exposed
+            # exactly one (07 Satin 5, 0.277mm, at the underlay/top seam).
+            # Enforcing here means no upstream reshuffle can leak a violation
+            # into the stream again; on a clean object this is a no-op.
+            if is_satin and _PENETRATION_FLOOR_MM:
+                pts = _drop_floor_reversals(
+                    pts, _PENETRATION_FLOOR_MM / mm_per_px, MAX_STITCH_MM / mm_per_px,
+                )
             if len(pts) < 2:
                 continue
             if this_stop is None:  # first real object → open a color stop (deferred COLOR_CHANGE)
@@ -587,7 +641,7 @@ def digitize_image(
                     name=f"{'Satin' if is_satin else 'Fill'} {seq} ({hexcol})",
                     stitch_type=StitchType.SATIN if is_satin else StitchType.TATAMI,
                     color_stop=this_stop,
-                    density=1.0 / (SATIN_SPACING_MM if is_satin else ROW_SPACING_MM),
+                    density=1.0 / (prof["satin_mm"] if is_satin else prof["row_mm"]),
                     stitch_angle=round(float(rect[2]), 1) if is_satin else 0.0,
                     underlay_type=underlay,
                     pull_compensation=round(pull_mm, 2),
@@ -631,6 +685,39 @@ def digitize_image(
         stitches=stitches,
         status="digitized",
     )
+
+
+def _fill_by_component(region, row_px: int, max_step_px: int, connect_px: float, start=None):
+    """Scanline-fill each connected component separately, nearest-first (v2 Part 13).
+
+    A scattered mask — the too-wide remainder of a satin object is the real case
+    — used to be serpentined as ONE region, so every row hopped between every
+    fragment: measured 435 of fixture 07's 979 jumps came from exactly this.
+    Filling fragment-by-fragment turns per-row hops into one transition per
+    fragment. `start` (px) seeds the ordering at the caller's current needle
+    position; single-component masks take the old path unchanged.
+    """
+    import cv2
+    import numpy as np
+
+    n, labels, _stats, cents = cv2.connectedComponentsWithStats(region, connectivity=8)
+    if n <= 2:
+        return _scanline_fill(region, row_px, max_step_px, connect_px)
+    remaining = list(range(1, n))
+    cur = (float(start[0]), float(start[1])) if start else (0.0, 0.0)
+    out: list[tuple[float, float, bool]] = []
+    while remaining:
+        idx = min(remaining, key=lambda i: (cents[i][0] - cur[0]) ** 2 + (cents[i][1] - cur[1]) ** 2)
+        remaining.remove(idx)
+        cur = (float(cents[idx][0]), float(cents[idx][1]))
+        pts = _scanline_fill((labels == idx).astype(np.uint8) * 255, row_px, max_step_px, connect_px)
+        if not pts:
+            continue
+        if out:
+            x, y, _ = pts[0]
+            pts[0] = (x, y, _dist(out[-1], (x, y)) > connect_px)
+        out.extend(pts)
+    return out
 
 
 def _scanline_fill(region, row_px: int, max_step_px: int, connect_px: float):
@@ -1049,7 +1136,37 @@ def _skeleton_branches(skel, min_len: int = 2):
             path.append(cur)
         if len(path) >= min_len:
             branches.append(path)
-    return branches
+    return _order_branches(branches)
+
+
+def _order_branches(branches):
+    """Chain branches by nearest endpoint, reversing where that shortens travel.
+
+    v2 Part 13. Branches were emitted in `for node in nodes` SET order —
+    spatially arbitrary, so consecutive branches could sit at opposite ends of a
+    glyph and every transition earned a jump. Measured on fixture 07, branch
+    starts contributed 122 of 979 jumps and underlay branch breaks another 61.
+    Greedy nearest-endpoint is O(n^2) on ~tens of branches per object; the
+    start is the branch endpoint nearest the top-left for determinism.
+    """
+    if len(branches) < 2:
+        return branches
+    remaining = list(branches)
+    cur = min(remaining, key=lambda b: min(b[0][0] + b[0][1], b[-1][0] + b[-1][1]))
+    remaining.remove(cur)
+    if cur[-1][0] + cur[-1][1] < cur[0][0] + cur[0][1]:
+        cur = cur[::-1]
+    ordered = [cur]
+    while remaining:
+        ex, ey = ordered[-1][-1]
+
+        def d2(p, ex=ex, ey=ey):
+            return (p[0] - ex) ** 2 + (p[1] - ey) ** 2
+
+        nxt = min(remaining, key=lambda b: min(d2(b[0]), d2(b[-1])))
+        remaining.remove(nxt)
+        ordered.append(nxt[::-1] if d2(nxt[-1]) < d2(nxt[0]) else nxt)
+    return ordered
 
 
 def _march_to_edge(binary, x: float, y: float, nx: float, ny: float, limit: float) -> float:

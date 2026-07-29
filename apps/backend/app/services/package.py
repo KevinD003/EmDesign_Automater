@@ -248,6 +248,10 @@ def render_color_card(design: Design) -> bytes:
 
 def build_package(design: Design, machine_format: str = "dst") -> bytes:
     """Bundle the full production package as a ZIP (spec §4.8)."""
+    # Local import: optimizer pulls in the digitizer stack (cv2/numpy), which this
+    # module otherwise avoids at import time (PIL/reportlab are lazy too).
+    from app.services import optimizer
+
     machine_format = machine_format.lower().lstrip(".")
     stem = _stem(design.name)
     buf = io.BytesIO()
@@ -258,4 +262,7 @@ def build_package(design: Design, machine_format: str = "dst") -> bytes:
         z.writestr(f"{stem}-colorcard.pdf", render_color_card(design))
         z.writestr(f"{stem}-preview.png", render_preview(design))
         z.writestr(f"{stem}-summary.txt", build_summary(design))
+        # Same wire shape as POST /api/optimize/quality, so the floor and the app
+        # read one report.
+        z.writestr("quality.json", optimizer.analyze_quality(design).model_dump_json(by_alias=True, indent=1))
     return buf.getvalue()

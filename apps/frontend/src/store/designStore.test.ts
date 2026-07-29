@@ -132,6 +132,19 @@ describe('designStore', () => {
     expect(s.design?.stitchCount).toBe(0); // back to pre-rebuild
   });
 
+  it('setQuality stores a report; setDesign clears it (report belongs to the old design)', () => {
+    useDesignStore.getState().setDesign(makeDesign());
+    useDesignStore.getState().setQuality({
+      score: 88,
+      grade: 'B',
+      metrics: { stitchCount: 10, colorChanges: 1, trims: 0, jumpCount: 2, travelMm: 5 },
+      findings: [],
+    });
+    expect(useDesignStore.getState().quality?.score).toBe(88);
+    useDesignStore.getState().setDesign(makeDesign());
+    expect(useDesignStore.getState().quality).toBeNull();
+  });
+
   it('selectObject also selects its color stop', () => {
     const d: Design = {
       ...makeDesign(),

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import json
 import os
 import zipfile
 
@@ -36,6 +37,15 @@ def test_package_contains_all_artifacts():
     # the machine file re-reads as a valid design
     dst = next(n for n in names if n.endswith(".dst"))
     assert embroidery_io.read_embroidery(z.read(dst), "dst").stitch_count > 0
+
+
+def test_package_includes_quality_report():
+    z = zipfile.ZipFile(io.BytesIO(build_package(_design(), "dst")))
+    assert "quality.json" in z.namelist()
+    quality = json.loads(z.read("quality.json"))
+    assert "score" in quality and 0 <= quality["score"] <= 100
+    assert quality["findings"]  # always at least one finding
+    assert "maxStitchMm" in quality  # same wire shape as POST /api/optimize/quality
 
 
 def test_preview_is_png_and_colorcard_is_pdf():

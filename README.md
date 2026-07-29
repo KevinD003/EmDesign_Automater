@@ -60,6 +60,12 @@ npm run dev
 - App: http://localhost:5173 — open a design (`apps/backend/tests/fixtures/sample.dst`) or digitize an image.
 - API docs: http://localhost:8000/docs
 
+Try it in 60 seconds: open http://localhost:5173, click **Image**, pick any PNG from
+`apps/backend/tests/fixtures/quality_bench/`, choose a fabric (fleece and cotton produce visibly
+different densities), and hit **Digitize**. The right-hand panel scores the design automatically
+(0–100 with findings — long/tiny stitches, jump rate, hoop fit); **Text** generates lettering with a
+letter-spacing control, and **Export** writes real machine files (DST/PES/JEF/EXP…).
+
 ## Test
 
 ```bash

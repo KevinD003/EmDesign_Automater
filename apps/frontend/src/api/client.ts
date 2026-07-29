@@ -154,10 +154,10 @@ export const api = {
   analyzeQuality: (design: Design) =>
     request<QualityReport>('/api/optimize/quality', { method: 'POST', body: JSON.stringify(design) }),
 
-  /** Text → embroidery Design (spec §4.10). */
-  lettering: (text: string, heightMm = 20, fabricType = 'cotton') =>
+  /** Text → embroidery Design (spec §4.10). Spacing is sent snake_case per the API contract. */
+  lettering: (text: string, heightMm = 20, fabricType = 'cotton', letterSpacingMm = 0) =>
     request<Design>('/api/lettering', {
       method: 'POST',
-      body: JSON.stringify({ text, heightMm, fabricType }),
+      body: JSON.stringify({ text, heightMm, fabricType, letter_spacing_mm: letterSpacingMm }),
     }),
 };

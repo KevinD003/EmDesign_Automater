@@ -80,7 +80,7 @@ def test_no_phantom_color_stops():
     cv2.rectangle(img, (10, 10), (90, 190), (200, 40, 40), -1)
     cv2.rectangle(img, (110, 10), (190, 190), (40, 180, 40), -1)
     cv2.circle(img, (250, 100), 2, (10, 10, 10), -1)
-    ok, buf = cv2.imencode(".png", img)
+    _ok, buf = cv2.imencode(".png", img)
     d = digitize_image(buf.tobytes(), "cotton", "100x100", max_colors=4)
     assert all(c.stitch_count > 0 for c in d.color_stops), "no empty color stops"
     assert [c.stop_number for c in d.color_stops] == list(range(1, len(d.color_stops) + 1))
@@ -154,3 +154,84 @@ def test_small_lettering_keeps_the_dot_on_i():
     (the image digitizer's speck filter would drop it)."""
     d = generate_lettering("i", height_mm=8)
     assert len(d.objects) >= 2, "expected stem AND dot as separate objects"
+
+
+# ── Letter tracking (letter_spacing_mm) — Tier 2 launch gap ────────────────────
+
+
+@pytest.mark.skipif(not HAVE_FONT, reason="no TrueType font found on this system")
+def test_default_path_unchanged_by_tracking_feature():
+    """spacing=0 must run the pre-tracking single-draw path: the composed bitmap is
+    byte-identical to the v1 composition, and the digitized design has the same
+    stitch_count as the v1 pipeline produces from that bitmap."""
+    import io
+
+    from PIL import Image, ImageDraw, ImageFont
+
+    from app.services import lettering as lt
+
+    text, height_mm = "HI", 20.0
+    font = ImageFont.truetype(lt.find_font(None), size=160)
+
+    # v1 composition, verbatim from the pre-tracking code
+    probe = ImageDraw.Draw(Image.new("RGB", (8, 8)))
+    left, top, right, bottom = probe.textbbox((0, 0), text, font=font)
+    tw, th = max(right - left, 1), max(bottom - top, 1)
+    margin = 12
+    old = Image.new("RGB", (tw + 2 * margin, th + 2 * margin), "white")
+    ImageDraw.Draw(old).text((margin - left, margin - top), text, font=font, fill="black")
+
+    new_img, new_th = lt._compose_text_image(text, font, 0.0, height_mm)
+    assert (new_img.size, new_th) == (old.size, th)
+    assert new_img.tobytes() == old.tobytes()
+
+    # v1 pipeline end-to-end: same hoop math, same digitizer args → same count
+    mm_per_px = height_mm / th
+    iw, ih = old.size
+    hoop = f"{max(iw * mm_per_px / 0.9, 1):.1f}x{max(ih * mm_per_px / 0.9, 1):.1f}"
+    buf = io.BytesIO()
+    old.save(buf, format="PNG")
+    baseline = digitize_image(
+        buf.getvalue(), "cotton", hoop, max_colors=2, min_region_mm2=0.5, text_mode=True
+    )
+    assert generate_lettering(text, height_mm).stitch_count == baseline.stitch_count
+
+
+@pytest.mark.skipif(not HAVE_FONT, reason="no TrueType font found on this system")
+def test_positive_tracking_widens_design():
+    base = generate_lettering("HI", 20)
+    wide = generate_lettering("HI", 20, letter_spacing_mm=3.0)
+    assert wide.width_mm > base.width_mm + 1.5  # one 3mm gap in "HI"
+    assert abs(wide.height_mm - base.height_mm) < 2.0  # tracking must not change height
+
+
+@pytest.mark.skipif(not HAVE_FONT, reason="no TrueType font found on this system")
+def test_zero_tracking_matches_default_output():
+    base = generate_lettering("HI", 20)
+    explicit = generate_lettering("HI", 20, letter_spacing_mm=0.0)
+    assert explicit.stitch_count == base.stitch_count
+    assert explicit.width_mm == base.width_mm
+
+
+@pytest.mark.skipif(not HAVE_FONT, reason="no TrueType font found on this system")
+def test_negative_tracking_narrows_design():
+    base = generate_lettering("HI", 20)
+    narrow = generate_lettering("HI", 20, letter_spacing_mm=-2.0)
+    assert narrow.width_mm < base.width_mm - 1.0
+
+
+@pytest.mark.skipif(not HAVE_FONT, reason="no TrueType font found on this system")
+def test_lettering_endpoint_passes_tracking_and_font_path_through():
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+    from app.services.lettering import find_font
+
+    client = TestClient(app)
+    base = client.post("/api/lettering", json={"text": "HI", "heightMm": 20})
+    wide = client.post(
+        "/api/lettering",
+        json={"text": "HI", "heightMm": 20, "letterSpacingMm": 3.0, "fontPath": find_font()},
+    )
+    assert base.status_code == 200 and wide.status_code == 200
+    assert wide.json()["widthMm"] > base.json()["widthMm"] + 1.5

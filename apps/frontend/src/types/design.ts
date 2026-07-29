@@ -233,4 +233,12 @@ export interface QualityReport {
   grade: string;
   metrics: PathMetrics;
   findings: QualityFinding[];
+  /** Longest single stitch, mm. Optional: absent on reports from older backends. */
+  maxStitchMm?: number;
+  /** Mean stitch length, mm. */
+  meanStitchMm?: number;
+  /** Jump density — jumps per 1000 stitches. */
+  jumpsPer1000?: number;
+  /** true = fits the design's hoop, false = overflows, null = no hoop set. */
+  hoopFit?: boolean | null;
 }

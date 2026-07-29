@@ -10,6 +10,7 @@ Confirmed against pyembroidery 1.5.1 / Python 3.14:
 
 from __future__ import annotations
 
+import contextlib
 import os
 import tempfile
 
@@ -34,14 +35,14 @@ _STR_TO_CMD: dict[str, int] = {v: k for k, v in _CMD_TO_STR.items()}
 def _supported_read_exts() -> set[str]:
     """Extensions pyembroidery can read (defensive: falls back to a known set)."""
     exts: set[str] = set()
-    try:
+    # Format discovery must never break the request — any failure falls through
+    # to the known-good set below.
+    with contextlib.suppress(Exception):
         for fmt in pe.supported_formats():
             ext = fmt.get("extension") if isinstance(fmt, dict) else getattr(fmt, "extension", None)
             reader = fmt.get("reader") if isinstance(fmt, dict) else getattr(fmt, "reader", None)
             if ext and reader is not None:
                 exts.add(str(ext).lower())
-    except Exception:  # noqa: BLE001 - never let format discovery break the request
-        pass
     if not exts:
         exts = {"dst", "pes", "pec", "jef", "exp", "vp3", "vip", "xxx", "sew", "u01", "csv", "json"}
     return exts
@@ -53,7 +54,9 @@ def read_embroidery(data: bytes, ext: str) -> Design:
     if ext not in _supported_read_exts():
         raise ValueError(f"Unsupported embroidery format: .{ext}")
 
-    tmp = tempfile.NamedTemporaryFile(suffix=f".{ext}", delete=False)
+    # delete=False + manual unlink: pyembroidery needs a real path after the handle
+    # closes, so the auto-deleting context-manager form cannot be used here.
+    tmp = tempfile.NamedTemporaryFile(suffix=f".{ext}", delete=False)  # noqa: SIM115
     try:
         tmp.write(data)
         tmp.close()
@@ -110,16 +113,15 @@ def read_embroidery(data: bytes, ext: str) -> Design:
 def write_embroidery(design: Design, ext: str) -> bytes:
     """Encode a Design to raw embroidery bytes of format ``ext``."""
     ext = ext.lower().lstrip(".")
-    if ext not in _supported_write_exts():
+    if ext not in supported_write_exts():
         raise ValueError(f"Unsupported export format: .{ext}")
 
     pattern = pe.EmbPattern()
     for stop in design.color_stops:
         thread = pe.EmbThread()
-        try:
+        # A bad hex string must not abort the export — the thread keeps its default.
+        with contextlib.suppress(Exception):
             thread.set_hex_color(stop.hex)
-        except Exception:  # noqa: BLE001 - bad hex shouldn't abort the export
-            pass
         thread.description = stop.thread_name
         thread.catalog_number = stop.catalog_number
         thread.brand = stop.thread_brand
@@ -134,7 +136,8 @@ def write_embroidery(design: Design, ext: str) -> bytes:
     if last != "END":
         pattern.end()
 
-    tmp = tempfile.NamedTemporaryFile(suffix=f".{ext}", delete=False)
+    # Same path-after-close constraint as read_embroidery above.
+    tmp = tempfile.NamedTemporaryFile(suffix=f".{ext}", delete=False)  # noqa: SIM115
     try:
         tmp.close()
         pe.write(pattern, tmp.name)
@@ -147,16 +150,18 @@ def write_embroidery(design: Design, ext: str) -> bytes:
             pass
 
 
-def _supported_write_exts() -> set[str]:
+def supported_write_exts() -> set[str]:
+    """Extensions pyembroidery can WRITE (public: /api/formats derives its list here).
+
+    Defensive: falls back to a known-good set if format discovery ever breaks.
+    """
     exts: set[str] = set()
-    try:
+    with contextlib.suppress(Exception):
         for fmt in pe.supported_formats():
             ext = fmt.get("extension") if isinstance(fmt, dict) else getattr(fmt, "extension", None)
             writer = fmt.get("writer") if isinstance(fmt, dict) else getattr(fmt, "writer", None)
             if ext and writer is not None:
                 exts.add(str(ext).lower())
-    except Exception:  # noqa: BLE001
-        pass
     if not exts:
         exts = {"dst", "pes", "pec", "jef", "exp", "vp3", "csv", "json", "svg", "png"}
     return exts
