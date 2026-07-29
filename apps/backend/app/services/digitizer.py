@@ -695,6 +695,17 @@ def _coalesce_short(pts, min_dist_px: float):
         if p[2]:  # a jump defines the path; never coalesce it away
             out.append(p)
             continue
+        # A MITRED endpoint, and the point immediately after one, are never
+        # dropped (v2 Part 9). Coalescing a satin path changes WHICH points
+        # survive, and that shift breaks the strict A-B-A-B alternation
+        # `_enforce_floor` relies on, manufacturing same-side penetrations under
+        # the floor. Measured on the corpus: 5 floor violations with coalescing
+        # free to drop them, 3 — the pre-mitre count — with them protected, and
+        # disabling `_coalesce_short` outright gives the same 3, which is what
+        # identified the interaction.
+        if _mitre_key(p) in _MITRED_POINTS or _mitre_key(out[-1]) in _MITRED_POINTS:
+            out.append(p)
+            continue
         if _dist(out[-1], p) < min_dist_px:
             continue
         out.append(p)
@@ -812,6 +823,17 @@ PROJECT_CHUNK = 256        # contour points per distance-matrix chunk (memory)
 # A sharp vertex stalls its inner boundary for many columns in a row; a straight
 # stroke only ever throws isolated short steps, and mitring those is pure damage.
 MITRE_MIN_STALLED = 3
+# Endpoints the mitre moved, for the current object only. `_coalesce_short` must
+# not drop these (see `_mitre_one_side`), and threading a flag through
+# _column_ends -> _emit_columns -> _skeleton_satin -> digitize_image would mean
+# four signature changes to carry one bit. Module-level state follows the
+# precedent `_CLASSIFICATION_LOG` already sets in this file; `_satin_columns`
+# clears it at the start of every object so it cannot leak between them.
+_MITRED_POINTS: set[tuple[float, float]] = set()
+
+
+def _mitre_key(pt) -> tuple[float, float]:
+    return (round(float(pt[0]), 4), round(float(pt[1]), 4))
 # NO outward bias is applied to column ends. One was tried — a contour point is
 # the centre of the outermost pixel still inside the shape, so half a pixel of
 # reach is arguably owed — and while the coalescing defect below was still in
@@ -1274,7 +1296,13 @@ def _min_stitch_px(pitch_px: float) -> float:
 
 
 def _mitre_one_side(end, other, mid, floor_px: float, min_len_px: float) -> int:
-    """Move one boundary's stalled ends onto the axis. Modifies `end` in place."""
+    """Move one boundary's stalled ends onto the axis. Modifies `end` in place.
+
+    NO joined-apex vs butt-joint gate, and the reason is measured (v2 Part 9 audit
+    §3): both produce the SAME medial-axis topology — two arms plus a short apex
+    spur — so the obvious "one branch versus two branches meeting" discriminator
+    does not exist. A gate built on it measured inert and was removed.
+    """
     import numpy as np
 
     original = end.copy()
@@ -1297,23 +1325,34 @@ def _mitre_one_side(end, other, mid, floor_px: float, min_len_px: float) -> int:
             continue
         if float(np.hypot(*(mid[i] - end[i - 1]))) < floor_px:
             continue          # the axis is no better here; leave it to the floor
-        # A mitred column is SHORTER, because one end moves in to the axis. Let it
-        # fall under the minimum stitch length and `_coalesce_short` removes a
-        # point further down the pipeline, breaking the strict A-B-A-B alternation
-        # and manufacturing fresh same-side adjacencies — the identical failure
-        # Part 6 measured when it tried retraction. Measured here: without this
-        # guard the corpus carries 7 residual floor violations instead of 5.
+        # Keep both adjacent path steps above the minimum stitch length. The path
+        # is A0 B0 A1 B1…, so a mitred `a[i]` is reached from `b[i-1]` and left
+        # towards `b[i]`. This is necessary but NOT sufficient — see
+        # `_coalesce_short`, which is where the remaining interaction lives.
         if float(np.hypot(*(mid[i] - other[i]))) < min_len_px:
             continue
+        if i > 0 and float(np.hypot(*(mid[i] - other[i - 1]))) < min_len_px:
+            continue
         end[i] = mid[i]
+        _MITRED_POINTS.add(_mitre_key(end[i]))
         touched.append(i)
-    # REVERT anything the mitre made worse: `stalled` is computed once and goes
-    # stale as points move, so a mitred end can crowd a column further along.
+    return _revert_bad_mitres(end, original, touched, floor_px)
+
+
+def _revert_bad_mitres(end, original, touched, floor_px: float) -> int:
+    """Undo any mitre that made its own neighbourhood worse. Returns the net moved.
+
+    `stalled` is computed once in `_mitre_one_side` and goes stale as points move,
+    so a mitred end can end up crowding a column further along that was fine.
+    """
+    import numpy as np
+
     moved = len(touched)
     for i in touched:
         prv = float(np.hypot(*(end[i] - end[i - 1])))
         nxt = float(np.hypot(*(end[i] - end[i + 1]))) if i + 1 < len(end) else floor_px
         if min(prv, nxt) < floor_px:
+            _MITRED_POINTS.discard(_mitre_key(end[i]))
             end[i] = original[i]
             moved -= 1
     return moved
@@ -1553,6 +1592,7 @@ def _satin_columns(region, binary, dist, skel, used, step: int, max_step_px: int
     """Lay every branch's columns between corresponding points on its two boundaries."""
     pts: list[tuple[float, float, bool]] = []
     prev_end: tuple[float, float] | None = None
+    _MITRED_POINTS.clear()
     frames = [_axis_frame(s, dist) for s in used]
     assigned = _assign_boundary(_boundary_points(region), frames)
     last_pair = None

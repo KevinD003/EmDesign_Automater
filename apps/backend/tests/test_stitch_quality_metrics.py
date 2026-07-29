@@ -280,3 +280,34 @@ def test_paint_uncovered_writes_a_picture(tmp_path):
     stats = paint_uncovered(design, out)
     assert out.exists() and out.stat().st_size > 0
     assert stats["missed_interior_px"] >= 0 and stats["missed_band_px"] >= 0
+
+
+def test_coalescing_never_drops_a_mitred_endpoint():
+    """v2 Part 9: the mitre/_coalesce_short interaction that broke the floor.
+
+    Coalescing changes WHICH points survive a satin path, and that shift breaks
+    the A-B-A-B alternation `_enforce_floor` depends on, manufacturing same-side
+    penetrations under the floor. Protecting mitred endpoints took the corpus back
+    from 5 residual violations to 3.
+    """
+    from app.services import digitizer as D
+
+    D._MITRED_POINTS.clear()
+    pts = [(0.0, 0.0, True), (0.0, 3.0, False), (0.1, 3.0, False), (0.0, 6.0, False)]
+    # Unprotected, the near-duplicate at (0.1, 3.0) is coalesced away.
+    assert len(D._coalesce_short(pts, 0.5)) == 3
+    # Protected, it survives.
+    D._MITRED_POINTS.add(D._mitre_key((0.1, 3.0)))
+    try:
+        assert len(D._coalesce_short(pts, 0.5)) == 4
+    finally:
+        D._MITRED_POINTS.clear()
+
+
+def test_mitred_points_do_not_leak_between_objects():
+    """The register is module-level, so it must be cleared per object."""
+    from app.services import digitizer as D
+
+    D._MITRED_POINTS.add(D._mitre_key((123.0, 456.0)))
+    digitize_image(_ring_bytes(radius_px=40), "cotton", "100x100", max_colors=2)
+    assert D._mitre_key((123.0, 456.0)) not in D._MITRED_POINTS
