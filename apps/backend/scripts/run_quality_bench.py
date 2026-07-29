@@ -41,6 +41,8 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = BACKEND_ROOT.parents[1]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
+if str(Path(__file__).resolve().parent) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 FIXTURE_DIR = BACKEND_ROOT / "tests" / "fixtures" / "quality_bench"
 BENCH_DIR = REPO_ROOT / "docs" / "benchmarks"
@@ -120,6 +122,11 @@ class FixtureResult:
     # Per-object measured medial-axis width and the resulting satin/tatami call.
     # Lets the audit explain every classification from geometry, not assertion.
     classification: list = field(default_factory=list)
+    # Coverage + penetration-density, from scripts/measure_stitch_quality.py. That
+    # module is the single committed definition of these measurements; the harness
+    # calls it rather than carrying a second copy that could drift from the audits.
+    coverage: dict = field(default_factory=dict)
+    penetration: dict = field(default_factory=dict)
     output_png: str | None = None
 
 
@@ -247,6 +254,15 @@ def run_fixture(path: Path, out_dir: Path) -> FixtureResult:
         res.classification = last_classification_log()
     except Exception:  # noqa: BLE001 - diagnostic only
         res.classification = []
+    try:
+        from measure_stitch_quality import coverage_metrics, penetration_metrics
+
+        from app.services.digitizer import MIN_PENETRATION_MM, SATIN_SPACING_MM
+
+        res.coverage = coverage_metrics(design)
+        res.penetration = penetration_metrics(design, SATIN_SPACING_MM, MIN_PENETRATION_MM)
+    except Exception:  # noqa: BLE001 - diagnostic only
+        res.coverage, res.penetration = {}, {}
 
     res.width_mm, res.height_mm = design.width_mm, design.height_mm
     res.est_minutes = round(design.stitch_count / SPM, 2)

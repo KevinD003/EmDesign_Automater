@@ -653,6 +653,28 @@ def _scanline_fill(region, row_px: int, max_step_px: int, connect_px: float):
 
 
 MIN_STITCH_MM = 0.5  # below this a needle penetration risks thread break / needle strike
+# Minimum spacing between consecutive SAME-SIDE penetrations in a satin column
+# run. Distinct from MIN_STITCH_MM, which bounds how far the needle TRAVELS
+# between penetrations: a satin column can travel 4mm across the stroke while the
+# two entry points on one boundary sit a fraction of a millimetre apart. Packed
+# tighter than this, the penetrations stop being stitches on the fabric and start
+# being a perforated line through it — the failure mode Part 4 §8 flagged as
+# unmeasured. Boundary-paced pitch reaches it on the concave side of a tight
+# curve, where the inner boundary is much shorter than the outer one that sets
+# the pitch.
+MIN_PENETRATION_MM = 0.30
+# Enforcement is OFF by default in v2 Part 5, which is a measurement part: turning
+# it on changes the stitch count of every satin object, so it needs its own
+# coverage re-grade rather than riding along with the instrument that found the
+# problem. `set_penetration_floor(MIN_PENETRATION_MM)` enables it; the audit
+# reports the corpus and probe both ways.
+_PENETRATION_FLOOR_MM: float | None = None
+
+
+def set_penetration_floor(mm: float | None) -> None:
+    """Enable (or disable, with ``None``) the same-side penetration floor."""
+    global _PENETRATION_FLOOR_MM
+    _PENETRATION_FLOOR_MM = mm
 
 
 def _coalesce_short(pts, min_dist_px: float):
@@ -1160,7 +1182,7 @@ def _column_grid(sides, period: float | None, pitch: float):
     return np.arange(lo, hi + 1e-9, pitch)
 
 
-def _pace_by_boundary(tl, pl, tr, pr, grid, period: float | None, pitch: float):
+def _pace_by_boundary(tl, pl, tr, pr, grid, period: float | None, pitch: float, floor_px: float = 0.0):
     """Re-space the columns so the FASTER boundary advances one pitch between them.
 
     Pitch measured along the axis is wrong wherever the two boundaries advance at
@@ -1169,6 +1191,14 @@ def _pace_by_boundary(tl, pl, tr, pr, grid, period: float | None, pitch: float):
     on the fast side and leave a fan of wedge-shaped gaps; measured on fixtures
     05/07/08 as a 0.6-1.3 point INTERIOR coverage loss. Oversample the parameter,
     then keep a column only once either side has moved a full pitch.
+
+    ``floor_px`` is the penetration-density safety floor (v2 Part 5). Pacing by
+    the faster boundary means the SLOWER one — the concave side of a curve — can
+    advance far less than a pitch between columns, packing its penetrations
+    together; past a stroke terminal both arcs are clamped and advance zero, so
+    the cap columns land in the same holes. With a floor set, a column is kept
+    only if BOTH sides have also moved at least that far, which is exactly the
+    condition the metric measures. Default 0.0 = report, do not enforce.
     """
     import numpy as np
 
@@ -1177,15 +1207,47 @@ def _pace_by_boundary(tl, pl, tr, pr, grid, period: float | None, pitch: float):
     keep = [0]
     for i in range(1, len(fine)):
         last = keep[-1]
-        if max(float(np.hypot(*(a_all[i] - a_all[last]))),
-               float(np.hypot(*(b_all[i] - b_all[last])))) >= pitch:
+        moved_a = float(np.hypot(*(a_all[i] - a_all[last])))
+        moved_b = float(np.hypot(*(b_all[i] - b_all[last])))
+        if max(moved_a, moved_b) >= pitch and min(moved_a, moved_b) >= floor_px:
             keep.append(i)
     if keep[-1] != len(fine) - 1:
-        keep.append(len(fine) - 1)
+        tail = len(fine) - 1
+        moved = min(float(np.hypot(*(a_all[tail] - a_all[keep[-1]]))),
+                    float(np.hypot(*(b_all[tail] - b_all[keep[-1]]))))
+        if moved >= floor_px:      # never close the run with a floor violation
+            keep.append(tail)
     return fine[keep], a_all[keep], b_all[keep]
 
 
-def _column_ends(frame, assigned, spacing_px: float, max_half_px: float, extra_px: float):
+def _enforce_floor(pairs, floor_px: float, closed: bool):
+    """Drop columns whose penetrations would land closer than ``floor_px`` on either side.
+
+    Applied to the FINAL endpoints, after clamping and pull compensation. Pacing
+    alone is not enough: pull comp moves each end outward from the axis after the
+    pacing decision, which on the concave side of a ring pulls it to a smaller
+    radius and shrinks the spacing again. Enforcing before the clamp left 86-91%
+    of violations fixed but not all of them; enforcing here is what the metric
+    actually measures.
+    """
+    if floor_px <= 0.0 or len(pairs) < 2:
+        return pairs
+    kept = [pairs[0]]
+    for a, b in pairs[1:]:
+        pa, pb = kept[-1]
+        if min(_dist(pa, a), _dist(pb, b)) >= floor_px:
+            kept.append((a, b))
+    # A ring closes on itself, so the last column must also clear the first.
+    while closed and len(kept) > 2:
+        pa, pb = kept[-1]
+        qa, qb = kept[0]
+        if min(_dist(pa, qa), _dist(pb, qb)) >= floor_px:
+            break
+        kept.pop()
+    return kept
+
+
+def _column_ends(frame, assigned, spacing_px: float, max_half_px: float, extra_px: float, floor_px: float = 0.0):
     """Column endpoint pairs for one branch, taken from its two boundary arcs.
 
     Returns ``[((x0, y0), (x1, y1)), ...]``, or ``[]`` when the branch's boundary
@@ -1210,7 +1272,7 @@ def _column_ends(frame, assigned, spacing_px: float, max_half_px: float, extra_p
 
     tl, pl = _extreme_per_station(sides[0], grid, period)
     tr, pr = _extreme_per_station(sides[1], grid, period)
-    grid, a, b = _pace_by_boundary(tl, pl, tr, pr, grid, period, pitch)
+    grid, a, b = _pace_by_boundary(tl, pl, tr, pr, grid, period, pitch, floor_px)
     # Clamp to the satin cap about the axis, exactly as the ray-cast columns did:
     # at a junction the two boundaries are genuinely far apart, and an unclamped
     # column there throws one stitch clear across the glyph.
@@ -1224,7 +1286,8 @@ def _column_ends(frame, assigned, spacing_px: float, max_half_px: float, extra_p
         end[over] = mid[over] + v[over] / d[over, None] * max_half_px
         grow = (d + extra_px) / d                    # pull compensation, outward
         end[~over] = mid[~over] + v[~over] * grow[~over, None]
-    return [((float(p[0]), float(p[1])), (float(q[0]), float(q[1]))) for p, q in zip(a, b)]
+    pairs = [((float(p[0]), float(p[1])), (float(q[0]), float(q[1]))) for p, q in zip(a, b)]
+    return _enforce_floor(pairs, floor_px, closed)
 
 
 def _raycast_columns(binary, samples, max_half_px: float, extra_px: float):
@@ -1311,20 +1374,34 @@ def _axis_samples(branches, dist, binary, step: int, mm_per_px: float):
     return used, widths, centres
 
 
-def _satin_columns(region, binary, used, step: int, max_step_px: int, max_half_px: float, extra_px: float):
+def _satin_columns(region, binary, used, step: int, max_step_px: int, max_half_px: float,
+                   extra_px: float, floor_px: float = 0.0):
     """Lay every branch's columns between corresponding points on its two boundaries."""
     pts: list[tuple[float, float, bool]] = []
     prev_end: tuple[float, float] | None = None
     frames = [_axis_frame(s) for s in used]
     assigned = _assign_boundary(_boundary_points(region), frames)
+    last_pair = None
     for frame, samples, owned in zip(frames, used, assigned):
-        pairs = _column_ends(frame, owned, float(step), max_half_px, extra_px)
+        pairs = _column_ends(frame, owned, float(step), max_half_px, extra_px, floor_px)
         if not pairs:
             # Boundary too sparse to pair (a two-pixel stub, a region whose
             # contour the thinning did not survive). Fall back to the Part 2.5
             # ray-cast column for THIS branch only, so an edge case can never
             # delete a stroke from the design or empty out a satin object.
-            pairs = _raycast_columns(binary, samples, max_half_px, extra_px)
+            # The fallback paces off axis samples, so it needs the same floor.
+            pairs = _enforce_floor(_raycast_columns(binary, samples, max_half_px, extra_px), floor_px, False)
+        # Trim the SEAM only. Branches are emitted back to back unless far enough
+        # apart to earn a JUMP, so the first column of a branch can land in the
+        # last one's holes. Trimming from the front cannot disturb a ring's wrap
+        # guarantee, which only widens when a leading column goes.
+        while floor_px > 0.0 and pairs and last_pair is not None and min(
+            _dist(last_pair[0], pairs[0][0]), _dist(last_pair[1], pairs[0][1])
+        ) < floor_px:
+            pairs = pairs[1:]
+        if not pairs:
+            continue
+        last_pair = pairs[-1]
         emitted, prev_end = _emit_columns(pairs, max_step_px, prev_end, float(step))
         pts.extend(emitted)
     if pts:
@@ -1405,7 +1482,8 @@ def _skeleton_satin(region, mm_per_px: float, spacing_px: int, max_step_px: int,
     max_half_px = (SATIN_MAX_W_MM / 2.0) / max(mm_per_px, 1e-6)
 
     used, widths, centre_track = _axis_samples(branches, dist, binary, step, mm_per_px)
-    pts = _satin_columns(region, binary, used, step, max_step_px, max_half_px, extra_half_px)
+    floor_px = (_PENETRATION_FLOOR_MM / max(mm_per_px, 1e-6)) if _PENETRATION_FLOOR_MM else 0.0
+    pts = _satin_columns(region, binary, used, step, max_step_px, max_half_px, extra_half_px, floor_px)
     # Report the MEDIAN stroke width, not the share of samples over the limit:
     # junction spikes make the mean and the over-limit share useless as a
     # "is this a stroke or a blob?" test.
