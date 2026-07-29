@@ -27,7 +27,12 @@ from app.models.design import (
 from app.services import digitizer
 
 LONG_STITCH_MM = 12.7  # most machines choke above ~12.7mm (0.5")
-TINY_STITCH_MM = 0.5    # below this, thread shreds / needle deflects
+# Below this, thread shreds / needle deflects. 0.3, not 0.5 (changed v2 Part
+# 15): fills legitimately connect adjacent rows with one pitch-length stitch —
+# 0.4-0.45mm, the industry-standard row spacing — so flagging under-0.5 would
+# penalise every properly-digitized fill by hundreds of findings. 0.3 matches
+# MIN_PENETRATION_MM's grounding and stays subject to the fabric protocol.
+TINY_STITCH_MM = 0.3
 # No published industry benchmark for jumps-per-1,000 exists (verified by web research,
 # 2026-07-29 — docs/COMPETITOR-COMPARISON.md §"what the research corrects" item 1);
 # production guidance is expressed as TRIM cost: ~3-7s per trim, machine stops 6-20s.

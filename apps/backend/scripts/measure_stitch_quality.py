@@ -169,9 +169,12 @@ def penetration_metrics(design, pitch_mm: float, floor_mm: float) -> dict:
     """
     per_object = []
     for obj, stitches in _object_slices(design):
-        kind = obj.stitch_type.value if hasattr(obj.stitch_type, "value") else str(obj.stitch_type)
-        if kind != "SATIN":
-            continue
+        # ALL objects since v2 Part 15, not just SATIN: fill borders zigzag, so
+        # tatami objects now contain satin-style penetration pairs the floor
+        # must govern. The zigzag test still self-selects — plain fill rows and
+        # running stitch contribute nothing — so pre-Part-15 numbers are
+        # comparable: tatami objects previously had no zigzagging stitches at
+        # all (their reversals were repaired at generation).
         gaps = same_side_spacings(stitches)
         if not gaps:
             continue

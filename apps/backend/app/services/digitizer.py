@@ -691,13 +691,34 @@ def digitize_image(
                     (_PENETRATION_FLOOR_MM / mm_per_px) if _PENETRATION_FLOOR_MM else 0.0,
                     MAX_STITCH_MM / mm_per_px,
                 )
-                pts = _with_underlay(under, _fill_by_component(top_region, row_px, max_step_px, connect_px), connect_px)
+                fill_pts = _fill_by_component(top_region, row_px, max_step_px, connect_px)
+                # Satin border on top of the fill (v2 Part 15) — the pro finish.
+                # Area-gated: bordering specks doubles them for nothing.
+                if net_area * mm_per_px * mm_per_px >= FILL_BORDER_MIN_MM2:
+                    border_w = max(2.0, FILL_BORDER_MM / mm_per_px)
+                    fill_pts = fill_pts + _fill_border(
+                        contour, hole_contours, border_w, sat_step, connect_px,
+                        fill_pts[-1][:2] if fill_pts else None,
+                        (_PENETRATION_FLOOR_MM / mm_per_px) if _PENETRATION_FLOOR_MM else 0.0,
+                    )
+                pts = _with_underlay(under, fill_pts, connect_px)
                 underlay = UnderlayType.EDGE_WALK
             # The floor is passed only for SATIN. A tatami row advances along a
             # line, never zigzags, so the repair could not fire there anyway —
             # but not passing it keeps fills on exactly the path they had.
+            #
+            # Coalesce threshold for FILLS follows the row pitch (v2 Part 15):
+            # adjacent fill rows connect with a stitch of one row pitch —
+            # 0.45mm on cotton, INDUSTRY-STANDARD practice at 0.4-0.45mm — and
+            # a 0.5mm minimum was deleting every row's first point. On straight
+            # edges the replacement diagonal hugged the edge and hid it; on
+            # fixture 02's sun the diagonals cut the arc and opened a visible
+            # crescent, found by painting the emitted rows over the region.
+            min_px = MIN_STITCH_MM / mm_per_px
+            if not is_satin:
+                min_px = min(min_px, row_px * FILL_ROW_CONNECT_KEEP)
             pts = _coalesce_short(
-                pts, MIN_STITCH_MM / mm_per_px,
+                pts, min_px,
                 (_PENETRATION_FLOOR_MM / mm_per_px) if (is_satin and _PENETRATION_FLOOR_MM) else 0.0,
             )
             # Floor BACKSTOP at the last transform (v2 Part 13). Every upstream
@@ -707,7 +728,7 @@ def digitize_image(
             # exactly one (07 Satin 5, 0.277mm, at the underlay/top seam).
             # Enforcing here means no upstream reshuffle can leak a violation
             # into the stream again; on a clean object this is a no-op.
-            if is_satin and _PENETRATION_FLOOR_MM:
+            if _PENETRATION_FLOOR_MM:  # unconditional since Part 15: fill borders zigzag too
                 pts = _drop_floor_reversals(
                     pts, _PENETRATION_FLOOR_MM / mm_per_px, MAX_STITCH_MM / mm_per_px,
                 )
@@ -856,6 +877,17 @@ def _scanline_fill(region, row_px: int, max_step_px: int, connect_px: float):
 
 
 MIN_STITCH_MM = 0.5  # below this a needle penetration risks thread break / needle strike
+# Fills may keep stitches down to this fraction of their own row pitch: the
+# row-to-row connection IS one pitch long by construction, and deleting it
+# recedes the fill edge (v2 Part 15). 0.95 keeps the pitch-length connection
+# while anything meaningfully shorter still coalesces.
+FILL_ROW_CONNECT_KEEP = 0.95
+# Satin border finish on fills (v2 Part 15). 1.2mm is the narrow end of the
+# 1-2mm range digitizing guides use for logo edges: wide enough to swallow the
+# ragged row ends on a curve, narrow enough not to read as its own shape.
+# Centered on the contour. Area-gated so specks are not double-stitched.
+FILL_BORDER_MM = 1.2
+FILL_BORDER_MIN_MM2 = 30.0
 # Minimum spacing between consecutive SAME-SIDE penetrations in a satin column
 # run. Distinct from MIN_STITCH_MM, which bounds how far the needle TRAVELS
 # between penetrations: a satin column can travel 4mm across the stroke while the
@@ -2065,10 +2097,24 @@ def _manual_run(poly_px, step_px: int, passes: int = 1):
     return [(seq[0][0], seq[0][1], True)] + [(p[0], p[1], False) for p in seq[1:]]
 
 
-def _satin_border(poly_px, width_px: float, step_px: int, connect_px: float):
-    """Satin border along a closed contour (appliqué edge cover): resample the outline,
-    then at each sample emit ±half-width points along the local normal, alternating to
-    zig-zag across the edge. Returns [(x, y, is_jump)]."""
+def _satin_border(poly_px, width_px: float, step_px: int, connect_px: float,
+                  floor_px: float = 0.0):
+    """Satin border along a closed contour: resample the outline, then at each
+    sample emit ±half-width points along the local normal, zig-zagging across
+    the edge. Returns [(x, y, is_jump)].
+
+    STRICT alternation — every path step is a full crossing (A0 B0 A1 B1), the
+    Part 4 lesson; the old per-station side swap put two same-side penetrations
+    one pitch apart back-to-back and _coalesce_short deleted them.
+
+    The penetration floor is enforced AT GENERATION (v2 Part 15): on a
+    pixel-staircase contour the local normal swings step to step, so same-side
+    points of adjacent stations can land fractions of a millimetre apart —
+    fixture 07's ring borders emitted 830 sub-floor pairs before this gate. A
+    station is skipped until BOTH sides have advanced ``floor_px`` from the
+    last emitted station — the same both-boundaries rule Part 5 built for
+    columns; downstream repair could never fix 830 without mangling the border.
+    """
     pts_in = [(float(x), float(y)) for x, y in poly_px.reshape(-1, 2)]
     if len(pts_in) < 3:
         return []
@@ -2077,8 +2123,8 @@ def _satin_border(poly_px, width_px: float, step_px: int, connect_px: float):
         return []
     half = width_px / 2.0
     out: list[tuple[float, float, bool]] = []
-    top = True
     n = len(samples)
+    prev_a = prev_b = None
     for i, p in enumerate(samples):
         nxt = samples[(i + 1) % n]
         dx, dy = nxt[0] - p[0], nxt[1] - p[1]
@@ -2086,10 +2132,37 @@ def _satin_border(poly_px, width_px: float, step_px: int, connect_px: float):
         nx, ny = -dy / length, dx / length  # unit normal
         a = (p[0] + nx * half, p[1] + ny * half)
         b = (p[0] - nx * half, p[1] - ny * half)
-        pair = (a, b) if top else (b, a)
-        for j, q in enumerate(pair):
-            out.append((float(q[0]), float(q[1]), i == 0 and j == 0))
-        top = not top
+        if prev_a is not None and floor_px > 0.0 and (
+            _dist(a, prev_a) < floor_px or _dist(b, prev_b) < floor_px
+        ):
+            continue
+        out.append((a[0], a[1], not out))
+        out.append((b[0], b[1], False))
+        prev_a, prev_b = a, b
+    return out
+
+
+def _fill_border(contour, hole_contours, width_px: float, step_px: int,
+                 connect_px: float, last_pt, floor_px: float = 0.0):
+    """Satin border around a fill's outline and its kept holes (v2 Part 15).
+
+    The finish every professional digitizer applies to a filled logo shape: row
+    ends land where they land, and a narrow satin runs the contour on top to
+    give the edge a single crisp line — this is most of the visual difference
+    between "rows of thread" and "proper embroidery". Centered on the contour,
+    so half the width covers the fill's ragged ends and half reaches the true
+    artwork edge the segmentation traced. Holes get the same treatment (fixture
+    02's sun rim). Returns [(x, y, is_jump)], entering from ``last_pt``.
+    """
+    out: list[tuple[float, float, bool]] = []
+    for poly in [contour, *hole_contours]:
+        seg = _satin_border(poly, width_px, step_px, connect_px, floor_px)
+        if not seg:
+            continue
+        prev = out[-1][:2] if out else last_pt
+        x, y, _ = seg[0]
+        seg[0] = (x, y, prev is not None and _dist(prev, (x, y)) > connect_px)
+        out.extend(seg)
     return out
 
 

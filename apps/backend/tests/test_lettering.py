@@ -39,8 +39,19 @@ def test_donut_hole_is_not_filled():
     disc = digitize_image(_disc_image(), "cotton", "100x100", max_colors=2)
     assert any(o.holes for o in ring.objects), "ring object should carry its hole"
     assert not any(o.holes for o in disc.objects)
-    # the carved-out hole means clearly fewer stitches than the full disc
-    assert ring.stitch_count < disc.stitch_count * 0.9
+    # The stitch-count proxy died in v2 Part 15: the ring earns TWO satin
+    # borders (outer + hole rim) where the disc earns one, offsetting the
+    # carved fill. Assert the property itself instead: no penetration lands
+    # deep inside the hole (the rim border may legally reach 0.6mm in).
+    pen = [(st.x, st.y) for st in ring.stitches if st.command == "STITCH"]
+    cx = (min(x for x, _ in pen) + max(x for x, _ in pen)) / 2.0
+    cy = (min(y for _, y in pen) + max(y for _, y in pen)) / 2.0
+    hole = next(o.holes[0] for o in ring.objects if o.holes)
+    # min radius, not max: the traced hole is not perfectly round, and the rim
+    # border legally reaches ~0.6mm inside the contour it runs along.
+    hole_r = min(((pp.x - cx) ** 2 + (pp.y - cy) ** 2) ** 0.5 for pp in hole)
+    deep = sum(1 for x, y in pen if ((x - cx) ** 2 + (y - cy) ** 2) ** 0.5 < hole_r - 1.0)
+    assert deep == 0, f"{deep} penetrations deep inside the hole"
 
 
 def test_rebuild_preserves_holes():
