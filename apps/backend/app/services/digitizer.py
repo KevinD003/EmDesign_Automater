@@ -540,7 +540,13 @@ def digitize_image(
                 under = _edge_walk(region, inset_px, under_step_px, connect_px)
                 pts = _with_underlay(under, _scanline_fill(top_region, row_px, max_step_px, connect_px), connect_px)
                 underlay = UnderlayType.EDGE_WALK
-            pts = _coalesce_short(pts, MIN_STITCH_MM / mm_per_px)
+            # The floor is passed only for SATIN. A tatami row advances along a
+            # line, never zigzags, so the repair could not fire there anyway —
+            # but not passing it keeps fills on exactly the path they had.
+            pts = _coalesce_short(
+                pts, MIN_STITCH_MM / mm_per_px,
+                (_PENETRATION_FLOOR_MM / mm_per_px) if (is_satin and _PENETRATION_FLOOR_MM) else 0.0,
+            )
             if len(pts) < 2:
                 continue
             if this_stop is None:  # first real object → open a color stop (deferred COLOR_CHANGE)
@@ -681,36 +687,68 @@ def set_penetration_floor(mm: float | None) -> None:
     _PENETRATION_FLOOR_MM = mm
 
 
-def _coalesce_short(pts, min_dist_px: float):
+def _coalesce_short(pts, min_dist_px: float, floor_px: float = 0.0):
     """Drop needle penetrations closer together than ``min_dist_px``.
 
     Sub-0.5mm stitches break thread and damage needles, and they buy nothing —
     the shape is unchanged because the following point is still stitched. Jumps
     and the final point are always kept so the path and outline stay intact.
+
+    ``floor_px`` enables TARGETED repair (v2 Part 10). Coalescing changes which
+    points survive a satin path, and that shift can break the strict A-B-A-B
+    alternation `_enforce_floor` relies on, leaving two same-side penetrations
+    closer than the floor. v2 Part 9 fixed that by protecting every mitred
+    endpoint from being dropped at all, which cost 27 extra sub-0.5mm stitches
+    corpus-wide. Here the drops happen first and only the specific points whose
+    removal actually produced a violation are put back, so the short-stitch cost
+    is paid once per real violation instead of once per mitre.
     """
     if not pts or min_dist_px <= 0:
         return pts
     out = [pts[0]]
+    dropped: list[list] = [[]]          # dropped[k]: points removed just after out[k]
     for p in pts[1:]:
-        if p[2]:  # a jump defines the path; never coalesce it away
-            out.append(p)
-            continue
-        # A MITRED endpoint, and the point immediately after one, are never
-        # dropped (v2 Part 9). Coalescing a satin path changes WHICH points
-        # survive, and that shift breaks the strict A-B-A-B alternation
-        # `_enforce_floor` relies on, manufacturing same-side penetrations under
-        # the floor. Measured on the corpus: 5 floor violations with coalescing
-        # free to drop them, 3 — the pre-mitre count — with them protected, and
-        # disabling `_coalesce_short` outright gives the same 3, which is what
-        # identified the interaction.
-        if _mitre_key(p) in _MITRED_POINTS or _mitre_key(out[-1]) in _MITRED_POINTS:
-            out.append(p)
-            continue
-        if _dist(out[-1], p) < min_dist_px:
-            continue
-        out.append(p)
+        if p[2] or _dist(out[-1], p) >= min_dist_px:
+            out.append(p)               # a jump defines the path; never coalesce it away
+            dropped.append([])
+        else:
+            dropped[-1].append(p)
     if out[-1][:2] != pts[-1][:2]:
         out.append(pts[-1])
+        dropped.append([])
+    return _restore_for_floor(out, dropped, floor_px) if floor_px > 0.0 else out
+
+
+def _restore_for_floor(out, dropped, floor_px: float):
+    """Put back only the coalesced points whose absence breaks the penetration floor.
+
+    A satin path alternates sides, so after a drop the points either side of a
+    survivor can become same-side neighbours closer than the floor. Restoring ANY
+    point that was dropped between them restores the alternation and fixes it, so
+    the repair is minimal by construction: one short stitch back per violation,
+    rather than the blanket protection v2 Part 9 used.
+
+    The triple test mirrors the one the metric uses — a real satin pair zigzags,
+    with the same-side gap shorter than either crossing — so a running-stitch
+    underlay cannot trigger a spurious restore.
+    """
+    for _ in range(COALESCE_REPAIR_PASSES):
+        repaired = False
+        for i in range(1, len(out) - 1):
+            a, b, c = out[i - 1], out[i], out[i + 1]
+            gap = _dist(a, c)
+            if gap >= floor_px or gap >= COALESCE_ZIGZAG * min(_dist(a, b), _dist(b, c)):
+                continue
+            for k in (i - 1, i):
+                if dropped[k]:
+                    out.insert(k + 1, dropped[k].pop(0))
+                    dropped.insert(k + 1, [])
+                    repaired = True
+                    break
+            if repaired:
+                break
+        if not repaired:
+            break
     return out
 
 
@@ -823,6 +861,11 @@ PROJECT_CHUNK = 256        # contour points per distance-matrix chunk (memory)
 # A sharp vertex stalls its inner boundary for many columns in a row; a straight
 # stroke only ever throws isolated short steps, and mitring those is pure damage.
 MITRE_MIN_STALLED = 3
+# A coalesced-away point is restored only when its absence leaves a same-side pair
+# under the floor. The triple must ZIGZAG to count, mirroring the metric's own
+# test, so a running-stitch underlay cannot trigger a spurious restore.
+COALESCE_ZIGZAG = 0.9
+COALESCE_REPAIR_PASSES = 200   # bound; each pass restores at most one point
 # Endpoints the mitre moved, for the current object only. `_coalesce_short` must
 # not drop these (see `_mitre_one_side`), and threading a flag through
 # _column_ends -> _emit_columns -> _skeleton_satin -> digitize_image would mean
@@ -1334,7 +1377,6 @@ def _mitre_one_side(end, other, mid, floor_px: float, min_len_px: float) -> int:
         if i > 0 and float(np.hypot(*(mid[i] - other[i - 1]))) < min_len_px:
             continue
         end[i] = mid[i]
-        _MITRED_POINTS.add(_mitre_key(end[i]))
         touched.append(i)
     return _revert_bad_mitres(end, original, touched, floor_px)
 
@@ -1352,7 +1394,6 @@ def _revert_bad_mitres(end, original, touched, floor_px: float) -> int:
         prv = float(np.hypot(*(end[i] - end[i - 1])))
         nxt = float(np.hypot(*(end[i] - end[i + 1]))) if i + 1 < len(end) else floor_px
         if min(prv, nxt) < floor_px:
-            _MITRED_POINTS.discard(_mitre_key(end[i]))
             end[i] = original[i]
             moved -= 1
     return moved
@@ -1592,7 +1633,6 @@ def _satin_columns(region, binary, dist, skel, used, step: int, max_step_px: int
     """Lay every branch's columns between corresponding points on its two boundaries."""
     pts: list[tuple[float, float, bool]] = []
     prev_end: tuple[float, float] | None = None
-    _MITRED_POINTS.clear()
     frames = [_axis_frame(s, dist) for s in used]
     assigned = _assign_boundary(_boundary_points(region), frames)
     last_pair = None

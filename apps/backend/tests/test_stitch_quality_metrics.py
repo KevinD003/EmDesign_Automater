@@ -243,8 +243,13 @@ def test_mitre_closes_a_sharp_apex_without_breaking_the_floor():
     # CHARACTERISATION, not a win. On this butt-jointed V — two separate strokes
     # meeting with no rounded join — the mitre measures WORSE than leaving it off
     # (97.3 -> 95.1 interior), the opposite of the letter probe's joined apexes
-    # (apex_M 96.6 -> 97.9, apex_V 98.1 -> 98.7). The shape is pinned here so the
+    # (apex_M 96.6 -> 97.3, apex_V 98.1 -> 97.8). The shape is pinned here so the
     # regression is visible rather than tuned away; see the Part 8 audit.
+    #
+    # Those two figures were WRONG until v2 Part 10 — they read 97.9 and 98.7,
+    # numbers from an intermediate build taken before the MIN_STITCH_MM guard.
+    # The Part 9 audit reported the correction as done; the edit had silently
+    # no-op'd on a mismatched search string and nobody diffed the file.
     assert cov["interior_pct"] > 90.0
     assert without["interior_pct"] > 90.0
     pen = penetration_metrics(design, 0.4, MIN_PENETRATION_MM)
@@ -282,32 +287,43 @@ def test_paint_uncovered_writes_a_picture(tmp_path):
     assert stats["missed_interior_px"] >= 0 and stats["missed_band_px"] >= 0
 
 
-def test_coalescing_never_drops_a_mitred_endpoint():
-    """v2 Part 9: the mitre/_coalesce_short interaction that broke the floor.
+def test_coalescing_restores_only_what_the_floor_needs():
+    """v2 Part 10: targeted repair, not blanket protection.
 
-    Coalescing changes WHICH points survive a satin path, and that shift breaks
-    the A-B-A-B alternation `_enforce_floor` depends on, manufacturing same-side
-    penetrations under the floor. Protecting mitred endpoints took the corpus back
-    from 5 residual violations to 3.
+    Coalescing changes WHICH points survive a satin path, and that shift can break
+    the A-B-A-B alternation `_enforce_floor` depends on. v2 Part 9 protected every
+    mitred endpoint from being dropped, which cost 27 extra sub-0.5mm stitches;
+    this restores only the point whose absence actually leaves a same-side pair
+    under the floor.
     """
     from app.services import digitizer as D
 
-    D._MITRED_POINTS.clear()
-    pts = [(0.0, 0.0, True), (0.0, 3.0, False), (0.1, 3.0, False), (0.0, 6.0, False)]
-    # Unprotected, the near-duplicate at (0.1, 3.0) is coalesced away.
-    assert len(D._coalesce_short(pts, 0.5)) == 3
-    # Protected, it survives.
-    D._MITRED_POINTS.add(D._mitre_key((0.1, 3.0)))
-    try:
-        assert len(D._coalesce_short(pts, 0.5)) == 4
-    finally:
-        D._MITRED_POINTS.clear()
+    # A0 B0 B0' A1 — B0' sits 0.1 from B0, so coalescing drops it. Its removal
+    # makes A0 and A1 same-side neighbours only 0.3 apart, under a 0.35 floor.
+    pts = [(0.0, 0.0, True), (0.0, 4.0, False), (0.1, 4.0, False), (0.3, 0.0, False)]
+    loose = D._coalesce_short(pts, 0.5)
+    assert len(loose) == 3, f"the 0.1 hop should be coalesced away: {loose}"
+    same_side = D._dist(loose[0], loose[2])
+    assert same_side < 0.35, f"removal should leave a sub-floor same-side pair: {same_side}"
+
+    repaired = D._coalesce_short(pts, 0.5, floor_px=0.35)
+    assert len(repaired) == 4, f"the floor repair should put the point back: {repaired}"
+    assert repaired == pts
 
 
-def test_mitred_points_do_not_leak_between_objects():
-    """The register is module-level, so it must be cleared per object."""
+def test_floor_repair_is_a_no_op_when_nothing_violates():
+    """A clean satin path must come through the repair pass byte-identical."""
     from app.services import digitizer as D
 
-    D._MITRED_POINTS.add(D._mitre_key((123.0, 456.0)))
-    digitize_image(_ring_bytes(radius_px=40), "cotton", "100x100", max_colors=2)
-    assert D._mitre_key((123.0, 456.0)) not in D._MITRED_POINTS
+    pts = [(0.0, 0.0, True)]
+    for i in range(1, 12):                       # full crossings, 4mm apart
+        pts.append((i * 0.4, 4.0 if i % 2 else 0.0, False))
+    assert D._coalesce_short(pts, 0.5, floor_px=0.3) == D._coalesce_short(pts, 0.5)
+
+
+def test_floor_repair_ignores_a_running_stitch():
+    """A running stitch advances along a line, so the zigzag test must reject it."""
+    from app.services import digitizer as D
+
+    pts = [(float(i) * 0.2, 0.0, i == 0) for i in range(12)]
+    assert D._coalesce_short(pts, 0.5, floor_px=0.3) == D._coalesce_short(pts, 0.5)

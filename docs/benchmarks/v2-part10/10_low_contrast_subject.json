@@ -1,0 +1,109 @@
+{
+  "fixture": "10_low_contrast_subject",
+  "params": {
+    "colors": 4,
+    "hoop": "130x180",
+    "fabric": "cotton"
+  },
+  "ok": true,
+  "error": null,
+  "warnings": [],
+  "runtime_s": 0.889,
+  "stitch_count": 2389,
+  "color_count": 3,
+  "object_count": 4,
+  "stitch_types": {
+    "SATIN": 2,
+    "TATAMI": 2
+  },
+  "objects_with_holes": 2,
+  "width_mm": 72.94,
+  "height_mm": 72.76,
+  "est_minutes": 2.99,
+  "jump_count": 141,
+  "trim_count": 1,
+  "color_changes": 2,
+  "max_stitch_mm": 8.78,
+  "mean_stitch_mm": 5.093,
+  "stitches_over_machine_limit": 0,
+  "stitches_under_0_5mm": 0,
+  "stitch_density_per_mm2": 0.59,
+  "filled_area_mm2": 4083.5,
+  "stitch_density_per_bbox_mm2": 0.45,
+  "fill_row_pitch_mm": 0.183,
+  "fill_rows_over_thread_width": 0,
+  "coverage_ratio": 1.0,
+  "segmentation_method": "rembg",
+  "satin_share": 0.5,
+  "classification": [
+    {
+      "seq": 1,
+      "region_median_w_mm": 1.1,
+      "skeleton_median_w_mm": 2.56,
+      "uncovered_share": 0.0,
+      "reason": "satin",
+      "decision": "SATIN"
+    },
+    {
+      "seq": 2,
+      "region_median_w_mm": 1.1,
+      "skeleton_median_w_mm": 2.12,
+      "uncovered_share": 0.0,
+      "reason": "satin",
+      "decision": "SATIN"
+    },
+    {
+      "seq": 3,
+      "region_median_w_mm": 5.48,
+      "skeleton_median_w_mm": 9.51,
+      "uncovered_share": 0.546,
+      "reason": "wider_than_satin_cap",
+      "decision": "TATAMI"
+    },
+    {
+      "seq": 4,
+      "region_median_w_mm": 7.16,
+      "skeleton_median_w_mm": 0.0,
+      "uncovered_share": 1.0,
+      "reason": "broad_fill_pregate",
+      "decision": "TATAMI"
+    }
+  ],
+  "coverage": {
+    "interior_pct": 98.6,
+    "edge_band_pct": 94.4,
+    "spill_pct": 3.0,
+    "interior_frac": 0.894
+  },
+  "penetration": {
+    "satin_objects": 2,
+    "penetrations": 187,
+    "nominal_pitch_mm": 0.4,
+    "floor_mm": 0.3,
+    "min_spacing_mm": 0.306,
+    "min_spacing_object": "Satin 2 (#8c9290)",
+    "below_floor": 0,
+    "below_floor_share": 0.0,
+    "per_object": [
+      {
+        "object": 1,
+        "name": "Satin 1 (#8c9290)",
+        "penetrations": 85,
+        "min_mm": 0.355,
+        "p05_mm": 0.366,
+        "median_mm": 0.366,
+        "below_floor": 0
+      },
+      {
+        "object": 2,
+        "name": "Satin 2 (#8c9290)",
+        "penetrations": 102,
+        "min_mm": 0.306,
+        "p05_mm": 0.318,
+        "median_mm": 0.425,
+        "below_floor": 0
+      }
+    ]
+  },
+  "output_png": "docs/benchmarks/v2-part10/10_low_contrast_subject-output.png"
+}
