@@ -24,3 +24,6 @@ apps/*/.env
 .DS_Store
 .idea/
 .vscode/
+
+# coverage artifacts
+.coverage
