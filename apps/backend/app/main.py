@@ -10,6 +10,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
+from app.middleware.request_logging import RequestLoggingMiddleware
 from app.routers import (
     auth,
     convert,
@@ -36,6 +37,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Registered after CORSMiddleware so CORS stays outermost (middleware added
+# later wraps closer to the app in Starlette).
+app.add_middleware(RequestLoggingMiddleware)
 
 
 @app.get("/health", tags=["meta"])

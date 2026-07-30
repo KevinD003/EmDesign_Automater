@@ -1,0 +1,127 @@
+{
+  "fixture": "01_flat_2color_logo",
+  "params": {
+    "colors": 2,
+    "hoop": "100x100",
+    "fabric": "cotton"
+  },
+  "ok": true,
+  "error": null,
+  "warnings": [],
+  "runtime_s": 3.736,
+  "stitch_count": 3563,
+  "color_count": 2,
+  "object_count": 2,
+  "stitch_types": {
+    "TATAMI": 2
+  },
+  "objects_with_holes": 1,
+  "width_mm": 65.7,
+  "height_mm": 65.55,
+  "est_minutes": 4.45,
+  "jump_count": 76,
+  "trim_count": 0,
+  "color_changes": 1,
+  "max_stitch_mm": 8.47,
+  "mean_stitch_mm": 2.866,
+  "stitches_over_machine_limit": 0,
+  "stitches_under_0_5mm": 57,
+  "stitch_density_per_mm2": 1.08,
+  "filled_area_mm2": 3296.8,
+  "stitch_density_per_bbox_mm2": 0.83,
+  "fill_row_pitch_mm": 0.019,
+  "fill_rows_over_thread_width": 0,
+  "coverage_ratio": 1.0,
+  "segmentation_method": "rembg",
+  "satin_share": 0.0,
+  "classification": [
+    {
+      "seq": 1,
+      "region_median_w_mm": 8.28,
+      "skeleton_median_w_mm": 0.0,
+      "uncovered_share": 1.0,
+      "reason": "broad_fill_pregate",
+      "decision": "TATAMI"
+    },
+    {
+      "seq": 2,
+      "region_median_w_mm": 6.89,
+      "skeleton_median_w_mm": 0.0,
+      "uncovered_share": 1.0,
+      "reason": "broad_fill_pregate",
+      "decision": "TATAMI"
+    }
+  ],
+  "coverage": {
+    "interior_pct": 100.0,
+    "edge_band_pct": 100.0,
+    "spill_pct": 4.3,
+    "interior_frac": 0.928
+  },
+  "penetration": {
+    "satin_objects": 2,
+    "penetrations": 1905,
+    "nominal_pitch_mm": 0.4,
+    "floor_mm": 0.3,
+    "min_spacing_mm": 0.3,
+    "min_spacing_object": "Fill 1 (#1446a0)",
+    "below_floor": 0,
+    "below_floor_share": 0.0,
+    "per_object": [
+      {
+        "object": 1,
+        "name": "Fill 1 (#1446a0)",
+        "penetrations": 1330,
+        "min_mm": 0.3,
+        "p05_mm": 0.331,
+        "median_mm": 0.375,
+        "below_floor": 0
+      },
+      {
+        "object": 2,
+        "name": "Fill 2 (#ebb428)",
+        "penetrations": 575,
+        "min_mm": 0.301,
+        "p05_mm": 0.35,
+        "median_mm": 0.375,
+        "below_floor": 0
+      }
+    ]
+  },
+  "density": {
+    "cell_mm": 0.5,
+    "cells": 2536,
+    "max_per_cell": 5,
+    "p99_per_cell": 4,
+    "flag_at": 14,
+    "flagged_cells": 0,
+    "hottest": [
+      {
+        "x_mm": 24.8,
+        "y_mm": 60.2,
+        "count": 5
+      },
+      {
+        "x_mm": 26.2,
+        "y_mm": 55.8,
+        "count": 5
+      },
+      {
+        "x_mm": 59.2,
+        "y_mm": 50.8,
+        "count": 5
+      },
+      {
+        "x_mm": 44.8,
+        "y_mm": 27.2,
+        "count": 4
+      },
+      {
+        "x_mm": 12.8,
+        "y_mm": 40.8,
+        "count": 4
+      }
+    ]
+  },
+  "output_png": "docs/benchmarks/v2-swarm/01_flat_2color_logo-output.png"
+}
