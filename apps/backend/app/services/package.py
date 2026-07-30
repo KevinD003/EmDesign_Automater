@@ -25,8 +25,13 @@ BRAND_FORMATS: list[dict[str, str]] = [
 ]
 
 
-def _stem(name: str | None) -> str:
+def safe_stem(name: str | None) -> str:
+    # The single filename sanitizer for all export downloads: user-supplied names may
+    # carry quotes/slashes/CRLF that would corrupt a Content-Disposition header.
     return re.sub(r"[^\w\-]+", "_", (name or "design").rsplit(".", 1)[0]).strip("_") or "design"
+
+
+_stem = safe_stem  # backwards-compat alias for existing internal/router callers
 
 
 def _cmd(s) -> str:

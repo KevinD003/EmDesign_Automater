@@ -13,7 +13,6 @@ from __future__ import annotations
 
 from itertools import pairwise
 
-from app.services import segmentation
 from app.models.design import (
     ColorStop,
     ConnectMethod,
@@ -24,6 +23,7 @@ from app.models.design import (
     StitchType,
     UnderlayType,
 )
+from app.services import segmentation
 
 # Tunables (mm unless noted) — see spec "Quick Reference" table.
 ROW_SPACING_MM = 0.45     # fill row pitch — full-coverage tatami (0.6 left fabric showing through)
@@ -2374,7 +2374,6 @@ def _edge_walk(region, inset_px: int, step_px: int, connect_px: float,
 def _center_walk(region, rect, step_px: int, connect_px: float):
     """Center-walk underlay for a satin column: a running stitch down the column's
     long-axis midline (spec §4.6). Returns [(x_px, y_px, is_jump)]."""
-    import cv2
     import numpy as np
 
     (cx, cy), (rw, rh), ang = rect
@@ -2498,8 +2497,6 @@ def _with_underlay(under, top, connect_px: float):
 def _scanline_angled(region, angle_deg: float, row_px: int, max_step_px: int, connect_px: float):
     """Scanline fill at an arbitrary angle: rotate the mask so rows are horizontal,
     fill, then map points back through the inverse rotation."""
-    import cv2
-    import numpy as np
 
     if abs(angle_deg) < 0.5:
         return _scanline_fill(region, row_px, max_step_px, connect_px)

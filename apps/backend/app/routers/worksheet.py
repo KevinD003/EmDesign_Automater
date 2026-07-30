@@ -25,7 +25,7 @@ async def worksheet_pdf_download(design: Design) -> StreamingResponse:
     worksheet = worksheet_pdf.build_worksheet(design)
     try:
         data = worksheet_pdf.render_pdf(worksheet)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise HTTPException(status_code=500, detail=f"PDF render failed: {exc}") from exc
     stem = (design.name or "design").rsplit(".", 1)[0]
     return StreamingResponse(

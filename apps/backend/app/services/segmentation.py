@@ -70,7 +70,7 @@ def _rembg_mask(data: bytes):
 
         import numpy as np
         from PIL import Image
-        from rembg import new_session, remove
+        from rembg import remove
     except Exception:  # noqa: BLE001 - optional dependency absent
         return None
     try:
@@ -157,7 +157,7 @@ def _corner_mask(img):
     return (dist >= 40.0).astype(np.uint8) * 255
 
 
-def foreground_mask(img, data: bytes | None = None) -> tuple["object", str]:
+def foreground_mask(img, data: bytes | None = None) -> tuple[object, str]:
     """Return ``(mask, method)``: uint8 mask (255 = foreground) + which tier won.
 
     ``img`` is BGR at working resolution; ``data`` is the original encoded bytes
@@ -165,7 +165,6 @@ def foreground_mask(img, data: bytes | None = None) -> tuple["object", str]:
     resolution.
     """
     import cv2
-    import numpy as np
 
     h, w = img.shape[:2]
     if data is not None:

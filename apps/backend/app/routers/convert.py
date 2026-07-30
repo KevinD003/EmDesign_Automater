@@ -35,7 +35,7 @@ async def convert(req: ConvertRequest) -> ConvertResponse:
         out = embroidery_io.write_embroidery(design, req.to_format)
     except ValueError as exc:
         raise HTTPException(status_code=415, detail=str(exc)) from exc
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Conversion failed: {exc}") from exc
 
     warnings: list[str] = []

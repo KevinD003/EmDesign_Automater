@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { ChangeEvent } from 'react';
 import { useDesignStore } from '../../store/designStore';
 import { api } from '../../api/client';
+import { toastError } from '../feedback/toastStore';
 
 /** Coerce arbitrary hex to the #rrggbb form that <input type="color"> requires. */
 function normalizeHex(h: string): string {
@@ -80,7 +81,9 @@ export function PropertiesPanel() {
       };
       replaceDesign(await api.rebuild(patched)); // history recorded; undo restores pre-rebuild
     } catch (ex) {
-      setErr(ex instanceof Error ? ex.message : 'Rebuild failed');
+      const msg = ex instanceof Error ? ex.message : 'Rebuild failed';
+      setErr(msg); // inline error stays next to the form fields
+      toastError(msg);
     } finally {
       setBusy(false);
     }

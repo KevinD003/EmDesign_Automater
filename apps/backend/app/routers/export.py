@@ -38,13 +38,14 @@ async def formats() -> dict[str, object]:
 async def export_package(design: Design, format: str = Query("dst")) -> StreamingResponse:
     """Bundle the full production package (machine file + master + worksheet + color card
     + preview + summary) as a ZIP (spec §4.8)."""
+    fmt = format.lower().lstrip(".")  # normalize once: 'DST' / '.dst' → 'dst'
     try:
-        data = package_svc.build_package(design, format)
+        data = package_svc.build_package(design, fmt)
     except ValueError as exc:
         raise HTTPException(status_code=415, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Package build failed: {exc}") from exc
-    stem = package_svc._stem(design.name)
+    stem = package_svc.safe_stem(design.name)
     return StreamingResponse(
         io.BytesIO(data),
         media_type="application/zip",
@@ -62,15 +63,16 @@ def _cmd(stitch) -> str:
 @router.post("/export")
 async def export_design(design: Design, format: str = Query("dst")) -> StreamingResponse:
     """Encode a Design to a machine file and stream it back."""
+    fmt = format.lower().lstrip(".")  # normalize once: 'DST' / '.dst' → 'dst'
     try:
-        data = embroidery_io.write_embroidery(design, format)
+        data = embroidery_io.write_embroidery(design, fmt)
     except ValueError as exc:
         raise HTTPException(status_code=415, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Export failed: {exc}") from exc
 
-    stem = (design.name or "design").rsplit(".", 1)[0]
-    filename = f"{stem}.{format.lower()}"
+    # design.name is arbitrary user input; safe_stem strips header-breaking chars.
+    filename = f"{package_svc.safe_stem(design.name)}.{fmt}"
     return StreamingResponse(
         io.BytesIO(data),
         media_type="application/octet-stream",

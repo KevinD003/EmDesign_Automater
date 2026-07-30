@@ -1,0 +1,22 @@
+{
+  "profiles": {
+    "local-4c9c7eb6f2248bc5": {
+      "user_id": "local-4c9c7eb6f2248bc5",
+      "username": "launchtest",
+      "username_key": "launchtest",
+      "pin_salt": "bc699437e1279a532d6e1a2d5b69e572",
+      "pin_hash": "569ad6b3e3424f5690f4720dd3e7f844f196dd800faee414862ae69ee197d585",
+      "created_at": "2026-07-30T16:32:05.341517+00:00"
+    }
+  },
+  "sessions": {
+    "01wwC0GUC8lSNAf_TGAW6BDzWgoIkMexl37t-ZqMl2s": {
+      "user_id": "local-4c9c7eb6f2248bc5",
+      "issued_at": "2026-07-30T16:32:05.342104+00:00"
+    },
+    "PRCqEDCXjOEo-_vbMz9tD_PPz_DT1nrjeGkFpI_vKd0": {
+      "user_id": "local-4c9c7eb6f2248bc5",
+      "issued_at": "2026-07-30T16:32:05.413943+00:00"
+    }
+  }
+}

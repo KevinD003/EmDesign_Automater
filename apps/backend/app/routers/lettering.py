@@ -11,6 +11,11 @@ from app.services import lettering
 router = APIRouter(tags=["lettering"])
 
 
+class FontInfo(CamelModel):
+    name: str
+    path: str
+
+
 class LetteringRequest(CamelModel):
     text: str = Field(min_length=1, max_length=64)
     height_mm: float = Field(default=20.0, gt=0, le=100)
@@ -20,6 +25,15 @@ class LetteringRequest(CamelModel):
     letter_spacing_mm: float = Field(default=0.0, ge=-10, le=50)
     # Server-local TTF/TTC path; None runs the system font search.
     font_path: str | None = None
+
+
+@router.get("/lettering/fonts", response_model=list[FontInfo])
+async def get_fonts() -> list[FontInfo]:
+    """Fonts available for lettering on this server, sorted by display name."""
+    try:
+        return [FontInfo(**f) for f in lettering.list_fonts()]
+    except ModuleNotFoundError as exc:
+        raise HTTPException(status_code=503, detail=f"Lettering dependency missing: {exc.name}") from exc
 
 
 @router.post("/lettering", response_model=Design)

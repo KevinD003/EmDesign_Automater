@@ -1,0 +1,271 @@
+{
+  "fixture": "04_thin_line_outline",
+  "params": {
+    "colors": 2,
+    "hoop": "100x100",
+    "fabric": "cotton"
+  },
+  "ok": true,
+  "error": null,
+  "warnings": [],
+  "runtime_s": 6.923,
+  "stitch_count": 1731,
+  "color_count": 2,
+  "object_count": 10,
+  "stitch_types": {
+    "SATIN": 10
+  },
+  "objects_with_holes": 2,
+  "width_mm": 59.11,
+  "height_mm": 58.96,
+  "est_minutes": 2.16,
+  "jump_count": 26,
+  "trim_count": 8,
+  "color_changes": 1,
+  "max_stitch_mm": 2.52,
+  "mean_stitch_mm": 0.959,
+  "stitches_over_machine_limit": 0,
+  "stitches_under_0_5mm": 0,
+  "stitch_density_per_mm2": 9.52,
+  "filled_area_mm2": 181.9,
+  "stitch_density_per_bbox_mm2": 0.5,
+  "fill_row_pitch_mm": 0.0,
+  "fill_rows_over_thread_width": 0,
+  "coverage_ratio": 0.0,
+  "segmentation_method": "rembg",
+  "satin_share": 1.0,
+  "classification": [
+    {
+      "seq": 1,
+      "region_median_w_mm": 0.33,
+      "skeleton_median_w_mm": 0.6,
+      "uncovered_share": 0.0,
+      "reason": "satin",
+      "decision": "SATIN"
+    },
+    {
+      "seq": 2,
+      "region_median_w_mm": 0.3,
+      "skeleton_median_w_mm": 0.6,
+      "uncovered_share": 0.0,
+      "reason": "satin",
+      "decision": "SATIN"
+    },
+    {
+      "seq": 3,
+      "region_median_w_mm": 0.33,
+      "skeleton_median_w_mm": 0.48,
+      "uncovered_share": 0.0,
+      "reason": "satin",
+      "decision": "SATIN"
+    },
+    {
+      "seq": 4,
+      "region_median_w_mm": 0.33,
+      "skeleton_median_w_mm": 0.48,
+      "uncovered_share": 0.0,
+      "reason": "satin",
+      "decision": "SATIN"
+    },
+    {
+      "seq": 5,
+      "region_median_w_mm": 0.3,
+      "skeleton_median_w_mm": 0.6,
+      "uncovered_share": 0.0,
+      "reason": "satin",
+      "decision": "SATIN"
+    },
+    {
+      "seq": 6,
+      "region_median_w_mm": 0.3,
+      "skeleton_median_w_mm": 0.6,
+      "uncovered_share": 0.0,
+      "reason": "satin",
+      "decision": "SATIN"
+    },
+    {
+      "seq": 7,
+      "region_median_w_mm": 0.33,
+      "skeleton_median_w_mm": 0.53,
+      "uncovered_share": 0.0,
+      "reason": "satin",
+      "decision": "SATIN"
+    },
+    {
+      "seq": 8,
+      "region_median_w_mm": 0.33,
+      "skeleton_median_w_mm": 0.48,
+      "uncovered_share": 0.0,
+      "reason": "satin",
+      "decision": "SATIN"
+    },
+    {
+      "seq": 9,
+      "region_median_w_mm": 0.33,
+      "skeleton_median_w_mm": 0.48,
+      "uncovered_share": 0.0,
+      "reason": "satin",
+      "decision": "SATIN"
+    },
+    {
+      "seq": 10,
+      "region_median_w_mm": 0.3,
+      "skeleton_median_w_mm": 0.6,
+      "uncovered_share": 0.0,
+      "reason": "satin",
+      "decision": "SATIN"
+    },
+    {
+      "seq": 11,
+      "region_median_w_mm": 0.21,
+      "skeleton_median_w_mm": 0.0,
+      "uncovered_share": 1.0,
+      "reason": "sub_thread_feature",
+      "decision": "SKIPPED"
+    }
+  ],
+  "coverage": {
+    "interior_pct": null,
+    "edge_band_pct": 99.9,
+    "spill_pct": 46.9,
+    "interior_frac": 0.0
+  },
+  "penetration": {
+    "satin_objects": 10,
+    "penetrations": 1556,
+    "nominal_pitch_mm": 0.4,
+    "floor_mm": 0.3,
+    "min_spacing_mm": 0.308,
+    "min_spacing_object": "Satin 7 (#192337)",
+    "below_floor": 0,
+    "below_floor_share": 0.0,
+    "per_object": [
+      {
+        "object": 1,
+        "name": "Satin 1 (#192337)",
+        "penetrations": 929,
+        "min_mm": 0.346,
+        "p05_mm": 0.36,
+        "median_mm": 0.378,
+        "below_floor": 0
+      },
+      {
+        "object": 2,
+        "name": "Satin 2 (#192337)",
+        "penetrations": 63,
+        "min_mm": 0.348,
+        "p05_mm": 0.372,
+        "median_mm": 0.375,
+        "below_floor": 0
+      },
+      {
+        "object": 3,
+        "name": "Satin 3 (#192337)",
+        "penetrations": 58,
+        "min_mm": 0.375,
+        "p05_mm": 0.375,
+        "median_mm": 0.375,
+        "below_floor": 0
+      },
+      {
+        "object": 4,
+        "name": "Satin 4 (#192337)",
+        "penetrations": 58,
+        "min_mm": 0.375,
+        "p05_mm": 0.375,
+        "median_mm": 0.375,
+        "below_floor": 0
+      },
+      {
+        "object": 5,
+        "name": "Satin 5 (#192337)",
+        "penetrations": 62,
+        "min_mm": 0.341,
+        "p05_mm": 0.372,
+        "median_mm": 0.375,
+        "below_floor": 0
+      },
+      {
+        "object": 6,
+        "name": "Satin 6 (#192337)",
+        "penetrations": 62,
+        "min_mm": 0.371,
+        "p05_mm": 0.373,
+        "median_mm": 0.375,
+        "below_floor": 0
+      },
+      {
+        "object": 7,
+        "name": "Satin 7 (#192337)",
+        "penetrations": 152,
+        "min_mm": 0.308,
+        "p05_mm": 0.328,
+        "median_mm": 0.379,
+        "below_floor": 0
+      },
+      {
+        "object": 8,
+        "name": "Satin 8 (#192337)",
+        "penetrations": 58,
+        "min_mm": 0.375,
+        "p05_mm": 0.375,
+        "median_mm": 0.375,
+        "below_floor": 0
+      },
+      {
+        "object": 9,
+        "name": "Satin 9 (#192337)",
+        "penetrations": 52,
+        "min_mm": 0.375,
+        "p05_mm": 0.375,
+        "median_mm": 0.469,
+        "below_floor": 0
+      },
+      {
+        "object": 10,
+        "name": "Satin 10 (#192337)",
+        "penetrations": 62,
+        "min_mm": 0.368,
+        "p05_mm": 0.374,
+        "median_mm": 0.375,
+        "below_floor": 0
+      }
+    ]
+  },
+  "density": {
+    "cell_mm": 0.5,
+    "cells": 1318,
+    "max_per_cell": 3,
+    "p99_per_cell": 2,
+    "flag_at": 14,
+    "flagged_cells": 0,
+    "hottest": [
+      {
+        "x_mm": 59.8,
+        "y_mm": 20.2,
+        "count": 3
+      },
+      {
+        "x_mm": 51.8,
+        "y_mm": 16.8,
+        "count": 3
+      },
+      {
+        "x_mm": 31.2,
+        "y_mm": 44.8,
+        "count": 3
+      },
+      {
+        "x_mm": 26.8,
+        "y_mm": 44.8,
+        "count": 3
+      },
+      {
+        "x_mm": 42.8,
+        "y_mm": 48.8,
+        "count": 3
+      }
+    ]
+  },
+  "output_png": "docs/benchmarks/v2-part19/04_thin_line_outline-output.png"
+}

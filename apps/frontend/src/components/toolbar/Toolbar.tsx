@@ -7,6 +7,7 @@ import type { Design, OptimizeReport, ValidationReport } from '../../types/desig
 import { browserKV, deleteDesign, listSaved, loadDesign, saveDesign, type SavedMeta } from '../../lib/storage';
 import { isMasterFilename, parseMasterDesign, serializeMasterDesign } from '../../lib/masterFile';
 import { buildManualDesign, isImportedNotEditable, minPointsFor, type ManualTool } from '../../lib/manual';
+import { toastError, toastSuccess } from '../feedback/toastStore';
 import { DigitizeDialog } from '../dialogs/DigitizeDialog';
 import type { DigitizeParams } from '../dialogs/DigitizeDialog';
 import { LetteringDialog } from '../dialogs/LetteringDialog';
@@ -50,7 +51,6 @@ export function Toolbar() {
   const fileRef = useRef<HTMLInputElement>(null);
   const imgRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
   const [pendingImage, setPendingImage] = useState<File | null>(null);
   const [showLettering, setShowLettering] = useState(false);
   const [exportFormat, setExportFormat] = useState('dst');
@@ -73,11 +73,10 @@ export function Toolbar() {
 
   const run = async (fn: () => Promise<void>) => {
     setBusy(true);
-    setErr(null);
     try {
       await fn();
     } catch (ex) {
-      setErr(ex instanceof Error ? ex.message : 'Something went wrong');
+      toastError(ex instanceof Error ? ex.message : 'Something went wrong');
     } finally {
       setBusy(false);
     }
@@ -141,10 +140,9 @@ export function Toolbar() {
   // ── Manual digitizing: draw a Run/Satin/Fill, commit via server rebuild ──
   const startTool = (tool: ManualTool) => {
     if (isImportedNotEditable(design)) {
-      setErr('Manual tools need a blank or digitized canvas — imported files aren’t editable object-by-object.');
+      toastError('Manual tools need a blank or digitized canvas — imported files aren’t editable object-by-object.');
       return;
     }
-    setErr(null);
     setTool(activeTool === tool ? 'select' : tool);
   };
   const canFinish = activeTool !== 'select' && draft.length >= minPointsFor(activeTool as ManualTool);
@@ -153,7 +151,7 @@ export function Toolbar() {
     // loaded, never let Finish rebuild (and thus wipe) an imported stitch stream.
     if (isImportedNotEditable(design)) {
       setTool('select');
-      setErr('Manual tools need a blank or digitized canvas — imported files aren’t editable object-by-object.');
+      toastError('Manual tools need a blank or digitized canvas — imported files aren’t editable object-by-object.');
       return;
     }
     run(async () => {
@@ -171,11 +169,20 @@ export function Toolbar() {
     run(async () => {
       setReport(await api.validate(design)); // advisory — always show the report, never block
       download(await api.exportDesign(design, exportFormat), `${stem}.${exportFormat}`);
+      toastSuccess(`Exported ${stem}.${exportFormat}`);
     });
   const onPackage = () =>
     design &&
-    run(async () => download(await api.exportPackage(design, exportFormat), `${stem}-package.zip`));
-  const onWorksheet = () => design && run(async () => download(await api.worksheetPdf(design), `${stem}-worksheet.pdf`));
+    run(async () => {
+      download(await api.exportPackage(design, exportFormat), `${stem}-package.zip`);
+      toastSuccess(`Downloaded ${stem}-package.zip`);
+    });
+  const onWorksheet = () =>
+    design &&
+    run(async () => {
+      download(await api.worksheetPdf(design), `${stem}-worksheet.pdf`);
+      toastSuccess(`Downloaded ${stem}-worksheet.pdf`);
+    });
   const onSaveMaster = () =>
     design &&
     run(async () =>
@@ -188,6 +195,7 @@ export function Toolbar() {
       const meta = saveDesign(design, browserKV());
       setDesignId(meta.id); // subsequent saves overwrite (no history churn)
       refreshSaved();
+      toastSuccess('Saved to this browser');
     });
   const onLoad = (id: string) => {
     const d = loadDesign(id, browserKV());
@@ -207,6 +215,7 @@ export function Toolbar() {
     run(async () => {
       const saved = await api.createDesign(design);
       if (saved.id) setDesignId(saved.id);
+      toastSuccess('Saved to cloud');
     });
   const openCloudList = () =>
     run(async () => {
@@ -359,11 +368,6 @@ export function Toolbar() {
         <button type="button" onClick={onSaveMaster} disabled={!design || busy} title="Download editable master (.stiq.json)">
           Master
         </button>
-        {err && (
-          <span className="toolbar-err" title={err}>
-            ⚠ {err}
-          </span>
-        )}
       </div>
       {pendingImage && (
         <DigitizeDialog

@@ -27,6 +27,10 @@ _USERNAME_RE = re.compile(r"^[A-Za-z0-9 _-]+$")
 PIN_MIN_LEN = 4
 PIN_MAX_LEN = 64
 
+# Session-token cap per user: bounds file growth for ~100 LAN users; oldest
+# tokens (by issued_at) are evicted when a user exceeds this.
+MAX_SESSIONS_PER_USER = 20
+
 
 class DuplicateUsernameError(Exception):
     """Raised when a username (case-insensitive) is already taken."""
@@ -145,6 +149,55 @@ class UserStore:
             profiles = [self._public(r) for r in self._data["profiles"].values()]
         return sorted(profiles, key=lambda p: p["createdAt"])
 
+    def issue_token(self, user_id: str) -> str:
+        """Mint a new session token for user_id; evict oldest past the cap."""
+        with self._lock:
+            if user_id not in self._data["profiles"]:
+                raise KeyError(f"Unknown user_id: {user_id}")
+            token = secrets.token_urlsafe(32)
+            sessions = self._data["sessions"]
+            sessions[token] = {
+                "user_id": user_id,
+                "issued_at": datetime.now(UTC).isoformat(),
+            }
+            owned = sorted(
+                (t for t, s in sessions.items() if s["user_id"] == user_id),
+                key=lambda t: sessions[t]["issued_at"],
+            )
+            for stale in owned[: max(0, len(owned) - MAX_SESSIONS_PER_USER)]:
+                del sessions[stale]
+            self._save()
+            return token
+
+    def verify_token(self, token: str) -> dict | None:
+        """Public profile for a live token, or None (incl. deleted profiles)."""
+        with self._lock:
+            session = self._data["sessions"].get(token)
+            if session is None:
+                return None
+            record = self._data["profiles"].get(session["user_id"])
+            if record is None:
+                return None
+            return self._public(record)
+
+    def login(self, username: str, pin: str | None) -> tuple[dict, str] | None:
+        """Case-insensitive login; PIN required only when the profile has one."""
+        record = self.get_by_username(username)
+        if record is None:
+            return None
+        # A profile without a PIN accepts any (ignored) pin argument.
+        has_pin = record["pin_hash"] is not None
+        if has_pin and (pin is None or not self.verify_pin(record["user_id"], pin)):
+            return None
+        return self._public(record), self.issue_token(record["user_id"])
+
+    def revoke_token(self, token: str) -> bool:
+        with self._lock:
+            if self._data["sessions"].pop(token, None) is None:
+                return False
+            self._save()
+            return True
+
 
 # Default store location: apps/backend/data/local_users.json.
 _DEFAULT_PATH = Path(__file__).resolve().parents[2] / "data" / "local_users.json"
@@ -165,3 +218,19 @@ def reset_store_cache() -> None:
     """Drop the cached store so tests can repoint via STITCHIQ_USER_STORE."""
     global _store
     _store = None
+
+
+def resolve_bearer(authorization: str | None) -> str | None:
+    """Map an Authorization header to a user_id via the process-wide store.
+
+    Accepts only `Bearer <token>` (scheme case-insensitive); anything else,
+    or a token that does not verify, yields None. This is the single hook
+    intended for HTTP-layer auth integration.
+    """
+    if not authorization:
+        return None
+    parts = authorization.split(None, 1)
+    if len(parts) != 2 or parts[0].lower() != "bearer":
+        return None
+    profile = get_store().verify_token(parts[1].strip())
+    return profile["userId"] if profile else None

@@ -35,6 +35,51 @@ _FONT_GLOBS = [
 ]
 
 
+# Bounds response size on font-heavy systems (a full OS font dir can hold thousands).
+_MAX_FONTS = 200
+_FONT_EXTS = (".ttf", ".otf", ".ttc")  # formats PIL's FreeType loader accepts
+
+
+def _font_files() -> list[str]:
+    """Candidate font paths, in priority order (user dirs first so the cap favors them)."""
+    files: list[str] = []
+    # Repo fonts dir sits at <apps/backend>/fonts, two levels above this service file.
+    repo_dir = os.path.join(os.path.dirname(__file__), "..", "..", "fonts")
+    for root_dir in (os.environ.get("STITCHIQ_FONTS_DIR"), repo_dir):
+        if not root_dir or not os.path.isdir(root_dir):  # both dirs may not exist
+            continue
+        for base, _dirs, names in os.walk(root_dir):
+            files.extend(
+                os.path.join(base, n) for n in names if n.lower().endswith(_FONT_EXTS)
+            )
+    files.extend(p for p in _FONT_CANDIDATES if os.path.isfile(p))
+    for pattern in _FONT_GLOBS:
+        files.extend(glob.glob(pattern, recursive=True))
+    return files
+
+
+def list_fonts() -> list[dict]:
+    """Fonts usable for lettering: [{"name", "path"}, ...] sorted by display name."""
+    from PIL import ImageFont
+
+    seen: set[str] = set()
+    fonts: list[dict] = []
+    for path in _font_files():
+        real = os.path.realpath(path)
+        if real in seen or not os.path.isfile(real):
+            continue
+        seen.add(real)
+        try:
+            family, style = ImageFont.truetype(real, 12).getname()
+        except OSError:  # present on disk but not a decodable font
+            continue
+        name = family if style in ("Regular", "Book") else f"{family} {style}"
+        fonts.append({"name": name, "path": real})
+        if len(fonts) >= _MAX_FONTS:
+            break
+    return sorted(fonts, key=lambda f: f["name"])
+
+
 def find_font(preferred: str | None = None) -> str:
     """Locate a usable TrueType font file; raise if none is found."""
     candidates = ([preferred] if preferred else []) + _FONT_CANDIDATES
@@ -83,6 +128,10 @@ def _unsupported_glyphs(text: str, font) -> list[str]:
 # height_mm, so px-per-mm for spacing conversion is (ink_px_height / height_mm).
 _RENDER_FONT_PX = 160
 _TEXT_MARGIN_PX = 12  # white border around the rendered text bitmap
+
+# Thread is ~0.4mm wide; below 4mm letter height, counters and strokes merge
+# into unreadable stitching — reject rather than silently upsize.
+_MIN_HEIGHT_MM = 4.0
 
 
 def _compose_text_image(text: str, font, letter_spacing_mm: float, height_mm: float):
@@ -157,7 +206,9 @@ def generate_lettering(
     text = (text or "").strip()
     if not text:
         raise ValueError("Text is empty")
-    height_mm = max(5.0, min(float(height_mm), 100.0))
+    if float(height_mm) < _MIN_HEIGHT_MM:
+        raise ValueError("text below 4mm cannot be embroidered legibly")
+    height_mm = min(float(height_mm), 100.0)
 
     try:
         font = ImageFont.truetype(find_font(font_path), size=_RENDER_FONT_PX)

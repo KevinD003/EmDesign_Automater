@@ -27,7 +27,7 @@ async def digitize(
         raise HTTPException(status_code=415, detail=str(exc)) from exc
     except ModuleNotFoundError as exc:
         raise HTTPException(status_code=503, detail=f"Digitizer dependency missing: {exc.name}") from exc
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Digitizing failed: {exc}") from exc
     if file.filename:
         design.name = file.filename.rsplit(".", 1)[0]

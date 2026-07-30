@@ -19,6 +19,7 @@ import httpx
 from app.config import settings
 from app.models.design import Design
 
+
 def is_enabled() -> bool:
     """True when a Supabase URL + service key are configured."""
     return bool(settings.supabase_url and settings.supabase_service_key)

@@ -1,48 +1,48 @@
-         3164524 function calls (3112683 primitive calls) in 16.003 seconds
+         3164557 function calls (3112716 primitive calls) in 16.782 seconds
 
    Ordered by: cumulative time
    List reduced from 6100 to 40 due to restriction <40>
 
    ncalls  tottime  percall  cumtime  percall filename:lineno(function)
-        1    0.161    0.161   16.005   16.005 /home/user/EmDesign_Automater/apps/backend/app/services/digitizer.py:432(digitize_image)
-       21    0.076    0.004   11.798    0.562 /home/user/EmDesign_Automater/apps/backend/app/services/digitizer.py:2097(_skeleton_satin_hires)
-       21    0.016    0.001   11.630    0.554 /home/user/EmDesign_Automater/apps/backend/app/services/digitizer.py:2129(_skeleton_satin)
-       21    0.052    0.002    5.979    0.285 /home/user/EmDesign_Automater/apps/backend/app/services/digitizer.py:2061(_axis_branches)
-       19    0.069    0.004    3.743    0.197 /home/user/EmDesign_Automater/apps/backend/app/services/digitizer.py:2080(_uncovered_mask)
-       21    1.361    0.065    3.718    0.177 /home/user/EmDesign_Automater/apps/backend/app/services/digitizer.py:1231(_zhang_suen_thin)
-     1704    3.605    0.002    3.605    0.002 {dilate}
-        1    0.000    0.000    2.766    2.766 /home/user/EmDesign_Automater/apps/backend/app/services/segmentation.py:160(foreground_mask)
-        1    0.001    0.001    2.765    2.765 /home/user/EmDesign_Automater/apps/backend/app/services/segmentation.py:64(_rembg_mask)
-     3024    0.706    0.000    2.018    0.001 {built-in method builtins.sum}
-       21    0.155    0.007    1.531    0.073 /home/user/EmDesign_Automater/apps/backend/app/services/digitizer.py:1289(_prune_spurs)
-   1704/8    0.007    0.000    1.440    0.180 <frozen importlib._bootstrap>:1165(_find_and_load)
-    984/8    0.004    0.000    1.439    0.180 <frozen importlib._bootstrap>:1120(_find_and_load_unlocked)
-  2359/10    0.001    0.000    1.439    0.144 <frozen importlib._bootstrap>:233(_call_with_frames_removed)
-    946/8    0.004    0.000    1.438    0.180 <frozen importlib._bootstrap>:666(_load_unlocked)
-    847/8    0.002    0.000    1.438    0.180 <frozen importlib._bootstrap_external>:934(exec_module)
-    964/8    0.012    0.000    1.435    0.179 {built-in method builtins.exec}
-        1    0.000    0.000    1.414    1.414 /home/user/EmDesign_Automater/apps/backend/.venv/lib/python3.11/site-packages/rembg/__init__.py:1(<module>)
-        1    0.000    0.000    1.411    1.411 /home/user/EmDesign_Automater/apps/backend/.venv/lib/python3.11/site-packages/rembg/bg.py:1(<module>)
-    11880    1.076    0.000    1.309    0.000 /home/user/EmDesign_Automater/apps/backend/app/services/digitizer.py:1274(<genexpr>)
-       19    0.003    0.000    1.298    0.068 /home/user/EmDesign_Automater/apps/backend/app/services/digitizer.py:2025(_satin_columns)
-     9646    0.007    0.000    1.288    0.000 /home/user/EmDesign_Automater/apps/backend/.venv/lib/python3.11/site-packages/numpy/_core/fromnumeric.py:48(_wrapfunc)
-     5262    0.002    0.000    1.263    0.000 /home/user/EmDesign_Automater/apps/backend/.venv/lib/python3.11/site-packages/numpy/_core/fromnumeric.py:1993(nonzero)
-     5262    1.257    0.000    1.257    0.000 {method 'nonzero' of 'numpy.ndarray' objects}
-   363/78    0.001    0.000    1.183    0.015 {built-in method builtins.__import__}
-       43    0.114    0.003    1.142    0.027 /home/user/EmDesign_Automater/apps/backend/app/services/digitizer.py:1326(_skeleton_branches)
-        1    0.000    0.000    1.018    1.018 /home/user/EmDesign_Automater/apps/backend/.venv/lib/python3.11/site-packages/pymatting/__init__.py:1(<module>)
-       19    0.009    0.000    0.970    0.051 /home/user/EmDesign_Automater/apps/backend/app/services/digitizer.py:1566(_assign_boundary)
-       19    0.474    0.025    0.958    0.050 /home/user/EmDesign_Automater/apps/backend/app/services/digitizer.py:1532(_nearest_axis)
-        1    0.000    0.000    0.936    0.936 /home/user/EmDesign_Automater/apps/backend/app/services/segmentation.py:95(_rembg_session)
-        1    0.000    0.000    0.936    0.936 /home/user/EmDesign_Automater/apps/backend/.venv/lib/python3.11/site-packages/rembg/session_factory.py:10(new_session)
-        1    0.000    0.000    0.936    0.936 /home/user/EmDesign_Automater/apps/backend/.venv/lib/python3.11/site-packages/rembg/sessions/base.py:13(__init__)
-6768/6035    0.008    0.000    0.801    0.000 <frozen importlib._bootstrap>:1207(_handle_fromlist)
-        1    0.000    0.000    0.774    0.774 /home/user/EmDesign_Automater/apps/backend/.venv/lib/python3.11/site-packages/pymatting/util/__init__.py:1(<module>)
-    74/29    0.001    0.000    0.728    0.025 /home/user/EmDesign_Automater/apps/backend/.venv/lib/python3.11/site-packages/numba/core/decorators.py:204(wrapper)
-        1    0.000    0.000    0.713    0.713 /home/user/EmDesign_Automater/apps/backend/.venv/lib/python3.11/site-packages/pymatting/util/kdtree.py:1(<module>)
-       29    0.001    0.000    0.709    0.024 /home/user/EmDesign_Automater/apps/backend/.venv/lib/python3.11/site-packages/numba/core/dispatcher.py:860(compile)
-       29    0.000    0.000    0.699    0.024 /home/user/EmDesign_Automater/apps/backend/.venv/lib/python3.11/site-packages/numba/core/caching.py:713(load_overload)
-        1    0.000    0.000    0.635    0.635 /home/user/EmDesign_Automater/apps/backend/.venv/lib/python3.11/site-packages/onnxruntime/capi/onnxruntime_inference_collection.py:474(__init__)
-        1    0.192    0.192    0.635    0.635 /home/user/EmDesign_Automater/apps/backend/.venv/lib/python3.11/site-packages/onnxruntime/capi/onnxruntime_inference_collection.py:551(_create_inference_session)
+        1    0.194    0.194   16.783   16.783 /home/user/EmDesign_Automater/apps/backend/app/services/digitizer.py:432(digitize_image)
+       21    0.089    0.004   12.016    0.572 /home/user/EmDesign_Automater/apps/backend/app/services/digitizer.py:2097(_skeleton_satin_hires)
+       21    0.017    0.001   11.840    0.564 /home/user/EmDesign_Automater/apps/backend/app/services/digitizer.py:2129(_skeleton_satin)
+       21    0.055    0.003    6.038    0.288 /home/user/EmDesign_Automater/apps/backend/app/services/digitizer.py:2061(_axis_branches)
+       19    0.089    0.005    3.923    0.206 /home/user/EmDesign_Automater/apps/backend/app/services/digitizer.py:2080(_uncovered_mask)
+     1704    3.628    0.002    3.628    0.002 {dilate}
+       21    1.339    0.064    3.565    0.170 /home/user/EmDesign_Automater/apps/backend/app/services/digitizer.py:1231(_zhang_suen_thin)
+        1    0.000    0.000    2.869    2.869 /home/user/EmDesign_Automater/apps/backend/app/services/segmentation.py:160(foreground_mask)
+        1    0.001    0.001    2.869    2.869 /home/user/EmDesign_Automater/apps/backend/app/services/segmentation.py:64(_rembg_mask)
+     3024    0.765    0.000    1.969    0.001 {built-in method builtins.sum}
+       21    0.196    0.009    1.654    0.079 /home/user/EmDesign_Automater/apps/backend/app/services/digitizer.py:1289(_prune_spurs)
+     9646    0.008    0.000    1.307    0.000 /home/user/EmDesign_Automater/apps/backend/.venv/lib/python3.11/site-packages/numpy/_core/fromnumeric.py:48(_wrapfunc)
+     5262    0.002    0.000    1.282    0.000 /home/user/EmDesign_Automater/apps/backend/.venv/lib/python3.11/site-packages/numpy/_core/fromnumeric.py:1993(nonzero)
+     5262    1.276    0.000    1.276    0.000 {method 'nonzero' of 'numpy.ndarray' objects}
+       19    0.002    0.000    1.235    0.065 /home/user/EmDesign_Automater/apps/backend/app/services/digitizer.py:2025(_satin_columns)
+    11880    0.987    0.000    1.201    0.000 /home/user/EmDesign_Automater/apps/backend/app/services/digitizer.py:1274(<genexpr>)
+   1704/8    0.006    0.000    1.188    0.148 <frozen importlib._bootstrap>:1165(_find_and_load)
+    984/8    0.004    0.000    1.188    0.148 <frozen importlib._bootstrap>:1120(_find_and_load_unlocked)
+  2359/10    0.001    0.000    1.187    0.119 <frozen importlib._bootstrap>:233(_call_with_frames_removed)
+    946/8    0.003    0.000    1.187    0.148 <frozen importlib._bootstrap>:666(_load_unlocked)
+    847/8    0.002    0.000    1.186    0.148 <frozen importlib._bootstrap_external>:934(exec_module)
+    964/8    0.010    0.000    1.181    0.148 {built-in method builtins.exec}
+        1    0.000    0.000    1.159    1.159 /home/user/EmDesign_Automater/apps/backend/.venv/lib/python3.11/site-packages/rembg/__init__.py:1(<module>)
+        1    0.000    0.000    1.157    1.157 /home/user/EmDesign_Automater/apps/backend/.venv/lib/python3.11/site-packages/rembg/bg.py:1(<module>)
+       43    0.138    0.003    1.147    0.027 /home/user/EmDesign_Automater/apps/backend/app/services/digitizer.py:1326(_skeleton_branches)
+        1    0.000    0.000    1.086    1.086 /home/user/EmDesign_Automater/apps/backend/app/services/segmentation.py:95(_rembg_session)
+        1    0.000    0.000    1.086    1.086 /home/user/EmDesign_Automater/apps/backend/.venv/lib/python3.11/site-packages/rembg/session_factory.py:10(new_session)
+        1    0.000    0.000    1.086    1.086 /home/user/EmDesign_Automater/apps/backend/.venv/lib/python3.11/site-packages/rembg/sessions/base.py:13(__init__)
+   363/78    0.001    0.000    0.978    0.013 {built-in method builtins.__import__}
+       19    0.009    0.000    0.900    0.047 /home/user/EmDesign_Automater/apps/backend/app/services/digitizer.py:1566(_assign_boundary)
+       19    0.443    0.023    0.888    0.047 /home/user/EmDesign_Automater/apps/backend/app/services/digitizer.py:1532(_nearest_axis)
+        1    0.000    0.000    0.861    0.861 /home/user/EmDesign_Automater/apps/backend/.venv/lib/python3.11/site-packages/pymatting/__init__.py:1(<module>)
+        1    0.000    0.000    0.832    0.832 /home/user/EmDesign_Automater/apps/backend/.venv/lib/python3.11/site-packages/onnxruntime/capi/onnxruntime_inference_collection.py:474(__init__)
+        1    0.233    0.233    0.832    0.832 /home/user/EmDesign_Automater/apps/backend/.venv/lib/python3.11/site-packages/onnxruntime/capi/onnxruntime_inference_collection.py:551(_create_inference_session)
+        1    0.000    0.000    0.816    0.816 /home/user/EmDesign_Automater/apps/backend/.venv/lib/python3.11/site-packages/numpy/lib/_arraysetops_impl.py:145(unique)
+        1    0.005    0.005    0.816    0.816 /home/user/EmDesign_Automater/apps/backend/.venv/lib/python3.11/site-packages/numpy/lib/_arraysetops_impl.py:350(_unique1d)
+        1    0.804    0.804    0.804    0.804 {method 'sort' of 'numpy.ndarray' objects}
+       43    0.666    0.015    0.666    0.015 {distanceTransform}
+6768/6035    0.006    0.000    0.661    0.000 <frozen importlib._bootstrap>:1207(_handle_fromlist)
+        1    0.000    0.000    0.657    0.657 /home/user/EmDesign_Automater/apps/backend/.venv/lib/python3.11/site-packages/pymatting/util/__init__.py:1(<module>)
 
 

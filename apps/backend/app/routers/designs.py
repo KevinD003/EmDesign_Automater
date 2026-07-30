@@ -2,22 +2,23 @@
 
 Backed by Supabase/Postgres when configured (``db/schema.sql`` applied + service key
 in the env), scoped to the authenticated user (see deps.current_user). Falls back to
-a process-local in-memory dict (keyed by the LOCAL_USER sentinel) when Supabase isn't
-wired, so the app and the offline test suite still run keyless.
+the local_store service when Supabase isn't wired: JSON files under
+``data/designs/<user>/`` (or ``STITCHIQ_DESIGNS_DIR``) in normal runs, an in-memory
+dict under pytest — so the app and the offline test suite still run keyless.
 """
 
 from __future__ import annotations
 
-import itertools
 import logging
 import uuid
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import Field
 
 from app.deps import current_user
 from app.models.design import CamelModel, Design
-from app.services import digitizer, supabase_store
+from app.services import digitizer, local_store, supabase_store
 
 router = APIRouter(tags=["designs"])
 logger = logging.getLogger("stitchiq.designs")
@@ -48,7 +49,7 @@ class DesignStats(CamelModel):
     design_count: int = 0
     total_stitches: int = 0
     total_colors: int = 0
-    recent: list[ActivityItem] = []
+    recent: list[ActivityItem] = Field(default_factory=list)
 
 
 @router.post("/designs/rebuild", response_model=Design)
@@ -64,23 +65,21 @@ async def rebuild(design: Design) -> Design:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
-# In-memory fallback for when Supabase isn't configured (offline dev / CI).
-# Keyed by user so scoping semantics match the cloud path.
-_DESIGNS: dict[tuple[str, str], Design] = {}
-# Monotonic id source — NEVER derive ids from len(_DESIGNS) (a delete would let the next
-# create collide with a still-live id and clobber it).
-_MEM_SEQ = itertools.count(1)
+# Legacy alias: tests/test_designs.py clears this between cases to reset the
+# pytest-mode fallback store. It points at local_store's in-memory dict (only
+# used when running under pytest without STITCHIQ_DESIGNS_DIR) — never rebind.
+_DESIGNS = local_store._MEMORY
 
 
 @router.get("/designs", response_model=list[Design])
 async def list_designs(user_id: str = Depends(current_user)) -> list[Design]:
-    """List the caller's saved designs (metadata). Cloud when configured, else in-memory."""
+    """List the caller's saved designs (metadata). Cloud when configured, else local files."""
     if supabase_store.is_enabled():
         try:
             return await supabase_store.list_designs(user_id)
         except httpx.HTTPError as exc:
             raise _storage_error(exc) from exc
-    return [d for (uid, _), d in _DESIGNS.items() if uid == user_id]
+    return local_store.list_designs(user_id)
 
 
 @router.get("/designs/stats", response_model=DesignStats)
@@ -91,15 +90,7 @@ async def stats(user_id: str = Depends(current_user)) -> DesignStats:
             return DesignStats.model_validate(await supabase_store.design_stats(user_id))
         except httpx.HTTPError as exc:
             raise _storage_error(exc) from exc
-    designs = [d for (uid, _), d in _DESIGNS.items() if uid == user_id]
-    return DesignStats(
-        design_count=len(designs),
-        total_stitches=sum(d.stitch_count for d in designs),
-        total_colors=sum(len(d.color_stops) for d in designs),
-        recent=[
-            ActivityItem(id=d.id or "", name=d.name, stitch_count=d.stitch_count) for d in designs[:8]
-        ],
-    )
+    return DesignStats.model_validate(local_store.design_stats(user_id))
 
 
 @router.get("/designs/{design_id}", response_model=Design)
@@ -114,7 +105,7 @@ async def get_design(design_id: str, user_id: str = Depends(current_user)) -> De
         except httpx.HTTPError as exc:
             raise _storage_error(exc) from exc
     else:
-        design = _DESIGNS.get((user_id, design_id))
+        design = local_store.get_design(design_id, user_id)
     if design is None:
         raise HTTPException(status_code=404, detail="design not found")
     return design
@@ -128,11 +119,9 @@ async def create_design(design: Design, user_id: str = Depends(current_user)) ->
             return await supabase_store.create_design(design, user_id)
         except httpx.HTTPError as exc:
             raise _storage_error(exc) from exc
-    # In-memory fallback: synthesize a monotonic id (never reused after a delete).
-    new_id = design.id or f"mem-{next(_MEM_SEQ)}"
-    stored = design.model_copy(update={"id": new_id})
-    _DESIGNS[(user_id, new_id)] = stored
-    return stored
+    # Local fallback: local_store assigns a fresh uuid4 hex when the id is absent
+    # or unsafe, so ids are never reused after a delete.
+    return local_store.create_design(design, user_id)
 
 
 @router.delete("/designs/{design_id}", status_code=204)
@@ -145,4 +134,4 @@ async def delete_design(design_id: str, user_id: str = Depends(current_user)) ->
         except httpx.HTTPError as exc:
             raise _storage_error(exc) from exc
     else:
-        _DESIGNS.pop((user_id, design_id), None)
+        local_store.delete_design(design_id, user_id)

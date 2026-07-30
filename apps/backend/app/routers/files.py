@@ -22,7 +22,7 @@ async def parse_file(file: UploadFile = File(...)) -> Design:
         design = embroidery_io.read_embroidery(data, ext)
     except ValueError as exc:
         raise HTTPException(status_code=415, detail=str(exc)) from exc
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Failed to parse file: {exc}") from exc
     if filename:
         design.name = filename

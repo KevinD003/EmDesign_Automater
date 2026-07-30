@@ -8,6 +8,7 @@ import { StitchPlayer } from './components/player/StitchPlayer';
 import { StitchCanvas } from './components/canvas/StitchCanvas';
 import { TrueView3D } from './components/trueview/TrueView3D';
 import { Dashboard } from './components/dashboard/Dashboard';
+import { Toasts } from './components/feedback/Toasts';
 import { AuthBar } from './components/auth/AuthBar';
 import { useDesignStore } from './store/designStore';
 import { useAuthStore } from './store/authStore';
@@ -105,6 +106,7 @@ export default function App() {
           <StitchPlayer />
         </>
       )}
+      <Toasts />
     </div>
   );
 }

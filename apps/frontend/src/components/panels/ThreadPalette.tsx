@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '../../api/client';
 import { useDesignStore } from '../../store/designStore';
 import type { Thread } from '../../types/design';
+import { toastError } from '../feedback/toastStore';
 
 /** Thread palette (spec §4.4). Loads the catalog; click a swatch to apply it to the selected
  * stop, or snap the stop's current color to the nearest real (orderable) catalog thread. */
@@ -33,8 +34,11 @@ export function ThreadPalette() {
     setBusy(true);
     try {
       apply(await api.matchThread(stop.hex));
-    } catch {
-      /* leave the color as-is on failure */
+    } catch (ex) {
+      // Color is left as-is; surface why the match didn't apply.
+      toastError(
+        ex instanceof Error ? `Thread match failed — ${ex.message}` : 'Thread match failed — try again',
+      );
     } finally {
       setBusy(false);
     }

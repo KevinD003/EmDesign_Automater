@@ -31,6 +31,29 @@ _CMD_TO_STR: dict[int, str] = {
 }
 _STR_TO_CMD: dict[str, int] = {v: k for k, v in _CMD_TO_STR.items()}
 
+# DST 'LA:' header field width — the DST writer space-pads/truncates to this,
+# so names are capped here to keep the stored value predictable.
+_DST_NAME_MAX = 16
+
+# PES v1 (pyembroidery's default) truncates the stored name to 8 chars; v6
+# keeps the full name (surfaced as extras['name'] on re-read) and is readable
+# by modern Brother machines and by pyembroidery itself.
+_PES_VERSION = 6
+
+# read_embroidery fallback when a file carries no usable name metadata.
+_DEFAULT_IMPORT_NAME = "Imported design"
+
+
+def _machine_name(name: str | None) -> str:
+    """Sanitize a design name for machine-file headers.
+
+    DST/PES header fields are ASCII; non-ASCII bytes corrupt the fixed-width
+    DST 'LA:' field, so anything outside printable ASCII is dropped.
+    """
+    cleaned = (name or "").strip().encode("ascii", "ignore").decode("ascii")
+    cleaned = "".join(ch for ch in cleaned if ch.isprintable()).strip()
+    return cleaned[:_DST_NAME_MAX] or "design"
+
 
 def _supported_read_exts() -> set[str]:
     """Extensions pyembroidery can read (defensive: falls back to a known set)."""
@@ -99,8 +122,18 @@ def read_embroidery(data: bytes, ext: str) -> Design:
                 )
             )
 
+    # Stored design name: DST re-reads expose extras['name'] (LA: field), PES
+    # exposes extras['Name'] (v1) or extras['name'] (v6). Missing/blank -> default.
+    extras = getattr(pattern, "extras", None) or {}
+    raw_name = str(extras.get("name") or extras.get("Name") or "").strip()
+    # DST writers (pyembroidery included) stamp 'Untitled' into LA: when no
+    # name was set — that filler counts as no metadata, not a real name.
+    if raw_name.lower() == "untitled":
+        raw_name = ""
+    name = raw_name or _DEFAULT_IMPORT_NAME
+
     return Design(
-        name="Imported design",
+        name=name,
         width_mm=round((maxx - minx) / _TENTHS, 2),
         height_mm=round((maxy - miny) / _TENTHS, 2),
         stitch_count=pattern.count_stitches(),
@@ -136,11 +169,15 @@ def write_embroidery(design: Design, ext: str) -> bytes:
     if last != "END":
         pattern.end()
 
+    # Carry the design name into the machine file (DST 'LA:' field / PES Name).
+    pattern.metadata("name", _machine_name(design.name))
+
     # Same path-after-close constraint as read_embroidery above.
     tmp = tempfile.NamedTemporaryFile(suffix=f".{ext}", delete=False)  # noqa: SIM115
     try:
         tmp.close()
-        pe.write(pattern, tmp.name)
+        settings = {"pes version": _PES_VERSION} if ext == "pes" else None
+        pe.write(pattern, tmp.name, settings)
         with open(tmp.name, "rb") as fh:
             return fh.read()
     finally:

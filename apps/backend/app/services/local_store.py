@@ -37,6 +37,9 @@ _UNSAFE_USER_CHARS_RE = re.compile(r"[^A-Za-z0-9@._-]")
 # Dashboard "recent" list cap — mirrors supabase_store.design_stats.
 _RECENT_LIMIT = 8
 
+# Hard cap on a design name's length — keeps library rows and JSON payloads bounded.
+_MAX_NAME_LEN = 200
+
 # In-memory backend, keyed (user_id, design_id). The NAME is load-bearing: the
 # designs router aliases it for legacy-test compatibility — mutate, never rebind.
 _MEMORY: dict[tuple[str, str], Design] = {}
@@ -135,6 +138,44 @@ def list_designs(user_id: str) -> list[Design]:
     designs = _all_designs(user_id)
     designs.sort(key=lambda d: d.created_at or "", reverse=True)
     return [d.model_copy(update={"stitches": []}) for d in designs]
+
+
+def update_design(design_id: str, design: Design, user_id: str) -> Design | None:
+    """Overwrite an existing design; None when absent or the id is unsafe (callers 404).
+
+    The stored copy's ``createdAt`` is preserved so newest-first ordering keeps
+    reflecting creation time — autosaves never reshuffle the library.
+    """
+    existing = get_design(design_id, user_id)
+    if existing is None:
+        return None
+    stored = design.model_copy(
+        # Legacy files may lack a stamp; stamping now keeps ordering deterministic.
+        update={"id": design_id, "created_at": existing.created_at or _now_iso()}
+    )
+    if not _use_disk():
+        _MEMORY[(user_id, design_id)] = stored
+        return stored
+    _atomic_write(
+        _user_dir(user_id) / f"{design_id}.json", stored.model_dump(by_alias=True)
+    )
+    return stored
+
+
+def rename_design(design_id: str, name: str, user_id: str) -> Design | None:
+    """Set only the design's name; None when absent/unsafe (callers 404).
+
+    Raises ValueError for empty/whitespace-only names — validation, not not-found;
+    the router maps it to 422. The name is stripped and capped at _MAX_NAME_LEN.
+    Returns the FULL stored design (stitches included), same fidelity as get_design.
+    """
+    cleaned = (name or "").strip()[:_MAX_NAME_LEN]
+    if not cleaned:
+        raise ValueError("name must not be empty")
+    existing = get_design(design_id, user_id)
+    if existing is None:
+        return None
+    return update_design(design_id, existing.model_copy(update={"name": cleaned}), user_id)
 
 
 def delete_design(design_id: str, user_id: str) -> None:

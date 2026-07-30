@@ -68,6 +68,15 @@ describe('toastStore', () => {
     expect(kinds).toEqual(['error', 'success', 'info']);
   });
 
+  it('toastError from plain (non-React) code appends an error toast', () => {
+    // Toolbar's run() catch and manual-tool guards call toastError outside any
+    // React render — the module-level helper must reach the store directly.
+    const id = toastError('rebuild failed: HTTP 500');
+    const { toasts } = useToastStore.getState();
+    expect(toasts).toHaveLength(1);
+    expect(toasts[0]).toEqual({ id, kind: 'error', message: 'rebuild failed: HTTP 500' });
+  });
+
   it('exports a TTL for every kind', () => {
     expect(TOAST_TTL_MS.error).toBeGreaterThan(0);
     expect(TOAST_TTL_MS.success).toBeGreaterThan(0);
