@@ -157,6 +157,75 @@ def _corner_mask(img):
     return (dist >= 40.0).astype(np.uint8) * 255
 
 
+# A component U2-Net dropped is reclaimed when it is at least this far (in BGR
+# distance) from the substrate colour — i.e. unmistakably ink rather than a
+# shadow or a compression artefact. Same threshold family as _corner_mask's 40.
+_INK_DELTA = 60.0
+# ...and at least this share of the frame, so JPEG speckle and stray pixels are
+# not promoted into objects. 0.02% of a 900x900 frame is ~160px: far below a
+# 8mm letter, far above noise.
+_INK_MIN_AREA_FRAC = 0.0002
+# ...and NO MORE than this share, which is what separates a missed detail from a
+# missed background. Measured on the case that motivated the rule and on the two
+# fixtures that must not regress:
+#   wordmark under a logo mark   0.29% / 0.14% / 0.12% of frame
+#   fixture 09 photographic bg   9.19% / 6.94%
+#   fixture 03 gradient bg      11.21%
+# 2% sits ~7x above the largest real detail and ~3.5x below the smallest true
+# background. Rationale: U2-Net reliably finds LARGE salient regions, so a large
+# area it excluded was excluded on purpose; only small pieces are its blind spot.
+_INK_MAX_AREA_FRAC = 0.02
+# A reclaim candidate within this many pixels of the kept mask counts as that
+# mask's own edge, not a separate missed element.
+_ATTACHED_GAP_PX = 3
+
+
+def _reclaim_ink(img, mask):
+    """Add back flat-graphic regions the neural matte discarded (v2 Part 22).
+
+    U2-Net is trained to find the photographic SUBJECT, so on a logo it keeps
+    the mark and silently deletes everything it reads as surrounding decoration
+    — measured on a new emblem: the wordmark under the mark came back with
+    **zero** foreground pixels, so the company name simply never reached the
+    digitizer. That is the single most common logo layout there is.
+
+    Reclaiming is deliberately conservative: only connected components that are
+    strongly non-substrate in colour AND big enough to sew are restored, so a
+    genuine photographic background (fixture 09) stays out. Returns a new mask;
+    the input is not modified.
+    """
+    import cv2
+    import numpy as np
+
+    substrate = np.array(
+        [img[0, 0], img[0, -1], img[-1, 0], img[-1, -1]], dtype=np.float32
+    ).mean(axis=0)
+    ink = (np.linalg.norm(img.astype(np.float32) - substrate, axis=2) >= _INK_DELTA)
+    missed = (ink & (mask == 0)).astype(np.uint8)
+    if not missed.any():
+        return mask
+    n, labels, stats, _c = cv2.connectedComponentsWithStats(missed, connectivity=8)
+    frame = img.shape[0] * img.shape[1]
+    min_area = max(16, int(_INK_MIN_AREA_FRAC * frame))
+    max_area = int(_INK_MAX_AREA_FRAC * frame)
+    # Only components DETACHED from what the matte already kept are reclaimed.
+    # A wholly-missed element (the wordmark below a mark) sits well clear of the
+    # subject; a component touching the existing mask is the matte's own edge
+    # being a pixel tight, and re-adding it just fattens shapes and adds spill
+    # (measured: reclaiming attached fringe cost fixture 05 -0.5 interior and
+    # +2.2 spill for no recovered content).
+    near = cv2.dilate(mask, np.ones((2 * _ATTACHED_GAP_PX + 1,) * 2, np.uint8))
+    out = mask.copy()
+    for i in range(1, n):
+        if not (min_area <= stats[i, cv2.CC_STAT_AREA] <= max_area):
+            continue
+        comp = labels == i
+        if near[comp].any():
+            continue
+        out[comp] = 255
+    return out
+
+
 def foreground_mask(img, data: bytes | None = None) -> tuple[object, str]:
     """Return ``(mask, method)``: uint8 mask (255 = foreground) + which tier won.
 
@@ -172,7 +241,7 @@ def foreground_mask(img, data: bytes | None = None) -> tuple[object, str]:
         if mask is not None:
             if mask.shape[:2] != (h, w):
                 mask = cv2.resize(mask, (w, h), interpolation=cv2.INTER_NEAREST)
-            return mask, "rembg"
+            return _reclaim_ink(img, mask), "rembg"
 
     try:
         mask = _flood_mask(img)
