@@ -3,9 +3,9 @@
 Localhost / LAN deployment, ~100 users. Every command here is copy-pasteable as written.
 Verified environment: venv Python 3.11.15, uvicorn 0.51.0, fastapi 0.140.10.
 
-An earlier draft of this file (measured load numbers, backup commands) is preserved at
-`git show 3a1d279:docs/LAUNCH.md` — source material for the sections still marked as
-placeholders below.
+Security posture and the keyless-mode caveat were corrected in v2 Part 21 after an adversarial
+review found (and this branch fixed) missing authorization; §4 records the verification.
+An earlier draft with the original measured load numbers is at `git show 3a1d279:docs/LAUNCH.md`.
 
 ## 0. Preflight
 
@@ -51,7 +51,7 @@ WARN never blocks launch, but each one means something:
 - `port-8000` / `port-5173` — "port in use". Usually the app is still running from an earlier
   session; kill it, or launch dies with "address already in use".
 - `env-file` — no `apps/backend/.env`, i.e. **keyless mode**. This is a launch decision, not
-  noise: it forces `--workers 1` (§1) and puts every user in one shared design bucket (§4).
+  noise: it forces `--workers 1` (§1). Designs ARE per-user isolated in this mode (§4).
 - `frontend-deps` — run `npm install` before `npm run build` (§2).
 - `disk-space` — under 5 GB. Uploads, exports and the build output all share this volume.
 
@@ -98,8 +98,10 @@ process:
   from that in-process snapshot. With >1 worker: a login/registration handled by worker A is
   invisible to worker B, and B's next write clobbers A's. Users get random "unknown user" /
   logged-out responses. This is the hard blocker.
-- `app/middleware/rate_limit.py` — per-process sliding window, deliberately not shared. N workers
-  means the effective per-IP limit is N × 120 requests / 10 s.
+- `app/middleware/rate_limit.py` — per-process sliding window, deliberately not shared, so N
+  workers means N × the budget. Since v2 Part 21 the bucket key is the caller's session token
+  (falling back to the forwarded client IP from a trusted local proxy), so users behind Vite's
+  proxy no longer share one bucket — before that fix the whole LAN shared 12 req/s.
 - `app/services/local_store.py` — designs are one JSON file per design under
   `data/designs/<user>/`, written atomically (tmp + `os.replace`). This part *is* multi-worker safe
   on one machine; it is not what forces `--workers 1`.
@@ -263,21 +265,32 @@ The keyless risk is real, but it is about *privacy*, not durability — see the 
 | Frontend bundle | `apps/frontend/dist/` | Yes | None needed — regenerate with `npm run build` (§2) |
 | Server logs | `logs/` | Yes | Optional; see §5 |
 
-### THE keyless caveat — read before launching without Supabase
+### Keyless mode IS per-user isolated (fixed in v2 Part 21)
 
-With no `apps/backend/.env`, `app/deps.py` returns the sentinel user `"local-dev"` for **every
-request, with no authentication at all**. All ~100 users therefore share **one** server-side
-design library under `data/designs/local-dev/`. Everyone can see, rename and delete everyone
-else's cloud-saved designs. Per-user isolation exists only in Supabase mode.
+Earlier drafts of this runbook warned that keyless mode shared one library across all users.
+**That was true, it was a real vulnerability, and it is fixed.** `app/deps.py` now resolves the
+`Authorization: Bearer` token to a local account and returns **401** when it is missing or
+invalid; designs are stored under the account's real user id, not a `local-dev` sentinel.
 
-Nothing is lost on restart — but nothing is private either, and one user's "delete" is
-everyone's.
+Verified by replaying the exact attack that found it, against a live server:
 
-### Pre-launch action line
+| Attempt | Result |
+|---|---|
+| Bob lists designs with his own token | `[]` — Alice's are invisible |
+| Bob reads Alice's design by id | `404` |
+| **Anonymous** (no `Authorization` header) lists designs | `401` |
+| **Anonymous** DELETEs Alice's design | `401` |
+| Alice re-reads her own design | `200`, intact |
 
-**If launching keyless, announce this before users log in:** "Save to cloud is *shared* — every
-user on this server sees the same library, and it is not private. Anything you care about,
-keep with Export / Download production package (ZIP) onto your own machine."
+Two consequences for launch day:
+
+- **Users must create a profile** (username + PIN) before saving server-side. Until the first
+  profile exists the server stays open, so create yours first.
+- **Sessions expire after 12 hours** (`SESSION_TTL_HOURS`). A day-long event is fine; a
+  multi-day one means users log in again.
+
+Still true regardless of mode: server-side saves survive restarts, and users should Export
+anything they care about onto their own machine.
 
 ### Manual backup — local files
 
