@@ -5,6 +5,7 @@ import type { Group as KonvaGroup } from 'konva/lib/Group';
 import type { ColorStop, Stitch } from '../../types/design';
 import { buildRuns, computeBounds } from '../../lib/stitches';
 import { useDesignStore } from '../../store/designStore';
+import { formatZoomPct, wheelZoom, zoomIn, zoomOut } from './zoom';
 
 interface StitchCanvasProps {
   stitches?: Stitch[];
@@ -22,6 +23,35 @@ interface StitchCanvasProps {
 const DEFAULT_HOOP = { minX: 0, minY: 0, maxX: 100, maxY: 100 }; // mm, when drawing on a blank canvas
 const FABRIC_MARGIN_MM = 6; // fabric backdrop extends this far beyond the design bounds
 const THREAD_WIDTH_MM = 0.4; // draw stitches at physical thread width (min 1.2 screen px)
+
+/** Zoom cluster for trackpad-less / touch users; wheel zoom stays available. */
+function ZoomControls({
+  scale,
+  onChange,
+  onFit,
+}: {
+  scale: number;
+  onChange: (next: number) => void;
+  onFit: () => void;
+}) {
+  // At a bound the step functions are fixed points, so equality is the disable test.
+  const atMin = zoomOut(scale) === scale;
+  const atMax = zoomIn(scale) === scale;
+  return (
+    <div className="zoom-controls">
+      <button type="button" aria-label="Zoom out" disabled={atMin} onClick={() => onChange(zoomOut(scale))}>
+        −
+      </button>
+      <span className="zoom-pct">{formatZoomPct(scale)}</span>
+      <button type="button" aria-label="Zoom in" disabled={atMax} onClick={() => onChange(zoomIn(scale))}>
+        +
+      </button>
+      <button type="button" aria-label="Fit design" onClick={onFit}>
+        Fit
+      </button>
+    </div>
+  );
+}
 
 /**
  * Canvas design editor (spec §3). Renders color-grouped polylines (via the pure
@@ -82,8 +112,11 @@ export function StitchCanvas({
 
   const onWheel = (e: KonvaEventObject<WheelEvent>) => {
     e.evt.preventDefault();
-    const factor = e.evt.deltaY > 0 ? 0.9 : 1.1;
-    setScale((s) => Math.max(0.2, Math.min(10, s * factor)));
+    setScale((s) => wheelZoom(s, e.evt.deltaY));
+  };
+  const onFit = () => {
+    setScale(1);
+    setPos({ x: 0, y: 0 });
   };
   const onDragEnd = (e: KonvaEventObject<DragEvent>) => setPos({ x: e.target.x(), y: e.target.y() });
 
@@ -184,6 +217,7 @@ export function StitchCanvas({
           </Group>
         </Layer>
       </Stage>
+      <ZoomControls scale={scale} onChange={setScale} onFit={onFit} />
       <div className="canvas-badge">
         {drawing
           ? `Drawing ${activeTool} — click to add points (${draft.length}), then Finish. Esc cancels.`

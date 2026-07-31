@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import glob
 import io
+import math
 import os
 
 from app.models.design import Design
@@ -129,9 +130,22 @@ def _unsupported_glyphs(text: str, font) -> list[str]:
 _RENDER_FONT_PX = 160
 _TEXT_MARGIN_PX = 12  # white border around the rendered text bitmap
 
+# Per-glyph rasterisation is cheap (one small bitmap per char), so arc mode renders
+# at 3x the straight path's 160px to keep curve edges clean after per-glyph rotation.
+_ARC_RENDER_FONT_PX = 480
+# Glyph canvas = this multiple of the font size, squared: accents, descenders and
+# side bearings all fit with the draw inset at 1x, so nothing can clip.
+_GLYPH_CANVAS_MULT = 4
+# Past this angular span the text laps around the bottom of the circle and the two
+# ends collide; a full 360 deg would also make the crop meaningless.
+_MAX_ARC_SPAN_DEG = 350.0
+
 # Thread is ~0.4mm wide; below 4mm letter height, counters and strokes merge
 # into unreadable stitching — reject rather than silently upsize.
 _MIN_HEIGHT_MM = 4.0
+
+# Baseline shapes the engine can lay text on; the router mirrors this as a Literal.
+_BASELINES = ("straight", "arc")
 
 
 def _compose_text_image(text: str, font, letter_spacing_mm: float, height_mm: float):
@@ -189,38 +203,196 @@ def _compose_tracked(text: str, font, spacing_px: float, origin: tuple[int, int]
     return img, max(box[3] - box[1], 1)
 
 
+def _load_font(path_or_none: str | None, size_px: int = _RENDER_FONT_PX):
+    """Load a TrueType font at ``size_px``, or raise ValueError if it is undecodable."""
+    from PIL import ImageFont
+
+    try:
+        return ImageFont.truetype(find_font(path_or_none), size=size_px)
+    except OSError as exc:  # exists on disk but is not a decodable font
+        raise ValueError(f"Cannot load font: {exc}") from exc
+
+
+def _render_glyph(ch: str, font) -> tuple:
+    """Rasterise one character → ``(image, advance_px, (offset_x, offset_y))``.
+
+    ``image`` is an 'L' bitmap, ink 255 on black 0, cropped tight to the ink;
+    ``advance_px`` is the pen advance measured before cropping; the offsets are the
+    ink bbox left/top of ``ch`` drawn at the pen origin (0, 0), so a caller pastes at
+    ``(pen_x + offset_x, pen_y + offset_y)``. Whitespace/inkless chars yield
+    ``(None, advance_px, (0, 0))`` — advance the pen without pasting.
+    """
+    from PIL import Image, ImageDraw
+
+    size = int(getattr(font, "size", _ARC_RENDER_FONT_PX))
+    inset = size  # draw origin; leaves >=1 font size of slack on every side
+    span = size * _GLYPH_CANVAS_MULT
+    canvas = Image.new("L", (span, span), 0)
+    draw = ImageDraw.Draw(canvas)
+    advance = float(draw.textlength(ch, font=font))
+    draw.text((inset, inset), ch, font=font, fill=255)
+    # Crop to the ink, NOT to textbbox: textbbox spans the advance width, so it would
+    # bake side bearings into the bitmap and skew the per-glyph rotation centre.
+    box = canvas.getbbox()
+    if box is None:  # whitespace, or a glyph the font renders empty
+        return None, advance, (0, 0)
+    return canvas.crop(box), advance, (box[0] - inset, box[1] - inset)
+
+
+def _arc_layout(text: str, font, spacing_px: float, radius_px: float) -> list[tuple]:
+    """Per-character ``(char, mid_angle_rad, advance_px)`` along an upward arc.
+
+    Angles are measured from the top of the circle, positive clockwise (to the
+    right). Each character owns a slot of ``advance + spacing`` and the slots are
+    laid out symmetrically about the vertical, with the tracking gap split evenly
+    so the ink itself stays centred.
+    """
+    from PIL import Image, ImageDraw
+
+    probe = ImageDraw.Draw(Image.new("L", (8, 8)))
+    advances = [float(probe.textlength(ch, font=font)) for ch in text]
+    gap = spacing_px / radius_px
+    span = sum(a / radius_px + gap for a in advances)
+    if math.degrees(span) > _MAX_ARC_SPAN_DEG:
+        raise ValueError("arc radius too small for this text — increase radius or shorten text")
+    out: list[tuple] = []
+    angle = -span / 2.0 + gap / 2.0  # pen angle of the first glyph
+    for ch, advance in zip(text, advances):
+        arc = advance / radius_px
+        out.append((ch, angle + arc / 2.0, advance))
+        angle += arc + gap
+    return out
+
+
+def _rotated_point(src_size, dst_size, point, theta: float) -> tuple[float, float]:
+    """Where ``point`` lands after ``Image.rotate(-degrees(theta), expand=True)``.
+
+    PIL rotates about the source centre and re-centres the expanded canvas, so the
+    same rotation about the two centres reproduces the mapping (to within PIL's
+    sub-pixel rounding of the expanded size).
+    """
+    a = -theta  # PIL's angle runs counter-clockwise; theta runs clockwise
+    ca, sa = math.cos(a), math.sin(a)
+    vx = point[0] - src_size[0] / 2.0
+    vy = point[1] - src_size[1] / 2.0
+    return (vx * ca + vy * sa + dst_size[0] / 2.0, -vx * sa + vy * ca + dst_size[1] / 2.0)
+
+
+def _paste_arc(placed: list[tuple], th: int):
+    """Union the rotated glyphs onto one canvas → (white-bg RGB image, ``th``)."""
+    from PIL import Image, ImageOps
+
+    if not placed:
+        raise ValueError("Text rendered no ink")
+    x0 = min(x for _g, x, _y in placed)
+    y0 = min(y for _g, _x, y in placed)
+    w = math.ceil(max(x + g.width for g, x, _y in placed) - x0) + 1
+    h = math.ceil(max(y + g.height for g, _x, y in placed) - y0) + 1
+    canvas = Image.new("L", (max(w, 1), max(h, 1)), 0)
+    for glyph, x, y in placed:
+        # Glyph is its own mask: overlapping neighbours union instead of blanking.
+        canvas.paste(glyph, (round(x - x0), round(y - y0)), glyph)
+    box = canvas.getbbox()
+    if box is None:
+        raise ValueError("Text rendered no ink")
+    m = _TEXT_MARGIN_PX
+    ink = ImageOps.invert(canvas.crop(box)).convert("RGB")
+    img = Image.new("RGB", (ink.width + 2 * m, ink.height + 2 * m), "white")
+    img.paste(ink, (m, m))
+    return img, th
+
+
+def _compose_arc_image(
+    text: str, font, letter_spacing_mm: float, height_mm: float, radius_mm: float
+):
+    """Bend ``text`` along an upward (rainbow) arc → (white-bg RGB image, ref ink height).
+
+    The second element is the STRAIGHT ink height of the whole string, i.e. the same
+    measure the straight path hands ``_digitize_text_image`` as ``th`` — so letter
+    height, not the arc's total vertical extent, is what maps onto ``height_mm``.
+    """
+    from PIL import Image, ImageDraw
+
+    probe = ImageDraw.Draw(Image.new("L", (8, 8)))
+    _left, top, _right, bottom = probe.textbbox((0, 0), text, font=font)
+    th = max(bottom - top, 1)
+    if float(radius_mm) < float(height_mm):
+        raise ValueError("arc radius must be at least the letter height")
+    px_per_mm = th / float(height_mm)
+    radius_px = float(radius_mm) * px_per_mm
+    ascent = font.getmetrics()[0]  # default anchor "la" puts the baseline here
+
+    placed: list[tuple] = []
+    for ch, theta, advance in _arc_layout(text, font, letter_spacing_mm * px_per_mm, radius_px):
+        glyph, _advance, (off_x, off_y) = _render_glyph(ch, font)
+        if glyph is None:  # whitespace: the slot advances, nothing is drawn
+            continue
+        rot = glyph.rotate(-math.degrees(theta), expand=True, resample=Image.BICUBIC)
+        anchor = _rotated_point(glyph.size, rot.size, (advance / 2.0 - off_x, ascent - off_y), theta)
+        # Circle centre sits radius_px BELOW the top of the arc, so the text bends up.
+        placed.append(
+            (
+                rot,
+                radius_px * math.sin(theta) - anchor[0],
+                radius_px * (1.0 - math.cos(theta)) - anchor[1],
+            )
+        )
+    return _paste_arc(placed, th)
+
+
+def _compose(
+    text: str,
+    font,
+    baseline: str,
+    letter_spacing_mm: float,
+    height_mm: float,
+    arc_radius_mm: float | None,
+):
+    """Rasterise ``text`` on ``baseline`` → (white-bg RGB image, reference ink height px)."""
+    if baseline == "arc":
+        return _compose_arc_image(text, font, letter_spacing_mm, height_mm, float(arc_radius_mm))
+    return _compose_text_image(text, font, letter_spacing_mm, height_mm)
+
+
 def generate_lettering(
     text: str,
     height_mm: float = 20.0,
     fabric_type: str = "cotton",
     font_path: str | None = None,
     letter_spacing_mm: float = 0.0,
+    baseline: str = "straight",
+    arc_radius_mm: float | None = None,
 ) -> Design:
     """Render ``text`` and digitize it into an embroidery Design.
 
     ``letter_spacing_mm`` adds (negative: removes) tracking between characters;
     0 keeps the classic single-draw rendering with the font's native kerning.
+    ``baseline='arc'`` bends the text upward (rainbow) along a circle of
+    ``arc_radius_mm``, which is required in that mode and must be >= ``height_mm``.
     """
-    from PIL import ImageFont
-
     text = (text or "").strip()
     if not text:
         raise ValueError("Text is empty")
+    if baseline not in _BASELINES:
+        raise ValueError(f"Unknown baseline {baseline!r} — expected one of {', '.join(_BASELINES)}")
+    if baseline == "arc" and arc_radius_mm is None:
+        raise ValueError("arc baseline requires arc_radius_mm")
     if float(height_mm) < _MIN_HEIGHT_MM:
         raise ValueError("text below 4mm cannot be embroidered legibly")
     height_mm = min(float(height_mm), 100.0)
 
-    try:
-        font = ImageFont.truetype(find_font(font_path), size=_RENDER_FONT_PX)
-    except OSError as exc:  # exists on disk but is not a decodable font
-        raise ValueError(f"Cannot load font: {exc}") from exc
+    # Glyph coverage is size-independent, so probe at the straight render size: the
+    # detector's fixed 300px canvas would clip glyphs at the arc path's 3x size.
+    font = _load_font(font_path)
     bad = _unsupported_glyphs(text, font)
     if bad:
         raise ValueError(
             f"Unsupported characters for lettering: {' '.join(bad)!r} — the font has no glyphs for them"
         )
+    if baseline == "arc":
+        font = _load_font(font_path, _ARC_RENDER_FONT_PX)
 
-    img, th = _compose_text_image(text, font, letter_spacing_mm, height_mm)
+    img, th = _compose(text, font, baseline, letter_spacing_mm, height_mm, arc_radius_mm)
     design = _digitize_text_image(img, th, text, height_mm, fabric_type)
     design.name = f'Text "{text}"'
     for stop in design.color_stops:

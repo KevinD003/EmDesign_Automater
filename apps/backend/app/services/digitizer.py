@@ -106,6 +106,14 @@ DETAIL_EMBED_SHARE = 0.6
 MIN_FEATURE_W_MM = 0.25
 SMALL_STROKE_PX = 8.0
 SMALL_STROKE_MAX_SCALE = 3
+# Zero-pixel margin kept around a region when `_skeleton_satin_hires` upscales
+# only the region's box. INTER_CUBIC reads a 4x4 neighbourhood, so 3 zero source
+# pixels already give every sample its full-canvas neighbourhood; 4 is a spare.
+HIRES_CROP_PAD_PX = 4
+# Margin for the windowed distance transform. One px is the proven requirement
+# (see `_distance_transform`); 8 leaves the 5x5 chamfer's stepping room to spare
+# at a cost of a few hundred pixels.
+DT_WINDOW_PAD_PX = 8
 
 # ── v2 Part 1: layer preservation + contour smoothing ────────────────────────
 # Two clusters closer than this in BGR are the same thread in practice; merging
@@ -1228,6 +1236,70 @@ UNDERLAY_REPAIR_PASSES = 200   # bound; each pass drops at most one point
 # (03 8.0 -> 9.7, 05 12.2 -> 15.6, 04 47.3 -> 55.3). Removed. Sweep in the audit.
 
 
+# Zhang-Suen's clockwise ring P2..P9 starting north, as (dy, dx) steps. Order is
+# load-bearing: A counts 0→1 transitions ROUND this cycle.
+THIN_RING = ((-1, 0), (-1, 1), (0, 1), (1, 1), (1, 0), (1, -1), (0, -1), (-1, -1))
+
+
+def _thin_state(full):
+    """Crop, pad and index the foreground for one thinning run.
+
+    Crop to the active bounding box (v2 Part 17): thinning iterated full-canvas
+    array passes although a region typically occupies a small fraction of it —
+    profiled at 44s of a 62s fixture at 2x work resolution. Only a foreground
+    pixel can ever be removed, so the loop then carries PADDED FLAT INDICES of
+    the live pixels instead of full-window masks; fixture 07's largest thinning
+    input is 2.5% foreground of a 2400x2400 window. Parity keys off ABSOLUTE
+    (y + x), so the crop origin MUST be added back — otherwise an odd-offset
+    region thins differently from the same region uncropped.
+    Returns ``(window, padded, idx, parity)``, or None for an empty mask.
+    """
+    import numpy as np
+
+    win = _fg_window(full, 1)
+    if win is None:
+        return None
+    y0, y1, x0, x1 = win
+    # The 1 px border is never written — it IS the off-canvas background that
+    # every neighbourhood read from a pixel on the crop edge has to see.
+    padded = np.zeros((y1 - y0 + 2, x1 - x0 + 2), np.uint8)
+    padded[1:-1, 1:-1] = full[y0:y1, x0:x1]
+    idx = np.flatnonzero(padded)
+    row, col = np.divmod(idx, padded.shape[1])
+    # padded (row, col) is canvas (y0 + row - 1, x0 + col - 1); the -2 drops out.
+    return win, padded, idx, ((row + col + y0 + x0) % 2).astype(np.uint8)
+
+
+def _thin_terms(flat, idx, offsets):
+    """Gather P2..P9 for the live pixels and apply Zhang-Suen's B/A test.
+
+    ``B`` is the 8-neighbour count and ``A`` the number of 0→1 transitions round
+    the ring; both fit in uint8. Every entry of ``idx`` is foreground by
+    construction, so the scalar reference's ``img == 1`` term already holds.
+    Returns ``(neighbours, keep)`` — ``neighbours`` is reused for the step test.
+    """
+    import numpy as np
+
+    nb = [flat[idx + off] for off in offsets]
+    b_count = nb[0] + nb[1] + nb[2] + nb[3] + nb[4] + nb[5] + nb[6] + nb[7]
+    a_count = np.zeros(idx.size, np.uint8)
+    for i in range(8):
+        a_count += nb[i] < nb[(i + 1) % 8]
+    return nb, (b_count >= 2) & (b_count <= 6) & (a_count == 1)
+
+
+def _thin_step_ok(nb, step: int):
+    """Zhang-Suen's per-step corner condition over the gathered neighbours.
+
+    Step 0 is ``(P2&P4&P6) == 0 & (P4&P6&P8) == 0``; on 0/1 values that is
+    ``(P4 & P6 & (P2|P8)) == 0``. Step 1 swaps the pairs. Identical result in
+    four ops instead of seven — the removal schedule must match the scalar
+    reference exactly, or downstream branch ordering shifts.
+    """
+    i, j, k, m = (2, 4, 0, 6) if step == 0 else (0, 6, 2, 4)
+    return ((nb[k] | nb[m]) & nb[i] & nb[j]) == 0
+
+
 def _zhang_suen_thin(mask):
     """Zhang-Suen thinning → 1px medial axis. Pure NumPy.
 
@@ -1241,18 +1313,14 @@ def _zhang_suen_thin(mask):
     import numpy as np
 
     full = (mask > 0).astype(np.uint8)
-    # Crop to the active bounding box (v2 Part 17): thinning iterated full-canvas
-    # array passes although a region typically occupies a small fraction of it —
-    # profiled at 44s of a 62s fixture at 2x work resolution. The crop is pasted
-    # back at the end; +1 padding keeps the neighbourhood reads in-bounds.
-    ys, xs = np.nonzero(full)
-    if ys.size == 0:
+    state = _thin_state(full)
+    if state is None:
         return full
-    y0, y1 = max(0, ys.min() - 1), min(full.shape[0], ys.max() + 2)
-    x0, x1 = max(0, xs.min() - 1), min(full.shape[1], xs.max() + 2)
-    img = full[y0:y1, x0:x1].copy()
-    yy, xx = np.indices(img.shape)
-    parity_mask = (yy + xx + y0 + x0) % 2
+    (y0, y1, x0, x1), padded, idx, par = state
+    pw = padded.shape[1]
+    flat = padded.reshape(-1)
+    offsets = tuple(dy * pw + dx for dy, dx in THIN_RING)
+    stale = True
     while True:
         removed_any = False
         for step in (0, 1):
@@ -1262,27 +1330,24 @@ def _zhang_suen_thin(mask):
             # vanishes entirely, which collapsed a 2x-upscaled bar to a single
             # skeleton pixel. Removing one pixel parity at a time re-checks the
             # neighbourhood between halves, so a ridge always keeps its centre.
+            cand = None
             for parity in (0, 1):
-                p = np.pad(img, 1)
-                # P2..P9, clockwise from north.
-                P2, P3 = p[:-2, 1:-1], p[:-2, 2:]
-                P4, P5 = p[1:-1, 2:], p[2:, 2:]
-                P6, P7 = p[2:, 1:-1], p[2:, :-2]
-                P8, P9 = p[1:-1, :-2], p[:-2, :-2]
-                seq = [P2, P3, P4, P5, P6, P7, P8, P9, P2]
-                B = P2 + P3 + P4 + P5 + P6 + P7 + P8 + P9
-                A = sum(((seq[i] == 0) & (seq[i + 1] == 1)).astype(np.uint8) for i in range(8))
-                if step == 0:
-                    cond = (P2 * P4 * P6 == 0) & (P4 * P6 * P8 == 0)
-                else:
-                    cond = (P2 * P4 * P8 == 0) & (P2 * P6 * P8 == 0)
-                remove = (img == 1) & (B >= 2) & (B <= 6) & (A == 1) & cond & (parity_mask == parity)
-                if remove.any():
-                    img[remove] = 0
-                    removed_any = True
+                # Only the pixel values feed the terms, so a sub-pass that
+                # removed nothing leaves them valid for the next one — and the
+                # LAST pass of every thinning removes nothing by definition.
+                if stale:
+                    nb, keep = _thin_terms(flat, idx, offsets)
+                    stale, cand = False, None
+                if cand is None:
+                    cand = keep & _thin_step_ok(nb, step)
+                sel = cand & (par == parity)
+                if sel.any():
+                    flat[idx[sel]] = 0
+                    idx, par = idx[~sel], par[~sel]
+                    cand, stale, removed_any = None, True, True
         if not removed_any:
             out = np.zeros_like(full)
-            out[y0:y1, x0:x1] = img
+            out[y0:y1, x0:x1] = padded[1:-1, 1:-1]
             return out
 
 
@@ -1299,18 +1364,32 @@ def _prune_spurs(skel, min_len_px: int, rounds: int = 4):
 
     out = skel.copy()
     for _ in range(max(1, rounds)):
-        p = np.pad(out, 1)
+        # The degree count reads 8-neighbours, so a 1 px window round the live
+        # pixels holds every read; zero-padding the window edge reproduces the
+        # full-canvas np.pad, and no pixel outside the window can be an endpoint
+        # because none is set. Skeletons are sparse — counting degrees over the
+        # whole canvas costs eight full-size adds per round for nothing.
+        win = _fg_window(out, 1)
+        if win is None:
+            break
+        y0, y1, x0, x1 = win
+        sub, hw, ww = np.pad(out[y0:y1, x0:x1], 1), y1 - y0, x1 - x0
         deg = sum(
-            p[dy : dy + out.shape[0], dx : dx + out.shape[1]]
+            sub[dy : dy + hw, dx : dx + ww]
             for dy in (0, 1, 2)
             for dx in (0, 1, 2)
             if not (dy == 1 and dx == 1)
         )
-        endpoints = {(int(x), int(y)) for y, x in zip(*np.nonzero((out > 0) & (deg == 1)))}
+        ends = np.nonzero((out[y0:y1, x0:x1] > 0) & (deg == 1))
+        endpoints = {(int(x) + x0, int(y) + y0) for y, x in zip(*ends)}
         if not endpoints:
             break
         removed = False
-        for br in _skeleton_branches(out):
+        # `win` is the tight box grown by 1, so it still holds every set pixel:
+        # reusing it saves a second full-canvas scan per round. Coordinates stay
+        # ABSOLUTE — translating them would reorder branch discovery (set-hash
+        # order) and with it the surviving pixel of a two-endpoint branch.
+        for br in _skeleton_branches(out, win=win):
             if len(br) >= min_len_px:
                 continue
             if br[0] in endpoints or br[-1] in endpoints:
@@ -1323,43 +1402,81 @@ def _prune_spurs(skel, min_len_px: int, rounds: int = 4):
     return out
 
 
-def _skeleton_branches(skel, min_len: int = 2):
-    """Split a 1px skeleton into ordered polylines between endpoints/junctions.
+# Candidate neighbour offsets as (dx, dy), orthogonals first then diagonals.
+# THE ORDER IS LOAD-BEARING: `walk` follows nxt[0], so any reordering re-routes
+# branches and changes stitches. The unrolled loop in `_skeleton_adjacency` must
+# stay in step with these tuples.
+SKEL_ORTHO = ((1, 0), (-1, 0), (0, 1), (0, -1))
+SKEL_DIAG = ((1, 1), (1, -1), (-1, 1), (-1, -1))
 
-    Returns a list of [(x, y), ...] paths. Junction pixels are shared, so the
-    branches of a glyph like 'A' or 'K' meet rather than leaving a gap.
+
+def _skeleton_adjacency(skel, win=None):
+    """Raster-order skeleton points plus their 8-neighbours, redundant diagonals cut.
+
+    A thinned staircase — which is what any curve or circle becomes at 1px — is
+    full of L-corners: a pixel touching both an orthogonal neighbour and the
+    diagonal beyond it. Counted naively that corner has three neighbours and
+    reads as a junction, so a plain ring shattered into hundreds of two-pixel
+    'branches' (fixture 04's outer ring: 1,288 skeleton pixels -> 617 branches,
+    most of length 2). Satin over fragments that short is noise: the tangent is
+    quantised to 45 degrees, the columns scatter, and short columns get
+    coalesced away — the ring came out visibly dashed. A diagonal edge is
+    therefore dropped when the two pixels are already joined through a shared
+    4-neighbour, which is the standard connectivity rule and is symmetric from
+    either end. A genuine junction ('A', 'K', a spoke meeting a rim) has no such
+    shortcut and still reads as a junction.
+
+    Returns ``(pts, nbrs)``: ``pts`` in raster order (the caller's set must be
+    built from it IN THAT ORDER — set iteration order decides branch discovery
+    order, hence stitch order) and ``nbrs`` mapping each point to its neighbour
+    list. Coordinates are ABSOLUTE: only the nonzero scan is windowed, because
+    np.nonzero over a 2400x2400 canvas holding ~6k skeleton pixels costs more
+    than everything else here put together. Neighbour lists reuse the tuple
+    objects in ``pts`` rather than building new ones. ``win`` may supply an
+    already-known window; ANY rectangle containing every set pixel works, since
+    only the scan is windowed, so a caller that grew the box for its own reads
+    can hand that one over instead of paying a second full-canvas scan.
     """
     import numpy as np
 
-    pts = {(int(x), int(y)) for y, x in zip(*np.nonzero(skel))}
-    if not pts:
+    if win is None:
+        win = _fg_window(skel, 0)
+    if win is None:
+        return [], {}
+    y0, y1, x0, x1 = win
+    # 1 px border of background so every neighbour read of a window-edge pixel
+    # lands in it; the tight box holds every set pixel, so that border is real.
+    occ = np.zeros((y1 - y0 + 2, x1 - x0 + 2), np.int32)
+    occ[1:-1, 1:-1] = skel[y0:y1, x0:x1] > 0
+    ry, rx = np.nonzero(occ[1:-1, 1:-1])
+    stride = occ.shape[1]
+    base = (ry + 1) * stride + (rx + 1)
+    occ.reshape(-1)[base] = np.arange(base.size) + 1  # 1-based; 0 == background
+    flat = occ.reshape(-1)
+    orth = [flat[base + dy * stride + dx] for dx, dy in SKEL_ORTHO]
+    # SKEL_ORTHO index of the two 4-neighbours shared with each diagonal.
+    diag = [flat[base + dy * stride + dx] * (orth[i] == 0) * (orth[j] == 0)
+            for (dx, dy), i, j in zip(SKEL_DIAG, (0, 0, 1, 1), (2, 3, 2, 3))]
+    pts = list(zip((rx + x0).tolist(), (ry + y0).tolist()))
+    nbrs: dict[tuple[int, int], list[tuple[int, int]]] = {}
+    for pt, *cells in zip(pts, *(c.tolist() for c in orth + diag)):
+        nbrs[pt] = [pts[c - 1] for c in cells if c]
+    return pts, nbrs
+
+
+def _skeleton_branches(skel, min_len: int = 2, win=None):
+    """Split a 1px skeleton into ordered polylines between endpoints/junctions.
+
+    Returns a list of [(x, y), ...] paths. Junction pixels are shared, so the
+    branches of a glyph like 'A' or 'K' meet rather than leaving a gap. ``win``
+    is passed straight to `_skeleton_adjacency` and only saves a scan.
+    """
+    pt_list, neighbours = _skeleton_adjacency(skel, win)
+    if not pt_list:
         return []
+    pts = set(pt_list)  # raster insertion order — see `_skeleton_adjacency`
 
-    def neighbours(pt):
-        """8-neighbours with REDUNDANT DIAGONALS suppressed.
-
-        A thinned staircase — which is what any curve or circle becomes at 1px —
-        is full of L-corners: a pixel touching both an orthogonal neighbour and
-        the diagonal beyond it. Counted naively that corner has three neighbours
-        and reads as a junction, so a plain ring shattered into hundreds of
-        two-pixel 'branches' (fixture 04's outer ring: 1,288 skeleton pixels ->
-        617 branches, most of length 2). Satin over fragments that short is
-        noise: the tangent is quantised to 45 degrees, the columns scatter, and
-        short columns get coalesced away — the ring came out visibly dashed.
-
-        A diagonal edge is dropped when the two pixels are already joined
-        through a shared 4-neighbour, which is the standard connectivity rule
-        and is symmetric from either end. A genuine junction ('A', 'K', a spoke
-        meeting a rim) has no such shortcut and still reads as a junction.
-        """
-        x, y = pt
-        out = [(x + dx, y + dy) for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)) if (x + dx, y + dy) in pts]
-        for dx, dy in ((1, 1), (1, -1), (-1, 1), (-1, -1)):
-            if (x + dx, y + dy) in pts and (x + dx, y) not in pts and (x, y + dy) not in pts:
-                out.append((x + dx, y + dy))
-        return out
-
-    degree = {p: len(neighbours(p)) for p in pts}
+    degree = {p: len(neighbours[p]) for p in pts}
     nodes = {p for p, d in degree.items() if d != 2}  # endpoints + junctions
     branches: list[list[tuple[int, int]]] = []
     seen_edges: set[frozenset] = set()
@@ -1368,7 +1485,7 @@ def _skeleton_branches(skel, min_len: int = 2):
         path = [start, first]
         prev, cur = start, first
         while cur not in nodes:
-            nxt = [n for n in neighbours(cur) if n != prev]
+            nxt = [n for n in neighbours[cur] if n != prev]
             if not nxt:
                 break
             prev, cur = cur, nxt[0]
@@ -1376,7 +1493,7 @@ def _skeleton_branches(skel, min_len: int = 2):
         return path
 
     for node in nodes:
-        for nb in neighbours(node):
+        for nb in neighbours[node]:
             edge = frozenset((node, nb))
             if edge in seen_edges:
                 continue
@@ -1391,7 +1508,7 @@ def _skeleton_branches(skel, min_len: int = 2):
         start = next(iter(pts))
         path, prev, cur = [start], None, start
         while True:
-            nxt = [n for n in neighbours(cur) if n != prev]
+            nxt = [n for n in neighbours[cur] if n != prev]
             if not nxt or nxt[0] == start:
                 break
             prev, cur = cur, nxt[0]
@@ -1497,7 +1614,17 @@ def _boundary_points(region):
     import cv2
     import numpy as np
 
-    contours, _ = cv2.findContours((region > 0).astype(np.uint8), cv2.RETR_CCOMP, cv2.CHAIN_APPROX_NONE)
+    # Traced inside the foreground's own box with `offset` putting the points
+    # back in canvas coordinates. Border following only ever visits foreground
+    # and its 1 px rim, so a 1 px window margin cannot clip a contour or reorder
+    # the components (the raster scan that orders them is translation-stable);
+    # where the window clamps to the canvas edge it IS the full-canvas edge.
+    win = _fg_window(region, 1)
+    if win is None:
+        return np.zeros((0, 2), dtype=np.float64)
+    y0, y1, x0, x1 = win
+    sub = np.ascontiguousarray((region[y0:y1, x0:x1] > 0).astype(np.uint8))
+    contours, _ = cv2.findContours(sub, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_NONE, offset=(x0, y0))
     arcs = [c.reshape(-1, 2).astype(np.float64) for c in contours if len(c) >= 2]
     return np.vstack(arcs) if arcs else np.zeros((0, 2), dtype=np.float64)
 
@@ -2066,7 +2193,16 @@ def _axis_branches(binary, dist, mm_per_px: float):
     # Close pinholes and soften the outline before thinning — boundary noise is
     # what sprouts skeleton hairs, and it is cheaper to remove it here than to
     # prune the consequences.
-    smooth = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8))
+    # Windowed: a 3x3 close reaches 2 px and cannot set a pixel outside
+    # dilate(binary), i.e. 1 px past the tight box, so a 3 px margin computes
+    # every possibly-nonzero output from in-window data and the rest stays 0.
+    smooth = np.zeros_like(binary)
+    win = _fg_window(binary, 3)
+    if win is not None:
+        y0, y1, x0, x1 = win
+        smooth[y0:y1, x0:x1] = cv2.morphologyEx(
+            np.ascontiguousarray(binary[y0:y1, x0:x1]), cv2.MORPH_CLOSE,
+            np.ones((3, 3), np.uint8))
     skel = _zhang_suen_thin(smooth)
     # Prune spurs shorter than a typical stroke width; that is the scale at which
     # a dead-end branch is noise rather than a real stroke ending.
@@ -2075,6 +2211,51 @@ def _axis_branches(binary, dist, mm_per_px: float):
     skel = _prune_spurs(skel, spur_px)
     branches = [b for b in _skeleton_branches(skel) if len(b) >= 3]
     return skel, branches or [b for b in _skeleton_branches(skel) if len(b) >= 2]
+
+
+def _distance_transform(binary):
+    """`cv2.distanceTransform` (DIST_L2, mask 5) computed on the foreground box.
+
+    Exact, not an approximation. The transform is 0 at every background pixel,
+    so the untouched remainder of the canvas already holds its final value. For
+    a foreground pixel sitting ``e`` px inside the tight box there is a
+    background pixel at ``e + 1``, while anything the window cut away is at
+    least ``e + DT_WINDOW_PAD_PX`` away, so the shortest chamfer path never
+    leaves the window. Where the window clamps it is the real canvas edge.
+    """
+    import cv2
+    import numpy as np
+
+    out = np.zeros(binary.shape[:2], np.float32)
+    win = _fg_window(binary, DT_WINDOW_PAD_PX)
+    if win is None:
+        return out
+    y0, y1, x0, x1 = win
+    out[y0:y1, x0:x1] = cv2.distanceTransform(
+        np.ascontiguousarray(binary[y0:y1, x0:x1]), cv2.DIST_L2, 5)
+    return out
+
+
+def _fg_window(mask, pad: int):
+    """Nonzero bounding box of ``mask`` grown by ``pad`` px, clamped to the canvas.
+
+    Returns ``(y0, y1, x0, x1)`` as half-open slice bounds, or None when ``mask``
+    is empty. Substituting the window for the full canvas is exact ONLY for an
+    operator that is local with a reach of at most ``pad`` px AND returns 0 on
+    all-zero input; every caller states the reach it relies on. Two axis
+    reductions rather than np.nonzero, which materialises an index pair per set
+    pixel just to take four extremes.
+    """
+    import numpy as np
+
+    fg = mask > 0
+    rows = np.flatnonzero(fg.any(axis=1))
+    if rows.size == 0:
+        return None
+    cols = np.flatnonzero(fg.any(axis=0))
+    h, w = mask.shape[:2]
+    return (max(0, int(rows[0]) - pad), min(h, int(rows[-1]) + pad + 1),
+            max(0, int(cols[0]) - pad), min(w, int(cols[-1]) + pad + 1))
 
 
 def _uncovered_mask(binary, skel, max_half_px: float):
@@ -2087,11 +2268,27 @@ def _uncovered_mask(binary, skel, max_half_px: float):
     import numpy as np
 
     r = max(1, int(round(max_half_px)))
+    fg = binary > 0
+    rows = np.flatnonzero(fg.any(axis=1))
+    out = np.zeros(fg.shape, np.uint8)
+    if rows.size == 0:
+        return out
+    cols = np.flatnonzero(fg.any(axis=0))
+    # Windowing is exact, not an approximation: the result is 0 wherever binary is
+    # 0, so only binary's bbox can carry output; skel is a subset of binary, so the
+    # r-radius dilate reaches at most r px beyond that bbox and the 3x3 open one px
+    # further. A pad of r+2 therefore leaves every in-bbox pixel with the identical
+    # neighbourhood it has on the full canvas, and the border ring the morphology
+    # sees is all-zero either way (or the real canvas edge, once clamped).
+    h, w = fg.shape[:2]
+    y0, y1 = max(0, int(rows[0]) - r - 2), min(h, int(rows[-1]) + r + 3)
+    x0, x1 = max(0, int(cols[0]) - r - 2), min(w, int(cols[-1]) + r + 3)
     disc = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * r + 1, 2 * r + 1))
-    covered = cv2.dilate((skel > 0).astype(np.uint8), disc)
-    mask = ((binary > 0) & (covered == 0)).astype(np.uint8) * 255
+    covered = cv2.dilate((skel[y0:y1, x0:x1] > 0).astype(np.uint8), disc)
+    mask = (fg[y0:y1, x0:x1] & (covered == 0)).astype(np.uint8) * 255
     # Ignore slivers — a thin uncovered rim is the anti-aliased edge, not a region.
-    return cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+    out[y0:y1, x0:x1] = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+    return out
 
 
 def _skeleton_satin_hires(region, mm_per_px, sat_step, max_step_px, extra_half_px,
@@ -2104,6 +2301,7 @@ def _skeleton_satin_hires(region, mm_per_px, sat_step, max_step_px, extra_half_p
     staircase.
     """
     import cv2
+    import numpy as np
 
     f = 1
     if stroke_px > 0 and stroke_px < SMALL_STROKE_PX:
@@ -2111,9 +2309,21 @@ def _skeleton_satin_hires(region, mm_per_px, sat_step, max_step_px, extra_half_p
     if f == 1:
         return _skeleton_satin(region, mm_per_px, sat_step, max_step_px,
                                extra_half_px=extra_half_px)
-    big = cv2.resize(region, (region.shape[1] * f, region.shape[0] * f),
-                     interpolation=cv2.INTER_CUBIC)
-    big = (big > 127).astype(region.dtype) * 255
+    # Upscale only the region's own box, then paste into the full-size canvas —
+    # the COORDINATE FRAME must stay absolute (see `_skeleton_branches`: a closed
+    # loop starts at an arbitrary set element, so translating the input reorders
+    # every column and changes the stitch stream). Exact because INTER_CUBIC
+    # reads 4x4 and the window carries >= HIRES_CROP_PAD_PX zero px on every
+    # side it did not clamp to the canvas edge, where the crop border IS the
+    # canvas border and replicates identically; outside the window the cubic
+    # samples see only zeros, which is what `big` is pre-filled with.
+    win = _fg_window(region, HIRES_CROP_PAD_PX)
+    big = np.zeros((region.shape[0] * f, region.shape[1] * f), region.dtype)
+    if win is not None:
+        y0, y1, x0, x1 = win
+        up = cv2.resize(region[y0:y1, x0:x1], ((x1 - x0) * f, (y1 - y0) * f),
+                        interpolation=cv2.INTER_CUBIC)
+        big[y0 * f:y1 * f, x0 * f:x1 * f] = (up > 127).astype(region.dtype) * 255
     cand, median_w, wide_mask, axis_pts = _skeleton_satin(
         big, mm_per_px / f, sat_step * f, max_step_px * f,
         extra_half_px=extra_half_px * f,
@@ -2148,7 +2358,7 @@ def _skeleton_satin(region, mm_per_px: float, spacing_px: int, max_step_px: int,
     empty = np.zeros_like(binary)
     if cv2.countNonZero(binary) == 0:
         return [], 0.0, empty, []
-    dist = cv2.distanceTransform(binary, cv2.DIST_L2, 5)
+    dist = _distance_transform(binary)
     skel, branches = _axis_branches(binary, dist, mm_per_px)
     if not branches:
         return [], 0.0, empty, []

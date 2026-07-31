@@ -10,6 +10,10 @@ export interface Session {
   refreshToken?: string;
   userId: string;
   email?: string;
+  /** Absent on sessions persisted before local profiles existed; treat as 'supabase'. */
+  provider?: 'supabase' | 'local';
+  /** Display name for local profiles; Supabase sessions use email instead. */
+  username?: string;
 }
 
 const SESSION_KEY = 'stitchiq:session';

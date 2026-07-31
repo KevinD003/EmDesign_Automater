@@ -87,20 +87,34 @@ def assert_sane_dimensions(body: dict) -> None:
         assert 0 < value < MAX_SANE_DIMENSION_MM, f"{key}={value!r}"
 
 
+def assert_stitch_stream_consistent(body: dict) -> None:
+    """stitchCount is derived from the emitted stream, so it cannot exceed it."""
+    stitches = body["stitches"]
+    assert isinstance(stitches, list)
+    assert body["stitchCount"] <= len(stitches), f"stitchCount={body['stitchCount']!r}"
+    assert isinstance(body["colorStops"], list)
+
+
 def test_baseline_valid_png_has_camel_case_dimensions():
     # Baseline pins the wire casing (widthMm/heightMm) the fuzz cases rely on.
     r = post_digitize("baseline.png", PNG_BYTES)
     assert r.status_code == 200, response_summary(r)
-    assert_sane_dimensions(r.json())
+    body = r.json()
+    assert {"name", "widthMm", "heightMm", "stitchCount", "stitches", "colorStops"} <= set(body)
+    assert_sane_dimensions(body)
+    assert_stitch_stream_consistent(body)
 
 
-# Known bug (found by this fuzz run): _parse_hoop accepts arbitrarily large
-# hoop dimensions with no upper clamp, so '1e9x1e9' and '999999x999999' yield
-# a 200 Design claiming widthMm=heightMm=478124.52 (~478 metres wide).
+# Known bug (found by this fuzz run): _parse_hoop clamps each axis to a >=10mm
+# floor but applies no upper clamp, so mm_per_px scales linearly with the
+# claimed hoop. Measured 200 responses: '999999x999999' -> widthMm=heightMm=
+# 478124.52 (~478 m), '1e9x1e9' -> 478125000.0 (~478 km). Not a 5xx, but the
+# Design is physically nonsensical and would be accepted downstream.
 HUGE_HOOP_XFAIL = pytest.mark.xfail(
     strict=False,
-    reason="BUG: no upper bound on hoop_size; server returns 200 with "
-    "widthMm/heightMm=478124.52 (>10m) for absurd hoop dimensions",
+    reason="BUG: no upper bound in digitizer._parse_hoop; absurd hoop_size returns "
+    "200 with widthMm/heightMm of 478124.52 ('999999x999999') and 478125000.0 "
+    "('1e9x1e9'), both far above the 10m sanity ceiling",
 )
 
 
@@ -133,6 +147,11 @@ def test_hoop_size_garbage_never_5xx(hoop: str):
 def test_max_colors_edge_values_never_5xx(max_colors: int):
     r = post_digitize("colors.png", PNG_BYTES, max_colors=str(max_colors))
     assert_never_5xx(r)
+    if r.status_code == 200:
+        # Degenerate palette sizes (0, -1) still emit one colour stop rather
+        # than an empty/negative palette — assert the stream stays coherent.
+        assert_sane_dimensions(r.json())
+        assert_stitch_stream_consistent(r.json())
 
 
 def test_max_colors_non_numeric_is_422():
@@ -151,6 +170,9 @@ def test_max_colors_non_numeric_is_422():
 def test_fabric_type_garbage_never_5xx(fabric: str):
     r = post_digitize("fabric.png", PNG_BYTES, fabric_type=fabric)
     assert_never_5xx(r)
+    if r.status_code == 200:
+        assert_sane_dimensions(r.json())
+        assert_stitch_stream_consistent(r.json())
 
 
 # (4) adversarial filenames: name is derived server-side via rsplit('.', 1)[0]

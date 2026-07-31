@@ -12,6 +12,7 @@ worker consolidates them into a shared module.
 
 from __future__ import annotations
 
+import math
 import time
 
 import cv2
@@ -89,6 +90,13 @@ def assert_sane_design(body: dict) -> None:
     """A 200 body must be a Design in camelCase wire form (see design.py)."""
     assert body["stitchCount"] >= 0
     stitches = body["stitches"]
+    # Degenerate geometry (1px axes, zero-area contours) must not produce NaN
+    # or negative physical sizes when pixels are converted to mm.
+    for key in ("widthMm", "heightMm"):
+        assert math.isfinite(body[key]), f"{key}={body[key]!r}"
+        assert body[key] >= 0, f"{key}={body[key]!r}"
+    # stitchCount is derived from the stream, so it can never exceed it.
+    assert body["stitchCount"] <= len(stitches)
     if stitches:  # any produced stream must terminate with an END command
         assert stitches[-1]["command"] == "END"
 

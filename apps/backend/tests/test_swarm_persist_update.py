@@ -141,3 +141,6 @@ def test_memory_mode_update_and_rename_roundtrip(monkeypatch):
 
     assert local_store.update_design("missing", _design(), "u") is None
     assert local_store.rename_design("missing", "x", "u") is None
+
+    # _MEMORY is process-wide and aliased by the designs router; don't leak rows.
+    local_store._MEMORY.clear()

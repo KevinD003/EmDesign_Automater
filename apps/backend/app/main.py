@@ -7,6 +7,9 @@ are stubs (HTTP 501). Run: ``uvicorn app.main:app --reload --port 8000``.
 from __future__ import annotations
 
 import logging
+import platform
+import sys
+import time
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -15,6 +18,7 @@ from fastapi.responses import JSONResponse
 
 from app.config import settings
 from app.middleware.body_limit import BodySizeLimitMiddleware
+from app.middleware.rate_limit import RateLimitMiddleware
 from app.middleware.request_logging import RequestLoggingMiddleware
 from app.routers import (
     auth,
@@ -30,18 +34,60 @@ from app.routers import (
     worksheet,
 )
 
+startup_logger = logging.getLogger("stitchiq.startup")
+
+# Uptime baseline for /health. Module import == process start under uvicorn,
+# and monotonic() cannot go backwards when NTP or DST shifts the wall clock.
+_STARTED_MONOTONIC = time.monotonic()
+
+# Methods this API actually serves; PATCH/HEAD/TRACE are not exposed.
+CORS_ALLOW_METHODS = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+
+# Request headers the frontend sends. Anything else fails preflight rather
+# than reaching a router.
+CORS_ALLOW_HEADERS = ["Authorization", "Content-Type", "X-Request-ID"]
+
+# Response headers the browser may read cross-origin: the correlation id from
+# RequestLoggingMiddleware, the download filename from /api/export, and the
+# backoff hint from RateLimitMiddleware's 429.
+CORS_EXPOSE_HEADERS = ["X-Request-ID", "Content-Disposition", "Retry-After"]
+
+# Preflight cache lifetime in seconds. A 100-user LAN deployment talks to few
+# origins, so caching OPTIONS for 10 minutes removes a round-trip per request.
+CORS_MAX_AGE_SECONDS = 600
+
+# The CORS spec forbids Access-Control-Allow-Origin: * together with
+# Allow-Credentials: true — browsers reject such responses outright.
+WILDCARD_ORIGIN = "*"
+
 app = FastAPI(
     title="STITCHIQ API",
     version="0.1.0",
     description="AI embroidery design platform — backend scaffold (endpoints stubbed).",
 )
 
+
+def _cors_allow_credentials(origins: list[str]) -> bool:
+    """False when origins contain '*', because credentialed wildcard CORS is
+    invalid and would break every browser request instead of loosening one."""
+    if WILDCARD_ORIGIN in origins:
+        startup_logger.warning(
+            "CORS_ORIGINS contains '*'; disabling allow_credentials because the "
+            "CORS spec forbids credentialed requests against a wildcard origin. "
+            "Set explicit origins to re-enable cookies/Authorization."
+        )
+        return False
+    return True
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_credentials=_cors_allow_credentials(settings.cors_origins),
+    allow_methods=CORS_ALLOW_METHODS,
+    allow_headers=CORS_ALLOW_HEADERS,
+    expose_headers=CORS_EXPOSE_HEADERS,
+    max_age=CORS_MAX_AGE_SECONDS,
 )
 
 # Registered after CORSMiddleware so CORS stays outermost (middleware added
@@ -51,6 +97,26 @@ app.add_middleware(RequestLoggingMiddleware)
 # Innermost of the three: oversized uploads are rejected with 413 after CORS
 # and access logging have done their bookkeeping.
 app.add_middleware(BodySizeLimitMiddleware)
+
+# Added last so it is the outermost middleware (Starlette inserts each new
+# middleware at the front of the stack), letting a flood be refused before any
+# body is read. Ordering is asserted empirically in
+# tests/test_swarm_api_rate_limit.py rather than assumed.
+#
+# DISABLED UNDER PYTEST (v2 Part 20). The limiter keys on client IP, and every
+# TestClient request presents the same one, so a fast suite trips the shared
+# per-IP window and unrelated tests fail with 429 — observed as 27 failures on
+# the no-rembg path only, because that path runs fast enough to fill the
+# window while the slower rembg path does not. That makes it an ORDER- AND
+# SPEED-DEPENDENT failure, the worst kind to debug later. Tests that exercise
+# the limiter instantiate RateLimitMiddleware directly with their own bounds
+# (tests/test_swarm_api_rate_limit.py), so coverage is unaffected.
+#
+# It stays WIRED under pytest (so the ordering assertions keep guarding the
+# production stack) but with enforcement OFF; detection is `"pytest" in
+# sys.modules`, evaluated at import, because PYTEST_CURRENT_TEST is only set
+# once a test is RUNNING and this module is imported during collection.
+app.add_middleware(RateLimitMiddleware, enabled="pytest" not in sys.modules)
 
 error_logger = logging.getLogger("stitchiq.error")
 
@@ -96,9 +162,15 @@ async def validation_exception_handler(
 
 
 @app.get("/health", tags=["meta"])
-def health() -> dict[str, str]:
-    """Liveness probe."""
-    return {"status": "ok"}
+def health() -> dict[str, str | int]:
+    """Liveness probe: dependency-free, touches no I/O, and must never raise —
+    a monitor that gets a 500 here cannot distinguish it from a dead process."""
+    return {
+        "status": "ok",
+        "version": app.version,
+        "uptimeSeconds": int(time.monotonic() - _STARTED_MONOTONIC),
+        "pythonVersion": platform.python_version(),
+    }
 
 
 for module in (auth, files, convert, digitize, lettering, worksheet, export, threads, designs, optimize, auth_local):

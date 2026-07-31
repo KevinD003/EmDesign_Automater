@@ -968,3 +968,106 @@ code {
   line-height: 1;
   padding: 0;
 }
+
+/* ── Progress overlay ───────────────────────────────────────── */
+/* z-index 55 sits above .dialog-overlay (50) — the digitize/lettering dialog is
+   dismissed before the call starts — and below .toast-stack (60) so errors show. */
+.progress-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 55;
+}
+
+.progress-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 18px;
+  width: 340px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.progress-track {
+  height: 8px;
+  background: var(--panel-2);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--accent);
+  /* Matches PROGRESS_TICK_MS (200ms) so the fill glides between ticks. */
+  transition: width 0.2s linear;
+}
+
+.progress-stage {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--line);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ── Zoom controls ──────────────────────────────────────────── */
+/* Mirrors .view-toggle (same panel chrome), anchored bottom-right so it
+   never overlaps the bottom-left .canvas-badge. */
+.zoom-controls {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  z-index: 5;
+  display: flex;
+  gap: 2px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 2px;
+}
+
+.zoom-controls button {
+  background: transparent;
+  color: var(--muted);
+  border: none;
+  border-radius: 5px;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.zoom-controls button:hover:not(:disabled) {
+  color: var(--text);
+}
+
+.zoom-controls button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.zoom-pct {
+  min-width: 44px; /* holds '1000%' without the cluster resizing per step */
+  align-self: center;
+  text-align: center;
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}

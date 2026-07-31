@@ -248,3 +248,70 @@ async def delete_design(design_id: str, user_id: str) -> None:
             f"{_rest()}/designs?id=eq.{design_id}&user_id=eq.{user_id}", headers=_headers()
         )
         r.raise_for_status()
+
+
+async def update_design(design_id: str, design: Design, user_id: str) -> Design | None:
+    """Overwrite a user's design in place, bumping its version; None if absent / not theirs.
+
+    Ownership is enforced here in app code — the service key bypasses RLS.
+    """
+    async with httpx.AsyncClient(timeout=30) as client:
+        owned = await client.get(
+            f"{_rest()}/designs?id=eq.{design_id}&user_id=eq.{user_id}&select=id,version",
+            headers=_headers(),
+        )
+        owned.raise_for_status()
+        rows = owned.json()
+        if not rows:
+            return None
+        next_version = (rows[0].get("version") or 1) + 1
+        r = await client.patch(
+            f"{_rest()}/designs?id=eq.{design_id}",
+            headers=_headers(),
+            json={
+                "name": design.name,
+                "stitch_count": design.stitch_count,
+                "colors": len(design.color_stops),
+                "width_mm": design.width_mm,
+                "height_mm": design.height_mm,
+                "fabric_type": design.fabric_type,
+                "status": design.status,
+                "version": next_version,
+            },
+        )
+        r.raise_for_status()
+        snapshot = design.model_dump(by_alias=True)
+        snapshot["id"] = design_id
+        # PostgREST has no cross-table transaction, but unlike create_design there is
+        # nothing to roll back: if this snapshot write fails after the PATCH, get_design
+        # still loads the PREVIOUS version's snapshot, so the design stays openable
+        # (stale metadata at worst). Raise and let the caller retry the save.
+        r = await client.post(
+            f"{_rest()}/design_versions",
+            headers=_headers(),
+            json={
+                "design_id": design_id,
+                "version_number": next_version,
+                "snapshot_json": snapshot,
+                "change_summary": "autosave",
+            },
+        )
+        r.raise_for_status()
+        return design.model_copy(update={"id": design_id, "version": next_version})
+
+
+async def rename_design(design_id: str, name: str, user_id: str) -> bool:
+    """Rename a user's design; False when no row matched (absent / not theirs).
+
+    Name validation belongs to the router — this only persists what it is given.
+    """
+    async with httpx.AsyncClient(timeout=30) as client:
+        r = await client.patch(
+            f"{_rest()}/designs?id=eq.{design_id}&user_id=eq.{user_id}",
+            headers=_headers("return=representation"),
+            json={"name": name},
+        )
+        r.raise_for_status()
+        # return=representation makes PostgREST echo the updated rows, so an empty
+        # body is the only reliable "0 rows matched" signal (PATCH still 200s).
+        return bool(r.json())

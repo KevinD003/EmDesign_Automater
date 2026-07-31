@@ -49,6 +49,20 @@ def test_registered_port_checks_use_expected_ports():
     assert preflight.check_port_frontend().name == "port-5173"
 
 
+def test_environment_checks_are_registered():
+    # A check that exists but is never appended to CHECKS is dead code:
+    # preflight would silently skip it on launch day.
+    expected = {
+        preflight.check_port_backend,
+        preflight.check_port_frontend,
+        preflight.check_fonts,
+        preflight.check_disk_space,
+        preflight.check_frontend_deps,
+        preflight.check_env_file,
+    }
+    assert expected <= set(preflight.CHECKS)
+
+
 def test_check_fonts_passes_in_container():
     # Container ships DejaVu TTFs, so the app's resolver must find one.
     result = preflight.check_fonts()

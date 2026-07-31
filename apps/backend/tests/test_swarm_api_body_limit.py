@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
 from pathlib import Path
 
 from fastapi.testclient import TestClient
-from starlette.types import Receive, Scope, Send
+from starlette.types import Message, Receive, Scope, Send
 
 from app.main import app
 from app.middleware.body_limit import BodySizeLimitMiddleware
@@ -18,6 +20,9 @@ TEST_LIMIT_BYTES = 1024
 # Streaming test sends 10 x 256 B = 2560 B, comfortably over TEST_LIMIT_BYTES.
 CHUNK_SIZE = 256
 CHUNK_COUNT = 10
+# Declared-only size for the fast path: never allocated, just announced in the
+# Content-Length header, so it can exceed DEFAULT_MAX_BODY_BYTES for free.
+DECLARED_HUGE_BYTES = 100 * 1024 * 1024
 
 
 async def _echo_app(scope: Scope, receive: Receive, send: Send) -> None:
@@ -85,6 +90,51 @@ def test_health_get_unaffected() -> None:
     assert response.status_code == 200
 
 
-def test_default_limit_message_says_25_mb() -> None:
-    middleware = BodySizeLimitMiddleware(_echo_app)
-    assert b"limit 25 MB" in middleware._response_body
+def test_fast_path_refuses_before_reading_any_body_byte() -> None:
+    """Declared Content-Length over the default limit -> 413, receive() never called.
+
+    Exercises the shipped DEFAULT_MAX_BODY_BYTES through public ASGI behavior
+    (not the private response buffer), and pins the "without reading the body"
+    guarantee: a receive() that raises would surface as an error, not a 413.
+    """
+    scope: Scope = {
+        "type": "http",
+        "method": "POST",
+        "path": "/",
+        "headers": [(b"content-length", str(DECLARED_HUGE_BYTES).encode())],
+    }
+    sent: list[Message] = []
+
+    async def receive() -> Message:
+        raise AssertionError("body must not be read when Content-Length is over the limit")
+
+    async def send(message: Message) -> None:
+        sent.append(message)
+
+    asyncio.run(BodySizeLimitMiddleware(_echo_app)(scope, receive, send))
+
+    assert sent[0]["type"] == "http.response.start"
+    assert sent[0]["status"] == 413
+    body = b"".join(m.get("body", b"") for m in sent if m["type"] == "http.response.body")
+    assert json.loads(body) == {"detail": "Request body too large (limit 25 MB)"}
+
+
+def test_non_http_scope_passes_through_untouched() -> None:
+    """websocket/lifespan get the original receive/send — no counting wrappers."""
+    seen: dict[str, object] = {}
+
+    async def inner(scope: Scope, receive: Receive, send: Send) -> None:
+        seen["scope"], seen["receive"], seen["send"] = scope, receive, send
+
+    async def receive() -> Message:
+        return {"type": "lifespan.startup"}
+
+    async def send(message: Message) -> None:
+        return None
+
+    scope: Scope = {"type": "lifespan"}
+    asyncio.run(BodySizeLimitMiddleware(inner)(scope, receive, send))
+
+    assert seen["scope"] is scope
+    assert seen["receive"] is receive
+    assert seen["send"] is send

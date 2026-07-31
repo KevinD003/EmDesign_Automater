@@ -43,6 +43,141 @@ _PES_VERSION = 6
 # read_embroidery fallback when a file carries no usable name metadata.
 _DEFAULT_IMPORT_NAME = "Imported design"
 
+# VP3 coordinate ceiling: 32767 tenths of a mm (signed 16-bit) = 3276.7mm.
+# Held a few mm under the wrap point so a design at the cap still round-trips.
+_VP3_MAX_MM = 3270.0
+
+
+class DesignTooLargeError(ValueError):
+    """A design's extent exceeds what the target format can encode.
+
+    MUST stay a ValueError subclass: app/routers/convert.py and app/routers/files.py
+    catch ValueError from this module and turn it into a 4xx. Breaking the subclass
+    relationship turns those endpoints' responses into 500s.
+    """
+
+# Per-format capability table for the 9 formats /api/formats advertises.
+#
+# 'supports_color' is NOT copied from format documentation — every flag below was
+# measured against THIS venv's pyembroidery by writing a 2-color design with
+# distinct hexes (#123456 / #abcdef), re-reading it, and comparing. True means the
+# written hexes came back recognizably (exact, or snapped to the format's fixed
+# thread palette); False means pyembroidery invented random filler colors, which
+# _color_stops surfaces as "Color N (file has no color data)".
+#
+# 'max_width_mm'/'max_height_mm' are the largest stitch-bounds extent this venv's
+# pyembroidery can round-trip without corruption; None = none found. Measured by
+# writing square designs at 100/200/…/1200mm and again at 2k…100k mm, re-reading,
+# and comparing bounds. Only VP3 has a ceiling below 100m (see its row); every
+# other advertised format is byte-faithful at 100_000mm, so no *file format*
+# limit is honest to report for them. These are container limits, NOT hoop limits
+# — a 500mm DST is well-formed and still will not fit any hoop; hoop fit is
+# checked separately by POST /api/export/validate.
+FORMAT_CAPS: dict[str, dict] = {
+    # Tajima DST stores stitches only — no thread table exists in the spec.
+    # Measured: hexes come back random. Colors must ship on the worksheet.
+    "dst": {
+        "label": "Tajima DST",
+        "supports_color": False,
+        "max_width_mm": None,
+        "max_height_mm": None,
+        "note": "Universal machine format. Stitches only — thread colors are not stored in the file.",
+    },
+    # Brother PES v6 (see _PES_VERSION) embeds a full RGB thread table.
+    # Measured: #123456/#abcdef survive byte-exact.
+    "pes": {
+        "label": "Brother PES",
+        "supports_color": True,
+        "max_width_mm": None,
+        "max_height_mm": None,
+        "note": "Preserves exact thread colors and the design name.",
+    },
+    # PEC is the stitch block inside PES; its thread table is the fixed 64-color
+    # Brother palette. Measured: #123456 -> #134a46, i.e. kept but snapped.
+    "pec": {
+        "label": "Brother PEC",
+        "supports_color": True,
+        "max_width_mm": None,
+        "max_height_mm": None,
+        "note": "Colors are snapped to Brother's fixed thread palette, so exact hexes shift.",
+    },
+    # Janome JEF also quantizes to a fixed palette. Measured: #123456 -> #071650.
+    "jef": {
+        "label": "Janome JEF",
+        "supports_color": True,
+        "max_width_mm": None,
+        "max_height_mm": None,
+        "note": "Colors are snapped to Janome's fixed thread palette, so exact hexes shift.",
+    },
+    # Melco EXP is a bare stitch stream. Measured: hexes come back random.
+    "exp": {
+        "label": "Melco EXP",
+        "supports_color": False,
+        "max_width_mm": None,
+        "max_height_mm": None,
+        "note": "Stitches only — thread colors are not stored in the file.",
+    },
+    # Husqvarna Viking / Pfaff VP3 stores RGB. Measured: hexes survive byte-exact.
+    # Size: empirical, pyembroidery 1.5.1 round-trip corrupts above 3276.7mm — the
+    # height comes back wrapped (3280mm -> 3273.6mm, 4000mm -> 2553.6mm), i.e. the
+    # signed-16-bit tenths-of-mm ceiling (32767 tenths = 3276.7mm). Width survives
+    # further but shares the same field, so both axes are capped just under it.
+    "vp3": {
+        "label": "Husqvarna Viking / Pfaff VP3",
+        "supports_color": True,
+        "max_width_mm": _VP3_MAX_MM,
+        "max_height_mm": _VP3_MAX_MM,
+        "note": "Preserves exact thread colors.",
+    },
+    # Singer XXX: contrary to the common "stitch-only" claim, this pyembroidery
+    # build round-trips XXX hexes byte-exact, so the flag is True. Thread NAMES
+    # are still lost (descriptions come back blank), only the RGB survives.
+    "xxx": {
+        "label": "Singer XXX",
+        "supports_color": True,
+        "max_width_mm": None,
+        "max_height_mm": None,
+        "note": "Thread colors survive, but thread names/catalog numbers do not.",
+    },
+    # Barudan U01 is a stitch stream. Measured: hexes come back random.
+    "u01": {
+        "label": "Barudan U01",
+        "supports_color": False,
+        "max_width_mm": None,
+        "max_height_mm": None,
+        "note": "Stitches only — thread colors are not stored in the file.",
+    },
+    # CSV is pyembroidery's text dump; it writes the thread table verbatim.
+    # Measured: hexes survive byte-exact. Not a machine format.
+    "csv": {
+        "label": "Stitch CSV (text)",
+        "supports_color": True,
+        "max_width_mm": None,
+        "max_height_mm": None,
+        "note": "Plain-text stitch list for inspection or import into other tools — not a machine file.",
+    },
+}
+
+
+def format_capabilities() -> list[dict]:
+    """Capability rows for every FORMAT_CAPS entry pyembroidery can actually write.
+
+    A format the library cannot write is dropped rather than advertised, so this
+    list can never name a format /api/export would reject with 415.
+    """
+    writable = supported_write_exts()
+    readable = _supported_read_exts()
+    return [
+        {
+            "format": ext,
+            "writable": True,
+            "readable": ext in readable,
+            **caps,
+        }
+        for ext, caps in FORMAT_CAPS.items()
+        if ext in writable
+    ]
+
 
 def _machine_name(name: str | None) -> str:
     """Sanitize a design name for machine-file headers.
@@ -53,6 +188,73 @@ def _machine_name(name: str | None) -> str:
     cleaned = (name or "").strip().encode("ascii", "ignore").decode("ascii")
     cleaned = "".join(ch for ch in cleaned if ch.isprintable()).strip()
     return cleaned[:_DST_NAME_MAX] or "design"
+
+
+def _stored_name(pattern: pe.EmbPattern) -> str:
+    """Design name recovered from a parsed pattern, or the import fallback.
+
+    DST re-reads expose extras['name'] (the 'LA:' field), PES exposes
+    extras['Name'] (v1) or extras['name'] (v6).
+    """
+    extras = getattr(pattern, "extras", None) or {}
+    raw = str(extras.get("name") or extras.get("Name") or "").strip()
+    # DST writers (pyembroidery included) stamp 'Untitled' into LA: when no name
+    # was set — that filler counts as no metadata, not a real name.
+    if raw.lower() == "untitled":
+        raw = ""
+    return raw or _DEFAULT_IMPORT_NAME
+
+
+def _color_stops(pattern: pe.EmbPattern) -> list[ColorStop]:
+    """One ColorStop per color block; empty for a pattern with no stitches."""
+    if not pattern.stitches:
+        return []
+    stops: list[ColorStop] = []
+    for i, (block, thread) in enumerate(pattern.get_as_colorblocks(), start=1):
+        # Colorless formats (DST/EXP/…) get filler threads that pyembroidery
+        # names "Random" — surface an honest name instead of a confusing one.
+        desc = getattr(thread, "description", None)
+        if not desc or desc.strip().lower() == "random":
+            desc = f"Color {i} (file has no color data)"
+        stops.append(
+            ColorStop(
+                stop_number=i,
+                thread_brand=(getattr(thread, "brand", None) or "Unknown"),
+                catalog_number=(getattr(thread, "catalog_number", None) or ""),
+                thread_name=desc,
+                hex=(thread.hex_color() if thread is not None else "#808080"),
+                stitch_count=len(block),
+            )
+        )
+    return stops
+
+
+def _design_extent_mm(design: Design) -> tuple[float, float]:
+    """(width, height) in mm from the stitch bounds, or the declared dims if stitchless."""
+    if not design.stitches:
+        return (design.width_mm or 0.0, design.height_mm or 0.0)
+    xs = [s.x for s in design.stitches]
+    ys = [s.y for s in design.stitches]
+    return (max(xs) - min(xs), max(ys) - min(ys))
+
+
+def _check_size(design: Design, ext: str) -> None:
+    """Reject a design the .``ext`` container cannot encode without corruption.
+
+    Raises DesignTooLargeError so callers get a 4xx instead of a silently wrapped
+    file. ``ext`` must already be normalized (lowercase, no leading dot).
+    """
+    caps = FORMAT_CAPS.get(ext) or {}
+    max_w = caps.get("max_width_mm")
+    max_h = caps.get("max_height_mm")
+    if max_w is None and max_h is None:
+        return
+    w, h = _design_extent_mm(design)
+    if (max_w is not None and w > max_w) or (max_h is not None and h > max_h):
+        raise DesignTooLargeError(
+            f"Design {w:.0f}x{h:.0f}mm exceeds the .{ext} limit of "
+            f"{(max_w or 0):.0f}x{(max_h or 0):.0f}mm"
+        )
 
 
 def _supported_read_exts() -> set[str]:
@@ -103,41 +305,12 @@ def read_embroidery(data: bytes, ext: str) -> Design:
     else:
         minx = miny = maxx = maxy = 0
 
-    color_stops: list[ColorStop] = []
-    if pattern.stitches:
-        for i, (block, thread) in enumerate(pattern.get_as_colorblocks(), start=1):
-            # Colorless formats (DST/EXP/…) get filler threads that pyembroidery
-            # names "Random" — surface an honest name instead of a confusing one.
-            desc = getattr(thread, "description", None)
-            if not desc or desc.strip().lower() == "random":
-                desc = f"Color {i} (file has no color data)"
-            color_stops.append(
-                ColorStop(
-                    stop_number=i,
-                    thread_brand=(getattr(thread, "brand", None) or "Unknown"),
-                    catalog_number=(getattr(thread, "catalog_number", None) or ""),
-                    thread_name=desc,
-                    hex=(thread.hex_color() if thread is not None else "#808080"),
-                    stitch_count=len(block),
-                )
-            )
-
-    # Stored design name: DST re-reads expose extras['name'] (LA: field), PES
-    # exposes extras['Name'] (v1) or extras['name'] (v6). Missing/blank -> default.
-    extras = getattr(pattern, "extras", None) or {}
-    raw_name = str(extras.get("name") or extras.get("Name") or "").strip()
-    # DST writers (pyembroidery included) stamp 'Untitled' into LA: when no
-    # name was set — that filler counts as no metadata, not a real name.
-    if raw_name.lower() == "untitled":
-        raw_name = ""
-    name = raw_name or _DEFAULT_IMPORT_NAME
-
     return Design(
-        name=name,
+        name=_stored_name(pattern),
         width_mm=round((maxx - minx) / _TENTHS, 2),
         height_mm=round((maxy - miny) / _TENTHS, 2),
         stitch_count=pattern.count_stitches(),
-        color_stops=color_stops,
+        color_stops=_color_stops(pattern),
         stitches=stitches,
         status="digitized",
     )
@@ -148,6 +321,7 @@ def write_embroidery(design: Design, ext: str) -> bytes:
     ext = ext.lower().lstrip(".")
     if ext not in supported_write_exts():
         raise ValueError(f"Unsupported export format: .{ext}")
+    _check_size(design, ext)
 
     pattern = pe.EmbPattern()
     for stop in design.color_stops:

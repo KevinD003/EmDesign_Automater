@@ -13,7 +13,7 @@ import logging
 import uuid
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import Field
 
 from app.deps import current_user
@@ -36,6 +36,15 @@ def _is_uuid(value: str) -> bool:
         return True
     except (ValueError, AttributeError, TypeError):
         return False
+
+
+# Hard cap on a design name — mirrors local_store._MAX_NAME_LEN and shields the
+# cloud path, whose rename_design does no validation of its own.
+MAX_NAME_LEN = 200
+
+
+class RenamePayload(CamelModel):
+    name: str
 
 
 class ActivityItem(CamelModel):
@@ -93,8 +102,8 @@ async def stats(user_id: str = Depends(current_user)) -> DesignStats:
     return DesignStats.model_validate(local_store.design_stats(user_id))
 
 
-@router.get("/designs/{design_id}", response_model=Design)
-async def get_design(design_id: str, user_id: str = Depends(current_user)) -> Design:
+async def _fetch_design(design_id: str, user_id: str) -> Design:
+    """Load one design for the caller or raise 404/502. Shared by GET and GET /preview."""
     if supabase_store.is_enabled():
         # Cloud ids are uuids; a non-uuid path can't exist → 404 (and avoids a PostgREST
         # 400 that would otherwise surface as a 502).
@@ -111,6 +120,34 @@ async def get_design(design_id: str, user_id: str = Depends(current_user)) -> De
     return design
 
 
+@router.get("/designs/{design_id}", response_model=Design)
+async def get_design(design_id: str, user_id: str = Depends(current_user)) -> Design:
+    return await _fetch_design(design_id, user_id)
+
+
+# Library thumbnails render at a coarser scale than package.render_preview's 5.0 px/mm
+# default: a thumb is shown at ~200px, so the extra pixels are only bytes on the wire.
+THUMB_PX_PER_MM = 2.0
+
+
+@router.get("/designs/{design_id}/preview")
+async def design_preview(design_id: str, user_id: str = Depends(current_user)) -> Response:
+    """PNG thumbnail of a saved design's stitch map, for the library grid."""
+    design = await _fetch_design(design_id, user_id)
+    # render_preview falls back to a 2x2 blank PNG when no STITCH points exist; that
+    # is a useless thumbnail, so surface the empty design as a client error instead.
+    if not design.stitches:
+        raise HTTPException(status_code=422, detail="design has no stitches to preview")
+    # Lazy import: app.services.package pulls pyembroidery (and PIL on first render)
+    # at import time — cost the design routes shouldn't pay just to be registered.
+    from app.services.package import render_preview
+
+    png = render_preview(design, px_per_mm=THUMB_PX_PER_MM)
+    # no-store: autosave overwrites a design in place under the same id, so any cached
+    # thumbnail would be stale the moment the user saves.
+    return Response(content=png, media_type="image/png", headers={"Cache-Control": "no-store"})
+
+
 @router.post("/designs", response_model=Design, status_code=201)
 async def create_design(design: Design, user_id: str = Depends(current_user)) -> Design:
     """Persist a new design for the caller (+ a full-fidelity version snapshot)."""
@@ -122,6 +159,63 @@ async def create_design(design: Design, user_id: str = Depends(current_user)) ->
     # Local fallback: local_store assigns a fresh uuid4 hex when the id is absent
     # or unsafe, so ids are never reused after a delete.
     return local_store.create_design(design, user_id)
+
+
+@router.put("/designs/{design_id}", response_model=Design)
+async def update_design(
+    design_id: str, design: Design, user_id: str = Depends(current_user)
+) -> Design:
+    """Overwrite an existing design (autosave/save).
+
+    404 if it doesn't exist for the caller — clients then POST to create.
+    """
+    if supabase_store.is_enabled():
+        if not _is_uuid(design_id):
+            raise HTTPException(status_code=404, detail="design not found")
+        try:
+            updated = await supabase_store.update_design(design_id, design, user_id)
+        except httpx.HTTPError as exc:
+            raise _storage_error(exc) from exc
+    else:
+        updated = local_store.update_design(design_id, design, user_id)
+    if updated is None:
+        raise HTTPException(status_code=404, detail="design not found")
+    return updated
+
+
+def _clean_name(name: str) -> str:
+    """Strip + length-check a rename; 422 on empty or over-long (never silently truncate)."""
+    cleaned = (name or "").strip()
+    if not cleaned or len(cleaned) > MAX_NAME_LEN:
+        raise HTTPException(
+            status_code=422, detail=f"name must be 1..{MAX_NAME_LEN} characters"
+        )
+    return cleaned
+
+
+@router.patch("/designs/{design_id}")
+async def rename_design(
+    design_id: str, payload: RenamePayload, user_id: str = Depends(current_user)
+) -> dict[str, str]:
+    """Rename a design in place. Both backends answer {"id", "name"} so clients match."""
+    name = _clean_name(payload.name)
+    if supabase_store.is_enabled():
+        if not _is_uuid(design_id):
+            raise HTTPException(status_code=404, detail="design not found")
+        try:
+            renamed = await supabase_store.rename_design(design_id, name, user_id)
+        except httpx.HTTPError as exc:
+            raise _storage_error(exc) from exc
+        if not renamed:
+            raise HTTPException(status_code=404, detail="design not found")
+    else:
+        try:
+            design = local_store.rename_design(design_id, name, user_id)
+        except ValueError as exc:  # defense in depth: _clean_name already rejects blanks
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        if design is None:
+            raise HTTPException(status_code=404, detail="design not found")
+    return {"id": design_id, "name": name}
 
 
 @router.delete("/designs/{design_id}", status_code=204)

@@ -31,6 +31,9 @@ async def formats() -> dict[str, object]:
     return {
         "export": [f for f in MACHINE_EXPORT_FORMATS if f in writable],
         "brands": package_svc.BRAND_FORMATS,
+        # Per-format detail (label / color support / size limits). Filtered by the
+        # same writer table as "export", so the two lists can never disagree.
+        "capabilities": embroidery_io.format_capabilities(),
     }
 
 
@@ -41,6 +44,10 @@ async def export_package(design: Design, format: str = Query("dst")) -> Streamin
     fmt = format.lower().lstrip(".")  # normalize once: 'DST' / '.dst' → 'dst'
     try:
         data = package_svc.build_package(design, fmt)
+    # Must precede the ValueError branch (it is a ValueError subclass): too-large is
+    # 413 Payload Too Large, not 415 Unsupported Media Type.
+    except embroidery_io.DesignTooLargeError as exc:
+        raise HTTPException(status_code=413, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=415, detail=str(exc)) from exc
     except Exception as exc:
@@ -66,6 +73,9 @@ async def export_design(design: Design, format: str = Query("dst")) -> Streaming
     fmt = format.lower().lstrip(".")  # normalize once: 'DST' / '.dst' → 'dst'
     try:
         data = embroidery_io.write_embroidery(design, fmt)
+    # Ordering constraint as in export_package: subclass branch first.
+    except embroidery_io.DesignTooLargeError as exc:
+        raise HTTPException(status_code=413, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=415, detail=str(exc)) from exc
     except Exception as exc:

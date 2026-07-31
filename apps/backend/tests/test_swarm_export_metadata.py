@@ -87,6 +87,40 @@ def test_non_ascii_name_is_sanitized_not_fatal(fmt):
         assert again.name.strip()  # sanitized, not emptied
 
 
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("  SwarmLogo  ", "SwarmLogo"),  # stripped
+        ("Bücher ★ Löwe", "Bcher  Lwe"),  # non-ASCII dropped, not fatal
+        ("★★★", "design"),  # sanitizes to empty -> fallback
+        ("", "design"),
+        (None, "design"),
+        ("A" * 30, "A" * _DST_NAME_MAX),  # capped at the DST LA: field width
+    ],
+)
+def test_machine_name_sanitizes(raw, expected):
+    assert embroidery_io._machine_name(raw) == expected
+
+
+@pytest.mark.parametrize("extras", [None, {}, {"name": "  "}, {"name": "Untitled"}])
+def test_stored_name_falls_back(extras):
+    # 'Untitled' is DST writer filler, not a user-chosen name.
+    p = pe.EmbPattern()
+    if extras is not None:
+        p.extras.update(extras)
+    assert embroidery_io._stored_name(p) == "Imported design"
+
+
+def test_stored_name_prefers_pes_capital_name_key():
+    p = pe.EmbPattern()
+    p.extras["Name"] = "PesName"
+    assert embroidery_io._stored_name(p) == "PesName"
+
+
+def test_color_stops_empty_for_stitchless_pattern():
+    assert embroidery_io._color_stops(pe.EmbPattern()) == []
+
+
 def test_file_without_metadata_keeps_default_name(tmp_path):
     p = pe.EmbPattern()
     t = pe.EmbThread()

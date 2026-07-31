@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from fastapi import APIRouter, HTTPException
 from pydantic import Field
 
@@ -25,6 +27,11 @@ class LetteringRequest(CamelModel):
     letter_spacing_mm: float = Field(default=0.0, ge=-10, le=50)
     # Server-local TTF/TTC path; None runs the system font search.
     font_path: str | None = None
+    baseline: Literal["straight", "arc"] = "straight"
+    # Arc circle radius; required when baseline == "arc". A radius below the letter
+    # height is rejected by the service; 2000mm is beyond any hoop, so anything
+    # larger is indistinguishable from straight text.
+    arc_radius_mm: float | None = Field(default=None, ge=4, le=2000)
 
 
 @router.get("/lettering/fonts", response_model=list[FontInfo])
@@ -46,6 +53,8 @@ async def create_lettering(req: LetteringRequest) -> Design:
             req.fabric_type,
             font_path=req.font_path,
             letter_spacing_mm=req.letter_spacing_mm,
+            baseline=req.baseline,
+            arc_radius_mm=req.arc_radius_mm,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

@@ -9,6 +9,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.main import app, unhandled_exception_handler
+from app.middleware.request_logging import RequestLoggingMiddleware
 
 client = TestClient(app)
 
@@ -72,3 +73,16 @@ def test_unhandled_exception_returns_sanitized_500(
     assert records, "expected the unhandled exception to be logged"
     assert records[-1].exc_info is not None
     assert "RuntimeError" in (records[-1].exc_text or str(records[-1].exc_info[0]))
+
+
+def test_500_carries_request_id_when_middleware_present() -> None:
+    """Handler reads request.state.request_id, which the access middleware sets."""
+    scratch = _scratch_app()
+    scratch.add_middleware(RequestLoggingMiddleware)
+    scratch_client = TestClient(scratch, raise_server_exceptions=False)
+
+    resp = scratch_client.get("/boom", headers={"X-Request-ID": "abc-123"})
+
+    assert resp.status_code == 500
+    assert resp.json()["requestId"] == "abc-123"
+    assert "RuntimeError" not in resp.text

@@ -8,6 +8,8 @@ import { browserKV, deleteDesign, listSaved, loadDesign, saveDesign, type SavedM
 import { isMasterFilename, parseMasterDesign, serializeMasterDesign } from '../../lib/masterFile';
 import { buildManualDesign, isImportedNotEditable, minPointsFor, type ManualTool } from '../../lib/manual';
 import { toastError, toastSuccess } from '../feedback/toastStore';
+import { ProgressOverlay } from '../feedback/ProgressOverlay';
+import { DIGITIZE_STAGES, LETTERING_STAGES } from '../feedback/progressStages';
 import { DigitizeDialog } from '../dialogs/DigitizeDialog';
 import type { DigitizeParams } from '../dialogs/DigitizeDialog';
 import { LetteringDialog } from '../dialogs/LetteringDialog';
@@ -22,6 +24,9 @@ const DRAW_TOOLS: { label: string; tool: ManualTool }[] = [
 const STUB_TOOLS = ['Lettering', 'Appliqué', 'Shape'];
 const ACCEPT = '.dst,.pes,.pec,.jef,.exp,.vp3,.vip,.xxx,.sew,.u01,.json';
 const ACCEPT_IMG = '.png,.jpg,.jpeg,.bmp,.webp';
+
+/** Tag for the in-flight operation; only the first two warrant a progress overlay. */
+type BusyOp = 'digitize' | 'lettering' | 'quick';
 
 function download(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
@@ -50,7 +55,10 @@ export function Toolbar() {
   const setQuality = useDesignStore((s) => s.setQuality);
   const fileRef = useRef<HTMLInputElement>(null);
   const imgRef = useRef<HTMLInputElement>(null);
-  const [busy, setBusy] = useState(false);
+  // Which long call is in flight (null = idle). Digitize/lettering get a staged
+  // progress overlay; everything else is a 'quick' op that only disables controls.
+  const [busyOp, setBusyOp] = useState<null | BusyOp>(null);
+  const busy = busyOp !== null;
   const [pendingImage, setPendingImage] = useState<File | null>(null);
   const [showLettering, setShowLettering] = useState(false);
   const [exportFormat, setExportFormat] = useState('dst');
@@ -71,14 +79,14 @@ export function Toolbar() {
   };
   useEffect(refreshSaved, []);
 
-  const run = async (fn: () => Promise<void>) => {
-    setBusy(true);
+  const run = async (fn: () => Promise<void>, op: BusyOp = 'quick') => {
+    setBusyOp(op);
     try {
       await fn();
     } catch (ex) {
       toastError(ex instanceof Error ? ex.message : 'Something went wrong');
     } finally {
-      setBusy(false);
+      setBusyOp(null);
     }
   };
 
@@ -113,12 +121,15 @@ export function Toolbar() {
     const file = pendingImage;
     setPendingImage(null);
     if (!file) return;
-    run(async () => loadAndScore(await api.digitize(file, p.fabricType, p.hoopSize, p.maxColors)));
+    run(async () => loadAndScore(await api.digitize(file, p.fabricType, p.hoopSize, p.maxColors)), 'digitize');
   };
 
   const onLetteringConfirm = (p: LetteringParams) => {
     setShowLettering(false);
-    run(async () => loadAndScore(await api.lettering(p.text, p.heightMm, p.fabricType, p.letterSpacingMm)));
+    run(
+      async () => loadAndScore(await api.lettering(p.text, p.heightMm, p.fabricType, p.letterSpacingMm)),
+      'lettering',
+    );
   };
 
   const stem = (design?.name || 'design').replace(/\.[^.]+$/, '');
@@ -236,6 +247,7 @@ export function Toolbar() {
   return (
     <header className="toolbar">
       <span className="brand">🧵 STITCHIQ</span>
+      {busyOp === 'quick' && <span className="spinner" aria-hidden="true" />}
       <div className="undo-redo">
         <button type="button" onClick={undo} disabled={!canUndo} title="Undo (Ctrl+Z)">
           ↶
@@ -293,7 +305,7 @@ export function Toolbar() {
         <input ref={fileRef} type="file" accept={ACCEPT} hidden onChange={onOpen} />
         <input ref={imgRef} type="file" accept={ACCEPT_IMG} hidden onChange={onPickImage} />
         <button type="button" onClick={() => fileRef.current?.click()} disabled={busy}>
-          {busy ? '…' : 'Open'}
+          Open
         </button>
         <button type="button" onClick={() => imgRef.current?.click()} disabled={busy} title="Auto-digitize an image (PNG/JPG)">
           Digitize
@@ -379,6 +391,8 @@ export function Toolbar() {
       {showLettering && (
         <LetteringDialog onCancel={() => setShowLettering(false)} onConfirm={onLetteringConfirm} />
       )}
+      {busyOp === 'digitize' && <ProgressOverlay title="Digitizing image" stages={DIGITIZE_STAGES} />}
+      {busyOp === 'lettering' && <ProgressOverlay title="Generating lettering" stages={LETTERING_STAGES} />}
       {showSaved && (
         <div className="saved-panel">
           <button type="button" className="vr-close" onClick={() => setShowSaved(false)} aria-label="Close">
