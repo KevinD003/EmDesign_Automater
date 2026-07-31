@@ -27,3 +27,8 @@ apps/*/.env
 
 # coverage artifacts
 .coverage
+
+# Local runtime data: user profiles (PBKDF2 hashes + live session tokens) and
+# saved designs. Committing these leaks working credentials — a token from git
+# authenticated against a fresh server 22h later (v2 Part 21 review).
+apps/backend/data/

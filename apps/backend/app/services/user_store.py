@@ -30,6 +30,11 @@ PIN_MAX_LEN = 64
 # Session-token cap per user: bounds file growth for ~100 LAN users; oldest
 # tokens (by issued_at) are evicted when a user exceeds this.
 MAX_SESSIONS_PER_USER = 20
+# Session lifetime. A supervised LAN launch runs for a day at most, so a token
+# older than this is far likelier to be stale or captured than in active use.
+# Verified as the gap that let a token committed to git 22 hours earlier still
+# authenticate against a fresh server (v2 Part 21 review).
+SESSION_TTL_HOURS = 12
 
 
 class DuplicateUsernameError(Exception):
@@ -170,15 +175,44 @@ class UserStore:
             return token
 
     def verify_token(self, token: str) -> dict | None:
-        """Public profile for a live token, or None (incl. deleted profiles)."""
+        """Public profile for a live, UNEXPIRED token, or None.
+
+        Also returns None for a token whose profile was deleted. Expiry is
+        checked here rather than only at issue time because tokens are
+        persisted to disk and survive restarts: before v2 Part 21 a token was
+        valid forever, so one captured (or committed to git) stayed usable
+        indefinitely.
+        """
         with self._lock:
             session = self._data["sessions"].get(token)
             if session is None:
+                return None
+            if self._expired(session):
+                del self._data["sessions"][token]
+                self._save()
                 return None
             record = self._data["profiles"].get(session["user_id"])
             if record is None:
                 return None
             return self._public(record)
+
+    @staticmethod
+    def _expired(session: dict) -> bool:
+        """True when the session is older than SESSION_TTL_HOURS.
+
+        An unparseable or missing issued_at counts as expired: a session we
+        cannot age is one we cannot trust.
+        """
+        stamp = session.get("issued_at")
+        if not stamp:
+            return True
+        try:
+            issued = datetime.fromisoformat(str(stamp))
+        except ValueError:
+            return True
+        if issued.tzinfo is None:
+            issued = issued.replace(tzinfo=UTC)
+        return (datetime.now(UTC) - issued).total_seconds() > SESSION_TTL_HOURS * 3600
 
     def login(self, username: str, pin: str | None) -> tuple[dict, str] | None:
         """Case-insensitive login; PIN required only when the profile has one."""

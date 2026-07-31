@@ -42,6 +42,11 @@ MIN_RETRY_AFTER_SECONDS = 1
 # bucket rather than going unmetered.
 UNKNOWN_CLIENT_KEY = "unknown"
 
+# Peers whose X-Forwarded-For we believe: the loopback addresses a same-host
+# reverse proxy (Vite dev/preview) connects from. A forwarded header from any
+# other peer is attacker-controlled and is ignored.
+TRUSTED_PROXY_PEERS = frozenset({"127.0.0.1", "::1", "localhost", UNKNOWN_CLIENT_KEY})
+
 _RESPONSE_BODY = json.dumps({"detail": "Too many requests — slow down"}).encode("utf-8")
 
 
@@ -85,14 +90,41 @@ class RateLimitMiddleware:
             await self.app(scope, receive, send)
             return
 
-        client = scope.get("client")
-        key = client[0] if client else UNKNOWN_CLIENT_KEY
-        retry_after = self._register(key, time.monotonic())
+        retry_after = self._register(self._client_key(scope), time.monotonic())
         if retry_after is not None:
             await self._send_429(send, retry_after)
             return
 
         await self.app(scope, receive, send)
+
+    def _client_key(self, scope: Scope) -> str:
+        """Per-client bucket key: the real caller, not the proxy (v2 Part 21).
+
+        The documented launch topology puts Vite in front proxying /api, so
+        EVERY user reaches the backend as 127.0.0.1. Keying on the raw peer
+        therefore put ~100 users in ONE bucket — 12 req/s for the whole
+        deployment, verified as widespread 429s under normal browsing.
+
+        The session token (when present) identifies the actual account and is
+        the most accurate key. Otherwise the leftmost X-Forwarded-For entry is
+        used when the peer is a trusted local proxy; a forwarded header from a
+        NON-local peer is ignored, since anyone could spoof it to get a fresh
+        bucket per request and defeat the limiter entirely.
+        """
+        headers = {k.lower(): v for k, v in scope.get("headers", [])}
+        auth = headers.get(b"authorization", b"").decode("latin-1")
+        if auth.lower().startswith("bearer "):
+            token = auth.split(" ", 1)[1].strip()
+            if token:
+                return f"tok:{token[:32]}"
+        client = scope.get("client")
+        peer = client[0] if client else UNKNOWN_CLIENT_KEY
+        if peer in TRUSTED_PROXY_PEERS:
+            fwd = headers.get(b"x-forwarded-for", b"").decode("latin-1")
+            first = fwd.split(",")[0].strip()
+            if first:
+                return f"ip:{first}"
+        return f"ip:{peer}"
 
     def _register(self, key: str, now: float) -> int | None:
         """Record a hit for ``key``; return Retry-After seconds if over budget.
