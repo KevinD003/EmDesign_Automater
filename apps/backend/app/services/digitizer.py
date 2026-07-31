@@ -750,6 +750,7 @@ def digitize_image(
                         cand = cand + _fill_by_component(
                             wide_mask, row_px, max_step_px, connect_px,
                             start=cand[-1][:2] if cand else None,
+                            angle_deg=_fill_angle(wide_mask),
                         )
                         skeleton_partial_tatami += 1
                     skel_pts = cand
@@ -765,6 +766,7 @@ def digitize_image(
                     "decision": "SATIN" if is_satin else "TATAMI",
                 }
             )
+            fill_angle = 0.0  # satin carries its column angle instead; see below
             if skel_pts is not None:
                 # Satin now always comes from the medial axis. The old
                 # bounding-rect `_satin_zigzag` path is gone from digitizing:
@@ -774,14 +776,39 @@ def digitize_image(
                 # most of the thin geometry in real artwork. (`_satin_zigzag`
                 # itself is retained: `rebuild_design` still uses it for objects
                 # a user explicitly sets to SATIN.)
-                # Centre-walk ALONG THE MEDIAL AXIS, not the bounding-rect midline.
-                under = _axis_underlay(
-                    axis_pts, prof["under_mm"] / mm_per_px, connect_px,
-                    (_PENETRATION_FLOOR_MM / mm_per_px) if _PENETRATION_FLOOR_MM else 0.0,
-                    MAX_STITCH_MM / mm_per_px,
-                )
+                # Underlay chosen by COLUMN WIDTH (v2 Part 24) instead of the
+                # unconditional centre run every satin object got up to Part 23.
+                # `median_w` is the skeleton's own measured stroke width, which
+                # is the quantity the width bands are stated in.
+                floor_arg = (_PENETRATION_FLOOR_MM / mm_per_px) if _PENETRATION_FLOOR_MM else 0.0
+                if median_w >= UNDERLAY_ZIGZAG_MIN_MM:
+                    under = _zigzag_underlay(
+                        region, axis_pts,
+                        prof["under_mm"] * UNDERLAY_ZIGZAG_PITCH_MULT / mm_per_px,
+                        UNDERLAY_ZIGZAG_INSET_MM / mm_per_px, connect_px,
+                        floor_arg, MAX_STITCH_MM / mm_per_px,
+                    )
+                    underlay = UnderlayType.DOUBLE_ZIGZAG
+                elif median_w >= UNDERLAY_EDGE_MIN_MM:
+                    under = _edge_walk(
+                        region, max(1, round(prof["inset_mm"] / mm_per_px)),
+                        under_step_px, connect_px, floor_arg, MAX_STITCH_MM / mm_per_px,
+                    )
+                    underlay = UnderlayType.EDGE_WALK
+                else:
+                    # Centre-walk ALONG THE MEDIAL AXIS, not the bounding-rect midline.
+                    under = _axis_underlay(
+                        axis_pts, prof["under_mm"] / mm_per_px, connect_px,
+                        floor_arg, MAX_STITCH_MM / mm_per_px,
+                    )
+                    underlay = UnderlayType.CENTER_WALK
+                if not under:  # a generator that found nothing must not lose the underlay
+                    under = _axis_underlay(
+                        axis_pts, prof["under_mm"] / mm_per_px, connect_px,
+                        floor_arg, MAX_STITCH_MM / mm_per_px,
+                    )
+                    underlay = UnderlayType.CENTER_WALK
                 pts = _with_underlay(under, skel_pts, connect_px)
-                underlay = UnderlayType.CENTER_WALK
             else:
                 # v2 Part 14: small holes are NOT knocked out of a fill. A hole
                 # narrower than CONNECT_MM earns one thread crossing per fill row
@@ -806,7 +833,11 @@ def digitize_image(
                     (_PENETRATION_FLOOR_MM / mm_per_px) if _PENETRATION_FLOOR_MM else 0.0,
                     MAX_STITCH_MM / mm_per_px,
                 )
-                fill_pts = _fill_by_component(top_region, row_px, max_step_px, connect_px)
+                # v2 Part 24: rows follow the region's own long axis instead of
+                # the hard 0 degrees every fill got from Part 0 to Part 23.
+                fill_angle = _fill_angle(top_region)
+                fill_pts = _fill_by_component(top_region, row_px, max_step_px, connect_px,
+                                              angle_deg=fill_angle)
                 # Satin border on top of the fill (v2 Part 15) — the pro finish.
                 # Area-gated: bordering specks doubles them for nothing.
                 if net_area * mm_per_px * mm_per_px >= FILL_BORDER_MIN_MM2:
@@ -816,8 +847,23 @@ def digitize_image(
                         fill_pts[-1][:2] if fill_pts else None,
                         (_PENETRATION_FLOOR_MM / mm_per_px) if _PENETRATION_FLOOR_MM else 0.0,
                     )
-                pts = _with_underlay(under, fill_pts, connect_px)
                 underlay = UnderlayType.EDGE_WALK
+                # Edge run PLUS a low-density tatami layer across the top fill's
+                # direction on anything big enough to sink (v2 Part 24). This is
+                # the standard commercial recipe for a fill; up to Part 23 every
+                # fill got the edge run alone.
+                if net_area * mm_per_px * mm_per_px >= FILL_UNDERLAY_MIN_MM2:
+                    par = _parallel_underlay(
+                        region, inset_px, max(1, round(row_px * FILL_UNDERLAY_PITCH_MULT)),
+                        fill_angle + FILL_UNDERLAY_ANGLE_OFFSET_DEG,
+                        max_step_px, connect_px,
+                        (_PENETRATION_FLOOR_MM / mm_per_px) if _PENETRATION_FLOOR_MM else 0.0,
+                        MAX_STITCH_MM / mm_per_px,
+                    )
+                    if par:
+                        under = _with_underlay(under, par, connect_px)
+                        underlay = UnderlayType.PARALLEL
+                pts = _with_underlay(under, fill_pts, connect_px)
             # The floor is passed only for SATIN. A tatami row advances along a
             # line, never zigzags, so the repair could not fire there anyway —
             # but not passing it keeps fills on exactly the path they had.
@@ -880,7 +926,7 @@ def digitize_image(
                     stitch_type=StitchType.SATIN if is_satin else StitchType.TATAMI,
                     color_stop=this_stop,
                     density=1.0 / (prof["satin_mm"] if is_satin else prof["row_mm"]),
-                    stitch_angle=round(float(rect[2]), 1) if is_satin else 0.0,
+                    stitch_angle=round(float(rect[2]), 1) if is_satin else fill_angle,
                     underlay_type=underlay,
                     pull_compensation=round(pull_mm, 2),
                     entry_point=Point(x=pts[0][0] * mm_per_px, y=pts[0][1] * mm_per_px),
@@ -925,7 +971,122 @@ def digitize_image(
     )
 
 
-def _fill_by_component(region, row_px: int, max_step_px: int, connect_px: float, start=None):
+def _edge_avoiding_angle(region) -> float:
+    """Fill angle for a region with no meaningful long axis (v2 Part 24).
+
+    A flat 45 degrees is the industry default and is right for a disc, but it is
+    wrong for a DIAMOND — the corpus has one — because 45 is exactly the
+    direction the diamond's own edges run, and rows parallel to a dominant edge
+    are the classic amateur tell: the last row runs alongside the boundary and
+    any mismatch between the pitch and the remaining strip reads as a stripe.
+    Rows PERPENDICULAR to a dominant edge are just as bad the other way, because
+    then every row END lands on it and the ragged terminations line up.
+
+    So the angle is chosen to sit as close to 45 degrees away from the region's
+    strong edge directions as it can. Penalty per boundary segment is
+    ``|cos(2 * (theta - edge))|``, which is 1 when the row is parallel OR
+    perpendicular to that edge and 0 at exactly 45 degrees off, weighted by
+    segment length so a long straight side outvotes a wobble in the outline.
+
+    Falls back to FILL_ANGLE_DEFAULT_DEG when the boundary has no preferred
+    direction at all — a circle, where the penalty is flat and every candidate
+    ties, which is exactly the case 45 was the right default for.
+    """
+    import math
+
+    import cv2
+
+    contours, _ = cv2.findContours(region, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    # Length-weighted histogram of edge orientations, 5-degree bins, mod 180.
+    #
+    # A histogram and not a vector mean: the mean of a doubled-angle vector
+    # cannot represent a BIMODAL boundary, and the case that matters is exactly
+    # bimodal. A diamond's edges run at +45 and -45; doubled those are +90 and
+    # -90, which cancel to zero, so a mean reports "no preferred direction" for
+    # the one shape whose direction most needs avoiding. Measured: the vector
+    # form returned 45.0 for the diamond, i.e. rows straight down its own edges.
+    nbins = 36
+    hist = [0.0] * nbins
+    total = 0.0
+    for c in contours:
+        pts = c.reshape(-1, 2)
+        if len(pts) < 8:
+            continue
+        # Chord over several pixels, not pixel-to-pixel: consecutive contour
+        # pixels only ever step at multiples of 45 degrees, so a per-pixel
+        # histogram reports every shape as axis-aligned-plus-diagonals.
+        span = 5
+        for i in range(0, len(pts), span):
+            a, b = pts[i], pts[(i + span) % len(pts)]
+            dx, dy = float(b[0] - a[0]), float(b[1] - a[1])
+            L = math.hypot(dx, dy)
+            if L < 1e-6:
+                continue
+            hist[int(math.degrees(math.atan2(dy, dx)) % 180.0 / (180.0 / nbins)) % nbins] += L
+            total += L
+    if total <= 0:
+        return FILL_ANGLE_DEFAULT_DEG
+
+    # |cos(2 * delta)| is 1 when the row is parallel OR perpendicular to an edge
+    # and 0 at exactly 45 degrees off it, so minimising the weighted sum puts the
+    # rows as far from every strong edge as the shape allows.
+    centres = [(i + 0.5) * (180.0 / nbins) for i in range(nbins)]
+    scored = []
+    for deg in range(180):
+        pen = sum(w * abs(math.cos(2.0 * math.radians(deg - e)))
+                  for w, e in zip(hist, centres) if w)
+        scored.append((pen / total, float(deg)))
+    best, worst = min(scored)[0], max(scored)[0]
+    # A flat landscape means the boundary has no preferred direction at all — a
+    # disc — which is precisely the case the industry's flat 45 was right for.
+    if worst - best < 0.05:
+        return FILL_ANGLE_DEFAULT_DEG
+    ang = min(scored, key=lambda s: (s[0], abs(s[1] - 45.0)))[1] % 180.0
+    return round(ang - 180.0 if ang > 90.0 else ang, 1)
+
+
+def _fill_angle(region) -> float:
+    """Fill direction for a region, in degrees, from the region's own geometry.
+
+    Returns the orientation of the principal (major) axis when the shape is
+    elongated enough for that axis to be meaningful, else FILL_ANGLE_DEFAULT_DEG.
+    The value is in the same convention `_scanline_angled` takes: measured on
+    image axes (y down), mod 180, and emitted stitches run in that direction —
+    verified by measuring the length-weighted direction of the points the filler
+    actually returns, not by reasoning about `getRotationMatrix2D`'s sign.
+
+    The axis comes from central image moments, which weigh every foreground
+    pixel, rather than from `minAreaRect`, which is decided by the few extreme
+    points on the hull: a plus sign, a ring and a star all have a square hull and
+    would get an arbitrary rect angle, while their moment axis correctly reports
+    them as isotropic and hands them the 45-degree default.
+    """
+    import math
+
+    import cv2
+
+    m = cv2.moments(region, binaryImage=True)
+    if m["m00"] <= 0:
+        return FILL_ANGLE_DEFAULT_DEG
+    mu20 = m["mu20"] / m["m00"]
+    mu02 = m["mu02"] / m["m00"]
+    mu11 = m["mu11"] / m["m00"]
+    # Eigenvalues of [[mu20, mu11], [mu11, mu02]]; both are >= 0 for a real
+    # covariance, and the discriminant cannot go negative, so no clamping games.
+    half = (mu20 + mu02) / 2.0
+    disc = math.sqrt(max(0.0, ((mu20 - mu02) / 2.0) ** 2 + mu11 * mu11))
+    lam_hi, lam_lo = half + disc, half - disc
+    if lam_lo <= 1e-9 or math.sqrt(lam_hi / lam_lo) < FILL_ANGLE_MIN_ELONGATION:
+        return _edge_avoiding_angle(region)
+    ang = math.degrees(0.5 * math.atan2(2.0 * mu11, mu20 - mu02)) % 180.0
+    # Fold to (-90, 90]. A fill direction is an axis, not a heading — 175 and -5
+    # lay the same rows — and the folded form keeps `_scanline_angled`'s
+    # near-horizontal short-circuit reachable for a shape that measures 179.8.
+    return round(ang - 180.0 if ang > 90.0 else ang, 1)
+
+
+def _fill_by_component(region, row_px: int, max_step_px: int, connect_px: float, start=None,
+                       angle_deg: float = 0.0):
     """Scanline-fill each connected component separately, nearest-first (v2 Part 13).
 
     A scattered mask — the too-wide remainder of a satin object is the real case
@@ -934,13 +1095,19 @@ def _fill_by_component(region, row_px: int, max_step_px: int, connect_px: float,
     Filling fragment-by-fragment turns per-row hops into one transition per
     fragment. `start` (px) seeds the ordering at the caller's current needle
     position; single-component masks take the old path unchanged.
+
+    `angle_deg` is the object's fill direction (v2 Part 24). It is applied to
+    every component of the object rather than recomputed per fragment: the
+    multi-component case is the too-wide REMAINDER of one satin stroke, and
+    letting each shard pick its own axis would fan a single stroke into a dozen
+    directions. Angle per OBJECT is what the desktop suites expose, too.
     """
     import cv2
     import numpy as np
 
     n, labels, _stats, cents = cv2.connectedComponentsWithStats(region, connectivity=8)
     if n <= 2:
-        return _scanline_fill(region, row_px, max_step_px, connect_px)
+        return _scanline_angled(region, angle_deg, row_px, max_step_px, connect_px)
     remaining = list(range(1, n))
     cur = (float(start[0]), float(start[1])) if start else (0.0, 0.0)
     out: list[tuple[float, float, bool]] = []
@@ -948,7 +1115,8 @@ def _fill_by_component(region, row_px: int, max_step_px: int, connect_px: float,
         idx = min(remaining, key=lambda i: (cents[i][0] - cur[0]) ** 2 + (cents[i][1] - cur[1]) ** 2)
         remaining.remove(idx)
         cur = (float(cents[idx][0]), float(cents[idx][1]))
-        pts = _scanline_fill((labels == idx).astype(np.uint8) * 255, row_px, max_step_px, connect_px)
+        pts = _scanline_angled((labels == idx).astype(np.uint8) * 255, angle_deg,
+                               row_px, max_step_px, connect_px)
         if not pts:
             continue
         if out:
@@ -1003,6 +1171,84 @@ FILL_ROW_CONNECT_KEEP = 0.95
 # Centered on the contour. Area-gated so specks are not double-stitched.
 FILL_BORDER_MM = 1.2
 FILL_BORDER_MIN_MM2 = 30.0
+
+# --- Per-object fill angle (v2 Part 24) -------------------------------------
+# Until Part 24 every tatami fill in every design was emitted at 0 degrees
+# (`stitch_angle=... if is_satin else 0.0`), because `_fill_by_component` called
+# `_scanline_fill`, which only knows horizontal rows. `_scanline_angled` — the
+# rotate/fill/unrotate wrapper — already existed and was reachable ONLY through
+# `rebuild_design`, i.e. only after a user hand-set an angle in the UI. The
+# generator never used it.
+#
+# Why that is the single most visible difference from Wilcom/Hatch/Embird
+# output: thread is directional, so a fill reflects light along its rows. One
+# global angle makes every shape in a design reflect identically, which reads as
+# printed rather than stitched, and it puts the row-end penetration seam on
+# whichever edges happen to run horizontally — in logo artwork that is usually
+# the longest, most-looked-at edge.
+#
+# Rows are laid ALONG the region's principal axis (major axis of the pixel
+# covariance), which is what "auto angle" means in the desktop suites. Running
+# along the length puts the ragged row ends on the two SHORT edges instead of
+# the two long ones, so the visible seam lands on the smallest possible share of
+# the perimeter.
+#
+# Below FILL_ANGLE_MIN_ELONGATION the shape has no meaningful long axis (disc,
+# ring, square, blob) and the moment angle is numerical noise, so it falls back
+# to 45 degrees — the default new fills get in Hatch and Wilcom, and the reason
+# is the same one that makes 0 a bad default: 45 cannot coincide with the
+# horizontal or vertical edges that dominate real artwork.
+#
+# 1.15 is the axis ratio at which the moment angle stops being noise. Measured
+# on synthetic discs: a perfect disc lands at ratio 1.000, and a disc carrying
+# one antialiased pixel of asymmetry still measures under 1.02, so 1.15 clears
+# the noise floor by a wide margin while a 3:2 oval (ratio 1.22) still gets its
+# own axis.
+FILL_ANGLE_DEFAULT_DEG = 45.0
+FILL_ANGLE_MIN_ELONGATION = 1.15
+
+# --- Underlay selection by column width (v2 Part 24) -------------------------
+# Until Part 24, `UnderlayType` declared six values and the generator assigned
+# exactly two: CENTER_WALK for every satin object and EDGE_WALK for every fill,
+# regardless of width, shape or fabric. DOUBLE_ZIGZAG, PARALLEL and CONTOUR were
+# enum members with no generator behind them.
+#
+# Underlay is what makes satin sit UP off the fabric. A single centre run under a
+# 6mm column supports nothing: the top stitching sinks between the two edges, and
+# on a lofty fabric it disappears into the pile. The desktop suites all choose by
+# cover type, object width and fabric; the width bands below are the ones the
+# digitizing literature agrees on:
+#
+#   under ~2mm   centre run only     — a wider underlay would show past the edges
+#   2 - 4mm      edge run            — two lines just inside the boundaries
+#   over ~4mm    zigzag (both ways)  — a lattice that lifts the whole span
+#
+# The 4mm boundary matters more than the 2mm one: 4mm is roughly where a column
+# stops being a stroke and starts being a bar, and it is also comfortably under
+# SATIN_MAX_W_MM, so every column wide enough to need a lattice can get one.
+UNDERLAY_EDGE_MIN_MM = 2.0
+UNDERLAY_ZIGZAG_MIN_MM = 4.0
+# Zigzag underlay pitch as a multiple of the fabric's underlay running length.
+# Underlay is a scaffold, not coverage: too dense and it shows through the top
+# stitching and stiffens the fabric.
+UNDERLAY_ZIGZAG_PITCH_MULT = 1.0
+# How far inside the boundary the zigzag turns, in mm. It must never reach the
+# edge or it shows past the top stitching on the outside of a curve.
+UNDERLAY_ZIGZAG_INSET_MM = 0.6
+
+# Tatami (parallel) underlay under large fills. The standard commercial recipe
+# for a fill is an edge run PLUS a low-density tatami layer running across the
+# top fill's direction, which stops the fill sinking and stabilises the fabric
+# before the top layer lands. Gated by area because a small fill is held
+# adequately by its edge run alone and the extra layer would only add bulk.
+FILL_UNDERLAY_MIN_MM2 = 100.0
+# Underlay rows this many times the top pitch apart — a scaffold at roughly a
+# third of the top layer's density.
+FILL_UNDERLAY_PITCH_MULT = 3.0
+# Offset from the top fill's angle. 90 degrees is the maximum possible crossing
+# angle, which is what makes the layer support the top rows rather than nest
+# between them.
+FILL_UNDERLAY_ANGLE_OFFSET_DEG = 90.0
 # Minimum spacing between consecutive SAME-SIDE penetrations in a satin column
 # run. Distinct from MIN_STITCH_MM, which bounds how far the needle TRAVELS
 # between penetrations: a satin column can travel 4mm across the stroke while the
@@ -2603,6 +2849,112 @@ def _center_walk(region, rect, step_px: int, connect_px: float):
         jump = bool(pts) and _dist(pts[-1], (X, Y)) > connect_px
         pts.append((float(X), float(Y), jump if pts else True))
     return pts
+
+
+def _zigzag_underlay(region, axis_pts, step_px: float, inset_px: float, connect_px: float,
+                     floor_px: float = 0.0, max_px: float = 0.0):
+    """Zigzag underlay along a medial axis (v2 Part 24). [(x_px, y_px, is_jump)].
+
+    Walks the axis at ``step_px`` and throws the needle alternately to either
+    side, turning ``inset_px`` short of the boundary. Half-width comes from the
+    distance transform at each axis sample, which is the true local half-width of
+    the stroke, so the lattice follows a stroke that narrows or curves instead of
+    assuming a constant bar — the same reason satin itself moved off `minAreaRect`
+    in Part 4.
+
+    Two passes are laid, the second offset by half a step and walked back, which
+    is what makes it a DOUBLE zigzag: a single zigzag supports the two edges but
+    leaves the centre of a wide column unscaffolded, and coming back on the
+    opposite phase costs no extra travel because the return trip has to happen
+    anyway to reach the top stitching's start.
+    """
+    import math
+
+    import numpy as np
+
+    if len(axis_pts) < 2:
+        return []
+    dist = _distance_transform((region > 0).astype(np.uint8))
+    h, w = region.shape
+
+    def pass_(pts, phase: float):
+        # (x, y, starts_a_new_run) — the cross-column throw is the STITCH, so it
+        # must never be flagged as a jump however long it is. Only a break in the
+        # axis itself (end of one branch, start of the next) starts a new run.
+        out: list[tuple[float, float, bool]] = []
+        acc = phase
+        side = 1
+        broke = True
+        for i in range(len(pts)):
+            x, y = float(pts[i][0]), float(pts[i][1])
+            if i:
+                d = _dist(pts[i - 1][:2], (x, y))
+                if d > connect_px:
+                    acc, broke = phase, True
+                else:
+                    acc += d
+            if i and acc < step_px:
+                continue
+            acc = 0.0
+            # Local tangent from the neighbours; the normal is its perpendicular.
+            j0, j1 = max(0, i - 1), min(len(pts) - 1, i + 1)
+            tx = float(pts[j1][0]) - float(pts[j0][0])
+            ty = float(pts[j1][1]) - float(pts[j0][1])
+            n = math.hypot(tx, ty)
+            if n < 1e-9:
+                continue
+            nx, ny = -ty / n, tx / n
+            iy, ix = round(y), round(x)
+            if not (0 <= iy < h and 0 <= ix < w):
+                continue
+            reach = max(1.0, float(dist[iy, ix]) - inset_px)
+            px, py = x + side * nx * reach, y + side * ny * reach
+            if out and not broke and max_px > 0:
+                # Subdivide a throw longer than the machine limit. A column
+                # inside SATIN_MAX_W_MM cannot reach 12.7mm, but the underlay
+                # also has to cover the advance along the axis when a branch
+                # curves sharply, and an unbounded stitch is a machine fault
+                # rather than a quality opinion.
+                gap = _dist(out[-1], (px, py))
+                if gap > max_px:
+                    ax, ay = out[-1][0], out[-1][1]
+                    steps = int(gap // max_px) + 1
+                    for s in range(1, steps):
+                        out.append((ax + (px - ax) * s / steps,
+                                    ay + (py - ay) * s / steps, False))
+            out.append((px, py, broke))
+            broke = False
+            side = -side
+        return out
+
+    first = pass_(axis_pts, 0.0)
+    second = pass_(list(reversed(axis_pts)), step_px / 2.0)
+    pts = first + second
+    if first and second:
+        x, y, _f = second[0]
+        pts[len(first)] = (x, y, _dist(first[-1], (x, y)) > connect_px)
+    return _drop_floor_reversals(pts, floor_px, max_px)
+
+
+def _parallel_underlay(region, inset_px: int, row_px: int, angle_deg: float,
+                       max_step_px: int, connect_px: float,
+                       floor_px: float = 0.0, max_px: float = 0.0):
+    """Low-density tatami underlay under a fill (v2 Part 24). [(x, y, is_jump)].
+
+    An open scanline layer inside the eroded region, crossing the top fill's
+    direction. Inset by the same amount as the edge walk so the underlay cannot
+    surface outside the top layer at the boundary.
+    """
+    import cv2
+    import numpy as np
+
+    k = max(1, inset_px)
+    eroded = cv2.erode(region, np.ones((2 * k + 1, 2 * k + 1), np.uint8))
+    if cv2.countNonZero(eroded) == 0:
+        return []
+    pts = _fill_by_component(eroded, max(1, row_px), max_step_px, connect_px,
+                             angle_deg=angle_deg)
+    return _drop_floor_reversals(pts, floor_px, max_px)
 
 
 def _axis_underlay(axis_pts, step_px: float, connect_px: float,

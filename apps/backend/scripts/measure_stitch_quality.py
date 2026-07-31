@@ -225,6 +225,63 @@ def _object_slices(design):
 # ── Coverage: interior / edge band / spill ───────────────────────────────────
 
 
+# Measurement frames, in degrees (v2 Part 24). Coverage is reported as the MEAN
+# over these rotations of the measurement grid.
+#
+# One frame is not enough. A tatami row pitch of 0.45mm laid with 0.4mm thread
+# leaves a real 0.05mm gap between rows; at PX_PER_MM = 10 that gap is half a
+# pixel, so whether it registers depends on the phase between the rows and the
+# raster. Rows at 0 degrees share ONE phase for the whole design, so the gaps
+# either all vanish or all show — and in the corpus they all vanished, which is
+# why fills scored a clean 100.0.
+#
+# Proof it was luck rather than coverage, measured on the UNCHANGED Part 23
+# designs by rotating only the measurement frame: fixture 09 scored 100.0 / 99.4
+# / 97.6 / 99.9 at 0 / 22.5 / 45 / 11 degrees, and fixture 10 100.0 / 99.3 /
+# 97.4 / 99.9. The stitches never moved. Averaging over four frames costs four
+# rasterisations and makes the number a property of the design instead of a
+# property of its alignment with the pixel grid.
+COVERAGE_FRAMES_DEG = (0.0, 22.5, 45.0, 67.5)
+
+
+def _rotated(design, deg: float):
+    """A copy of the design with every coordinate rotated about its own centroid.
+
+    Used only to re-measure the SAME stitching against a differently-aligned
+    pixel grid; nothing about the design changes.
+    """
+    import copy
+    import math
+
+    if not deg:
+        return design
+    out = copy.deepcopy(design)
+    t = math.radians(deg)
+    c, s = math.cos(t), math.sin(t)
+    pts = [(p.x, p.y) for o in out.objects for p in (o.contour or [])] or \
+          [(st.x, st.y) for st in out.stitches]
+    cx = sum(p[0] for p in pts) / len(pts)
+    cy = sum(p[1] for p in pts) / len(pts)
+    # Re-centre well inside the positive quadrant: `_rasterise` sizes the canvas
+    # from max(x), max(y) and would clip anything that rotated to a negative
+    # coordinate.
+    span = max(max(abs(p[0] - cx) for p in pts), max(abs(p[1] - cy) for p in pts)) + 5.0
+
+    def rot(x, y):
+        dx, dy = x - cx, y - cy
+        return c * dx - s * dy + span, s * dx + c * dy + span
+
+    for st in out.stitches:
+        st.x, st.y = rot(st.x, st.y)
+    for o in out.objects:
+        for p in (o.contour or []):
+            p.x, p.y = rot(p.x, p.y)
+        for hole in (o.holes or []):
+            for p in hole:
+                p.x, p.y = rot(p.x, p.y)
+    return out
+
+
 def _rasterise(design):
     """(outline_mask, thread_mask) at ``PX_PER_MM``, in a canvas sized to the real extents.
 
@@ -255,14 +312,62 @@ def _rasterise(design):
         outline = cv2.bitwise_or(outline, one)
 
     thread = np.zeros((h, w), np.uint8)
-    width_px = max(1, round(THREAD_WIDTH_MM * PX_PER_MM))
     prev = None
     for s in design.stitches:
-        here = (int(s.x * PX_PER_MM), int(s.y * PX_PER_MM))
+        here = (s.x * PX_PER_MM, s.y * PX_PER_MM)
         if _cmd(s) == "STITCH" and prev is not None:
-            cv2.line(thread, prev, here, 255, width_px)
+            _thread_segment(thread, prev, here, THREAD_WIDTH_MM * PX_PER_MM / 2.0)
         prev = here if _cmd(s) in ("STITCH", "JUMP") else None
     return outline, thread
+
+
+# Sub-pixel bits for OpenCV's fixed-point `shift`. 3 => 1/8 px, which at
+# PX_PER_MM = 10 is 0.0125mm — two orders of magnitude finer than the 0.4mm
+# thread being drawn, so endpoint quantisation stops being a term in the result.
+_SUBPIX_BITS = 3
+_SUBPIX = 1 << _SUBPIX_BITS
+
+
+def _thread_segment(canvas, p0, p1, half_px: float) -> None:
+    """Lay one segment of thread as its exact swept band: a rectangle of width
+    ``2 * half_px`` plus round caps.
+
+    NOT ``cv2.line(..., thickness)`` (v2 Part 24). That call's covered width
+    depends on the segment's ANGLE — measured on a 4px nominal width, it paints
+    5.00px perpendicular at 0 and 90 degrees but only 4.25px at 45 — because it
+    rasterises a thick line by stamping the pen along a Bresenham walk. Against a
+    4.5px row pitch that is the difference between "covers" and "leaves a gap",
+    so the old rasteriser scored a horizontal fill at 100% and the SAME fill
+    rotated to 45 degrees at 84.5%, purely as an artifact of the instrument.
+    That bias was invisible while every fill in the corpus was emitted at 0
+    degrees, and it would have silently penalised Part 24's per-object angles.
+
+    A swept rectangle plus round caps is the actual geometry of a thread lying
+    on fabric, and its area is angle-independent by construction; endpoints go
+    through OpenCV's fixed-point ``shift`` so sub-pixel positions survive.
+    """
+    import math
+
+    import cv2
+    import numpy as np
+
+    dx, dy = p1[0] - p0[0], p1[1] - p0[1]
+    L = math.hypot(dx, dy)
+    def q(pt):
+        return (round(pt[0] * _SUBPIX), round(pt[1] * _SUBPIX))
+
+    r = max(1, round(half_px * _SUBPIX))
+    if L > 1e-9:
+        nx, ny = -dy / L * half_px, dx / L * half_px
+        quad = np.array([
+            q((p0[0] + nx, p0[1] + ny)), q((p1[0] + nx, p1[1] + ny)),
+            q((p1[0] - nx, p1[1] - ny)), q((p0[0] - nx, p0[1] - ny)),
+        ], dtype=np.int32)
+        cv2.fillConvexPoly(canvas, quad, 255, lineType=cv2.LINE_8, shift=_SUBPIX_BITS)
+    # Round caps: consecutive segments meet at an angle, and without them every
+    # direction change would leave a notch the fill never actually has.
+    cv2.circle(canvas, q(p0), r, 255, -1, lineType=cv2.LINE_8, shift=_SUBPIX_BITS)
+    cv2.circle(canvas, q(p1), r, 255, -1, lineType=cv2.LINE_8, shift=_SUBPIX_BITS)
 
 
 def _poly(points):
@@ -276,7 +381,33 @@ def _poly(points):
 
 
 def coverage_metrics(design) -> dict:
-    """Interior / edge-band / spill coverage, in percent."""
+    """Interior / edge-band / spill coverage, in percent.
+
+    Averaged over COVERAGE_FRAMES_DEG measurement frames so the result is a
+    property of the stitching rather than of its alignment with the pixel grid;
+    see that constant for the measurement that made the averaging necessary.
+    """
+    per_frame = [_coverage_one_frame(_rotated(design, a)) for a in COVERAGE_FRAMES_DEG]
+    per_frame = [f for f in per_frame if f]
+    if not per_frame:
+        return {}
+
+    def avg(key):
+        vals = [f[key] for f in per_frame if f[key] is not None]
+        return round(sum(vals) / len(vals), 1) if vals else None
+
+    return {
+        "interior_pct": avg("interior_pct"),
+        "edge_band_pct": avg("edge_band_pct"),
+        "spill_pct": avg("spill_pct"),
+        # Geometry, not coverage: identical in every frame, so take the first.
+        "interior_frac": per_frame[0]["interior_frac"],
+        "frames_deg": list(COVERAGE_FRAMES_DEG),
+    }
+
+
+def _coverage_one_frame(design) -> dict:
+    """Coverage against a single, fixed pixel grid. Callers want `coverage_metrics`."""
     import cv2
 
     outline, thread = _rasterise(design)
@@ -296,9 +427,9 @@ def coverage_metrics(design) -> dict:
     return {
         # A shape thinner than 2x the erosion has no interior — it is edge band all
         # the way through. Reporting 0% there would read as a coverage failure.
-        "interior_pct": round(covered(interior), 1) if frac >= MIN_INTERIOR_FRAC else None,
-        "edge_band_pct": round(covered(band), 1),
-        "spill_pct": round(spill / max(cv2.countNonZero(thread), 1) * 100.0, 1),
+        "interior_pct": round(covered(interior), 2) if frac >= MIN_INTERIOR_FRAC else None,
+        "edge_band_pct": round(covered(band), 2),
+        "spill_pct": round(spill / max(cv2.countNonZero(thread), 1) * 100.0, 2),
         "interior_frac": round(frac, 3),
     }
 
