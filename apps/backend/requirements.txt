@@ -10,3 +10,8 @@ pyembroidery>=1.5    # read/write 45+ embroidery formats — core Open/Export/Co
 
 # Feature libraries are in requirements-features.txt (installed when implementing
 # the stub endpoints). They are lazy-imported, so the app boots without them.
+
+# Vector input (v2 Part 25): SVG -> exact raster + exact foreground mask, so
+# vector logos skip the neural-matte guesswork entirely — digitizer._decode_svg.
+svglib>=2.0          # SVG parsing to a ReportLab drawing
+rlPyCairo>=0.4       # renderPM backend that rasterises the drawing

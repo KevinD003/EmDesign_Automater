@@ -149,6 +149,12 @@ class Design(CamelModel):
     version: int = 1
     status: str = "draft"
     created_at: str | None = None
+    # Things the digitizer did that the user would otherwise never learn about
+    # (v2 Part 25): regions dropped as unsewably small at this hoop size, a
+    # colour count that could not be honoured, and similar. Silent loss was a
+    # measured defect — a 40x40mm hoop took the badge fixture from 21 objects
+    # to 4 with nothing said. Empty list == nothing to report.
+    warnings: list[str] = Field(default_factory=list)
 
 
 class WorksheetColorRow(CamelModel):

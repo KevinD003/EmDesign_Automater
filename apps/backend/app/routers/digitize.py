@@ -10,15 +10,24 @@ from app.services import digitizer
 router = APIRouter(tags=["digitize"])
 
 
+# Deliberately a plain `def`, NOT `async def` (v2 Part 25) — and the same choice
+# is made in every CPU-bound router (lettering, export, convert, worksheet,
+# optimize, files, designs.rebuild). FastAPI runs an `async def` handler ON the
+# event loop, so a synchronous CPU-bound call inside one freezes the whole
+# process; a plain `def` is dispatched to the threadpool instead. Measured by
+# probing /health every 250ms during a 12.58s digitize of the badge fixture:
+# as `async def`, ZERO probes completed for the entire duration; as `def`, 37
+# completed (max latency 951ms). With the runbook's --workers 1, that was the
+# difference between one user digitizing and every other user being frozen out.
 @router.post("/digitize", response_model=Design)
-async def digitize(
+def digitize(
     file: UploadFile = File(...),
     fabric_type: str = Form("cotton"),
     hoop_size: str = Form("100x100"),
     max_colors: int = Form(6),
 ) -> Design:
     """Auto-digitize an uploaded image into an embroidery Design (classical CV v1)."""
-    data = await file.read()
+    data = file.file.read()
     if not data:
         raise HTTPException(status_code=400, detail="Empty file")
     try:

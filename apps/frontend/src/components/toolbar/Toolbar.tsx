@@ -23,7 +23,7 @@ const DRAW_TOOLS: { label: string; tool: ManualTool }[] = [
 ];
 const STUB_TOOLS = ['Lettering', 'Appliqué', 'Shape'];
 const ACCEPT = '.dst,.pes,.pec,.jef,.exp,.vp3,.vip,.xxx,.sew,.u01,.json';
-const ACCEPT_IMG = '.png,.jpg,.jpeg,.bmp,.webp';
+const ACCEPT_IMG = '.svg,.png,.jpg,.jpeg,.bmp,.webp'; // SVG first: vector input digitizes from exact outlines (v2 Part 25)
 
 /** Tag for the in-flight operation; only the first two warrant a progress overlay. */
 type BusyOp = 'digitize' | 'lettering' | 'quick';

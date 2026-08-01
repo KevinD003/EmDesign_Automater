@@ -55,10 +55,29 @@ def test_donut_hole_is_not_filled():
 
 
 def test_rebuild_preserves_holes():
-    ring = digitize_image(_ring_image(), "cotton", "100x100", max_colors=2)
-    rebuilt = rebuild_design(ring)
+    """The hole's interior must stay empty of penetrations after a rebuild.
+
+    Asserted directly rather than via the old stitch-count proxy
+    (`ring < disc * 0.9`): Part 25's travel routing sends row connections
+    AROUND the hole along its edge instead of trimming at every crossing, which
+    adds legitimate stitches to the ring and broke the proxy while the property
+    it stood for — the hole is still carved — held. The disc control proves the
+    probe region would be full if the hole were lost.
+    """
+    ring = rebuild_design(digitize_image(_ring_image(), "cotton", "100x100", max_colors=2))
     disc = rebuild_design(digitize_image(_disc_image(), "cotton", "100x100", max_colors=2))
-    assert rebuilt.stitch_count < disc.stitch_count * 0.9  # hole still carved after rebuild
+
+    def centre_hits(design, radius_mm=10.0):
+        xs = [s.x for s in design.stitches if s.command == "STITCH"]
+        ys = [s.y for s in design.stitches if s.command == "STITCH"]
+        cx, cy = (min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2
+        return sum(
+            1 for s in design.stitches
+            if s.command == "STITCH" and (s.x - cx) ** 2 + (s.y - cy) ** 2 < radius_mm ** 2
+        )
+
+    assert centre_hits(disc) > 50, "control: a solid disc must fill its centre"
+    assert centre_hits(ring) == 0, "the hole was stitched over after rebuild"
 
 
 @pytest.mark.skipif(not HAVE_FONT, reason="no TrueType font found on this system")

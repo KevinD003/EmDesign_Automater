@@ -14,13 +14,13 @@ router = APIRouter(tags=["worksheet"])
 
 
 @router.post("/worksheet", response_model=Worksheet)
-async def build_worksheet(design: Design) -> Worksheet:
+def build_worksheet(design: Design) -> Worksheet:
     """Build the production worksheet as structured JSON."""
     return worksheet_pdf.build_worksheet(design)
 
 
 @router.post("/worksheet/pdf")
-async def worksheet_pdf_download(design: Design) -> StreamingResponse:
+def worksheet_pdf_download(design: Design) -> StreamingResponse:
     """Render the production worksheet to a downloadable PDF (spec §4.9)."""
     worksheet = worksheet_pdf.build_worksheet(design)
     try:

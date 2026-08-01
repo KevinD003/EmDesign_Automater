@@ -141,6 +141,13 @@ export interface Design {
   version: number;
   status: DesignStatus;
   createdAt?: string; // ISO 8601
+  /**
+   * Things the digitizer did that would otherwise be silent (v2 Part 25):
+   * artwork regions too small to sew at this hoop, a colour count that could
+   * not be honoured, fine source detail the physical size cannot express.
+   * Absent on designs saved before this field existed.
+   */
+  warnings?: string[];
 }
 
 /** One row of the worksheet color sequence (spec §4.9). */

@@ -35,7 +35,7 @@ class LetteringRequest(CamelModel):
 
 
 @router.get("/lettering/fonts", response_model=list[FontInfo])
-async def get_fonts() -> list[FontInfo]:
+def get_fonts() -> list[FontInfo]:
     """Fonts available for lettering on this server, sorted by display name."""
     try:
         return [FontInfo(**f) for f in lettering.list_fonts()]
@@ -44,7 +44,7 @@ async def get_fonts() -> list[FontInfo]:
 
 
 @router.post("/lettering", response_model=Design)
-async def create_lettering(req: LetteringRequest) -> Design:
+def create_lettering(req: LetteringRequest) -> Design:
     """Generate TATAMI-filled lettering (edge-walk underlay) from text."""
     try:
         return lettering.generate_lettering(

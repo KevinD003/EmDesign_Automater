@@ -17,7 +17,7 @@ _COLORLESS = {"dst", "exp", "dsb", "dsz", "tap", "u01"}
 
 
 @router.post("/convert", response_model=ConvertResponse)
-async def convert(req: ConvertRequest) -> ConvertResponse:
+def convert(req: ConvertRequest) -> ConvertResponse:
     """Convert an embroidery file between machine formats.
 
     Reads via pyembroidery into the Design model, writes back out — so anything

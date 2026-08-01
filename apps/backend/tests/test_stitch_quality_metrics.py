@@ -560,10 +560,14 @@ def test_density_corpus_health_is_pinned():
         max_colors=params["colors"], text_mode=bool(params.get("text", False)),
     )
     m = density_metrics(design)
-    # 6-7 at the old work resolution; 8-10 after Part 17's granularity upscale
-    # shifted stitch positions (10 WITH rembg, 9 WITHOUT — the paths segment
-    # differently). Still comfortably under the flag at 14.
-    assert 6 <= m["max_per_cell"] <= 10
+    # 6-7 at the old work resolution; 8-10 after Part 17's granularity upscale;
+    # 11 after Part 25's lock stitches — a tie-off is DELIBERATELY 3-4
+    # penetrations clustered within a thread-width of one anchor, so the
+    # densest cell in the corpus is now a lock site rather than organic
+    # stitching. That is the intended trade: an unlocked end unravels, and the
+    # flag level at 14 still means "a second full layer on the worst healthy
+    # cell". flagged_cells == 0 remains the invariant that must never move.
+    assert 6 <= m["max_per_cell"] <= 12
     assert m["flagged_cells"] == 0
 
 

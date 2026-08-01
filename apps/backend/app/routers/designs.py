@@ -62,7 +62,7 @@ class DesignStats(CamelModel):
 
 
 @router.post("/designs/rebuild", response_model=Design)
-async def rebuild(design: Design) -> Design:
+def rebuild(design: Design) -> Design:
     """Regenerate all stitches from object contours + current parameters.
 
     Used by object-level editing: change density/angle/stitch-type on an object,

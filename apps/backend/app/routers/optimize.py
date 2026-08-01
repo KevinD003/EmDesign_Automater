@@ -11,7 +11,7 @@ router = APIRouter(prefix="/optimize", tags=["optimize"])
 
 
 @router.post("/path", response_model=OptimizeResult)
-async def optimize_path(design: Design) -> OptimizeResult:
+def optimize_path(design: Design) -> OptimizeResult:
     """Reorder objects within each color (nearest-neighbour) to cut travel/jumps.
 
     Returns the improved design + a before/after report. Non-regenerable designs
@@ -25,6 +25,6 @@ async def optimize_path(design: Design) -> OptimizeResult:
 
 
 @router.post("/quality", response_model=QualityReport)
-async def quality(design: Design) -> QualityReport:
+def quality(design: Design) -> QualityReport:
     """Score the design (0..100) + itemized quality findings."""
     return optimizer.analyze_quality(design)

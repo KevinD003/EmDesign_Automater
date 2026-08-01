@@ -25,7 +25,7 @@ MACHINE_EXPORT_FORMATS: tuple[str, ...] = ("dst", "pes", "pec", "jef", "exp", "v
 
 
 @router.get("/formats")
-async def formats() -> dict[str, object]:
+def formats() -> dict[str, object]:
     """Supported export formats + machine-brand recommendation table (spec §4.8)."""
     writable = embroidery_io.supported_write_exts()
     return {
@@ -38,7 +38,7 @@ async def formats() -> dict[str, object]:
 
 
 @router.post("/export/package")
-async def export_package(design: Design, format: str = Query("dst")) -> StreamingResponse:
+def export_package(design: Design, format: str = Query("dst")) -> StreamingResponse:
     """Bundle the full production package (machine file + master + worksheet + color card
     + preview + summary) as a ZIP (spec §4.8)."""
     fmt = format.lower().lstrip(".")  # normalize once: 'DST' / '.dst' → 'dst'
@@ -68,7 +68,7 @@ def _cmd(stitch) -> str:
 
 
 @router.post("/export")
-async def export_design(design: Design, format: str = Query("dst")) -> StreamingResponse:
+def export_design(design: Design, format: str = Query("dst")) -> StreamingResponse:
     """Encode a Design to a machine file and stream it back."""
     fmt = format.lower().lstrip(".")  # normalize once: 'DST' / '.dst' → 'dst'
     try:
@@ -91,7 +91,7 @@ async def export_design(design: Design, format: str = Query("dst")) -> Streaming
 
 
 @router.post("/export/validate", response_model=ValidationReport)
-async def validate(design: Design) -> ValidationReport:
+def validate(design: Design) -> ValidationReport:
     """Pre-export sanity checks (spec §4.8)."""
     issues: list[str] = []
     warnings: list[str] = []

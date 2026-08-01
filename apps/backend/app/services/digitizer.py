@@ -28,6 +28,20 @@ from app.services import segmentation
 # Tunables (mm unless noted) — see spec "Quick Reference" table.
 ROW_SPACING_MM = 0.45     # fill row pitch — full-coverage tatami (0.6 left fabric showing through)
 MAX_STITCH_MM = 6.0       # subdivide longer runs (machine safety << 12.7mm)
+# Warn the user when at least this share of the segmented foreground was
+# dropped as unsewable (v2 Part 25). Calibrated on the corpus: every fixture at
+# its intended hoop loses well under 2% (anti-aliasing specks), while the badge
+# fixture forced into a 40x40mm hoop — the measured silent-failure case, 21
+# objects down to 4 — loses far more. 3% sits between those populations.
+DROPPED_SHARE_WARN = 0.03
+# Source pixels per design millimetre above which the fine-detail warning fires.
+# 10px/mm means a 2px source feature maps to 0.2mm — under the 0.25mm thread
+# width — so anything drawn at that scale cannot survive. Calibrated against the
+# corpus at intended hoops (all sit below it) and the badge fixture forced into
+# small hoops (70x70 -> 10.2px/mm, 40x40 -> 15.9px/mm, both measured cases where
+# most objects were destroyed).
+FINE_DETAIL_SRC_PX_PER_MM = 10.0
+
 MIN_REGION_MM2 = 2.0      # drop specks smaller than this. v1 used 4.0, which
                           # deleted the mascot's 2.6mm² freckles and similar
                           # deliberate small detail (v1 audit §5). 2.0 keeps them
@@ -294,6 +308,11 @@ def _open_preserving_detail(mask, mm_per_px: float):
 # decision from measured geometry instead of assertion.
 _CLASSIFICATION_LOG: list[dict] = []
 
+# (area_mm2, perimeter_mm) of every region the speck filter dropped in the last
+# digitize — the raw material for the too-small-to-sew warning, and inspectable
+# by the bench when the warning's calibration is questioned.
+_DROP_LOG: list[tuple[float, float]] = []
+
 
 def last_classification_log() -> list[dict]:
     """Per-object measured widths + satin/tatami decision from the last run."""
@@ -437,6 +456,51 @@ def _smooth_contour(contour, mm_per_px: float):
     return np.round(smoothed).astype(np.int32).reshape(-1, 1, 2)
 
 
+def _decode_svg(data: bytes):
+    """Decode an SVG into ``(bgr_image, exact_foreground_mask)`` — or None if
+    the bytes are not SVG (v2 Part 25).
+
+    THE point of vector input, and why this returns a mask as well as pixels:
+    every raster upload forces the pipeline to GUESS the foreground (U2-Net,
+    `_reclaim_ink`, halo suppression — Parts 1, 21, 22 all exist because that
+    guess goes wrong), whereas a vector file states it. The mask is recovered
+    exactly by rendering the artwork twice, once on white and once on black:
+    an opaque artwork pixel is identical in both renders, a background or
+    semi-transparent pixel differs. That includes WHITE artwork on a white
+    page — the case every substrate-colour heuristic gets wrong by definition.
+
+    Rendered at `_MAX_WORK_PX` on the long side so the working-resolution
+    rescale is a no-op and the mask never has to be resampled.
+    """
+    head = data[:2048].lstrip()
+    if not (head.startswith((b"<?xml", b"<svg")) or b"<svg" in head[:1024]):
+        return None
+    import io
+
+    import cv2
+    import numpy as np
+    from reportlab.graphics import renderPM
+    from svglib.svglib import svg2rlg
+
+    try:
+        drawing = svg2rlg(io.BytesIO(data))
+    except Exception:  # noqa: BLE001 - svglib raises arbitrary types on bad XML; None -> caller's 415
+        return None
+    if drawing is None or drawing.width <= 0 or drawing.height <= 0:
+        return None
+    f = _MAX_WORK_PX / max(drawing.width, drawing.height)
+    drawing.scale(f, f)
+    drawing.width *= f
+    drawing.height *= f
+    white = np.array(renderPM.drawToPIL(drawing, bg=0xFFFFFF).convert("RGB"))
+    black = np.array(renderPM.drawToPIL(drawing, bg=0x000000).convert("RGB"))
+    diff = np.abs(white.astype(np.int16) - black.astype(np.int16)).max(axis=2)
+    # < 8 rather than == 0: renderPM dithers the last bit of anti-aliased
+    # coverage, so a fully opaque pixel can differ by a count or two.
+    mask = (diff < 8).astype(np.uint8) * 255
+    return cv2.cvtColor(white, cv2.COLOR_RGB2BGR), mask
+
+
 def digitize_image(
     data: bytes,
     fabric_type: str = "cotton",
@@ -451,12 +515,18 @@ def digitize_image(
 
     buf = np.frombuffer(data, np.uint8)
     img = cv2.imdecode(buf, cv2.IMREAD_COLOR)
+    svg_mask = None
     if img is None:
-        raise ValueError("Could not decode image (expected PNG/JPEG/BMP/WebP)")
+        decoded = _decode_svg(data)  # vector path (v2 Part 25)
+        if decoded is None:
+            raise ValueError("Could not decode image (expected SVG/PNG/JPEG/BMP/WebP)")
+        img, svg_mask = decoded
 
     hoop_w, hoop_h = _parse_hoop(hoop_size)
     ih, iw = img.shape[:2]
+    src_ih, src_iw = ih, iw                          # pre-rescale, for warnings
     mm_per_px = min(hoop_w / iw, hoop_h / ih) * 0.9  # 90% of hoop
+    design_w_mm = iw * mm_per_px                     # physical width at this hoop
     # Work at a bounded resolution for speed; keep mm scale consistent.
     # Granularity floor (v2 Part 17): small sources are upscaled so contours,
     # borders and details are traced at fine geometry — a 640px logo in a 130mm
@@ -486,7 +556,12 @@ def digitize_image(
     # pixel of that colour anywhere in the frame, which is what removed fixture
     # 02's white type and fixture 08's cream muzzle while keeping fixture 09's
     # background. See services/segmentation.py.
-    fg_mask, seg_method = segmentation.foreground_mask(img, data)
+    if svg_mask is not None:
+        # Vector input carries its own EXACT foreground — no neural matte, no
+        # substrate heuristics, none of the guesswork Parts 1/21/22 patched.
+        fg_mask, seg_method = svg_mask, "svg-vector"
+    else:
+        fg_mask, seg_method = segmentation.foreground_mask(img, data)
     if fg_mask.shape[:2] != (ih, iw):
         fg_mask = cv2.resize(fg_mask, (iw, ih), interpolation=cv2.INTER_NEAREST)
     fg_flat = fg_mask.reshape(-1) > 0
@@ -582,10 +657,13 @@ def digitize_image(
     connect_px = CONNECT_MM / mm_per_px
 
     _CLASSIFICATION_LOG.clear()
+    _DROP_LOG.clear()
     stitches: list[Stitch] = []
     color_stops: list[ColorStop] = []
     objects: list[DesignObject] = []
     seq = 0
+    dropped_speck_count = 0     # regions under min_region_mm2 at THIS hoop size
+    emitted_mask = np.zeros((ih, iw), np.uint8)  # px that became stitched objects
     skeleton_satin_used = 0        # diagnostics for the bench/audit
     skeleton_tatami_fallback = 0
     skeleton_partial_tatami = 0
@@ -642,7 +720,14 @@ def digitize_image(
         # Substrate rule: a cluster the colour of the garment is only ink where it
         # forms a small enclosed element (knocked-out type, counters, catchlights).
         # A large expanse of it is the garment showing through a thin outline.
-        if float(np.linalg.norm(center.astype(float) - substrate)) < SUBSTRATE_DELTA:
+        #
+        # SKIPPED for vector input (v2 Part 25): the rule exists because a raster
+        # foreground is a GUESS and page-coloured regions inside the guess are
+        # usually the page. An SVG's mask is declared, not guessed — a white
+        # element on a white page is real artwork the file states explicitly,
+        # and this rule was measured deleting exactly that (the white disc of
+        # the white-on-white probe survived the mask and died here).
+        if svg_mask is None and float(np.linalg.norm(center.astype(float) - substrate)) < SUBSTRATE_DELTA:
             mask = _drop_large_substrate_regions(mask, design_area_px, mm_per_px, fg_mask)
         # RETR_CCOMP: 2-level hierarchy — top-level outlines + their interior holes
         # (letter counters, donuts). RETR_EXTERNAL would fill an 'o' solid.
@@ -664,7 +749,11 @@ def digitize_image(
                     child = hier[child][0]
             net_area = cv2.contourArea(contour) - sum(cv2.contourArea(h) for h in hole_contours)
             if net_area < min_area_px:
+                dropped_speck_count += 1
+                _DROP_LOG.append((float(net_area * mm_per_px * mm_per_px),
+                                  float(cv2.arcLength(contour, True) * mm_per_px)))
                 continue
+            cv2.drawContours(emitted_mask, [contour], -1, 255, thickness=cv2.FILLED)
             # Smooth the pixel staircase before it becomes stitches. Done here so
             # the stored contour (which drives rebuild) is smooth too, not just
             # this run's fill.
@@ -923,6 +1012,18 @@ def digitize_image(
                 )
             if len(pts) < 2:
                 continue
+            # Jumps that never leave this object's own region become hidden
+            # travel runs (v2 Part 25) — see _route_travel. The floor backstop
+            # then runs AGAIN, because two consecutive jumps converted to travel
+            # form an out-and-back run whose turnaround is the same
+            # needle-in-one-hole reversal the underlay dead-ends had in Part 11
+            # (measured on fixture 04: travel out at x=45.11, back at 45.07,
+            # 0.18mm apart at the turn). Same defect, same repair.
+            pts = _route_travel(pts, region, TRAVEL_STEP_MM / mm_per_px)
+            if _PENETRATION_FLOOR_MM:
+                pts = _drop_floor_reversals(
+                    pts, _PENETRATION_FLOOR_MM / mm_per_px, MAX_STITCH_MM / mm_per_px,
+                )
             if this_stop is None:  # first real object → open a color stop (deferred COLOR_CHANGE)
                 emitted_stop += 1
                 this_stop = emitted_stop
@@ -986,8 +1087,84 @@ def digitize_image(
         last = stitches[-1]
         stitches.append(Stitch(x=last.x, y=last.y, command="END"))
 
+    # Consecutive stops of one thread collapse into one mounting (v2 Part 25) —
+    # BEFORE locking, so the deleted colour change never earns a tie pair.
+    _merge_adjacent_same_hex(stitches, color_stops, objects)
+
+    # Lock every thread end and trim every remaining long cross-fabric jump
+    # (v2 Part 25). Runs on the assembled stream because cuts are created in
+    # three places (object transition, colour change, END).
+    stitches = _lock_stream(stitches)
+
     xs = [s.x for s in stitches if s.command == "STITCH"] or [0.0]
     ys = [s.y for s in stitches if s.command == "STITCH"] or [0.0]
+
+    # ── Tell the user what was lost or altered (v2 Part 25) ──────────────────
+    # Every branch below was a measured SILENT failure before this: a 40x40mm
+    # hoop took the badge fixture from 21 objects to 4 and said nothing, and
+    # max_colors=2 quietly returned 3 stops. The data was already collected
+    # (_CLASSIFICATION_LOG, the speck counter); it just never left the function.
+    user_warnings: list[str] = []
+    # Two loss channels, two signals — because three simpler drafts were each
+    # measured and rejected. A raw dropped-region count cries wolf (the badge
+    # fixture at its intended hoop drops ~1,650 anti-aliasing specks totalling a
+    # fraction of a percent); a contourArea share mis-scores thin linework
+    # (fixture 04 read as "92% lost" because a hairline's polygon area is near
+    # zero); and shape discriminators on the dropped specks separate nothing,
+    # because at a small hoop EVERYTHING dropped is small. What actually happens
+    # at a too-small hoop, measured on the badge (21 -> 5 objects by 70x70), is
+    # that fine detail merges into neighbouring colour clusters during
+    # quantization — the pixels survive, the elements don't — which no
+    # post-hoc accounting of the filters can see.
+    #
+    # Signal 1 (exact, element-level): connected components of the OWNED
+    # foreground that no emitted object touches AT ALL. Element-level and not
+    # pixel-level, because a pixel accounting confounds real loss with edge
+    # shaving — `_open_preserving_detail` and contour smoothing legitimately
+    # shave the anti-aliased fringe of every shape, which read fixture 06's
+    # script as "27% lost" when every stroke of it was emitted. An element that
+    # is partially covered was digitized; an element with zero overlap is gone.
+    # Owned means labels >= 0: blend pixels the halo suppression deliberately
+    # leaves at -1 belong to no element.
+    owned = (labels >= 0).astype(np.uint8)
+    n_own, own_lab, own_stats, _c = cv2.connectedComponentsWithStats(owned, connectivity=8)
+    lost_px = 0
+    covered = np.bincount(own_lab[emitted_mask > 0].reshape(-1), minlength=n_own)
+    for k in range(1, n_own):
+        if own_stats[k, cv2.CC_STAT_AREA] >= min_area_px and covered[k] == 0:
+            lost_px += int(own_stats[k, cv2.CC_STAT_AREA])
+    lost_share = lost_px / max(1, cv2.countNonZero(owned))
+    if lost_share >= DROPPED_SHARE_WARN:
+        user_warnings.append(
+            f"About {lost_share:.0%} of the artwork is too small or too "
+            "faint to sew at this size and was left out. A larger hoop keeps more detail."
+        )
+    # Signal 2 (heuristic, and labelled as such): source resolution vs physical
+    # size. When many source pixels map to each millimetre, the artwork was
+    # authored with detail this hoop cannot express — a 2px feature at 10px/mm
+    # is 0.2mm, under the 40wt thread itself. This is the only available sensor
+    # for the merge channel, which destroys elements before any filter runs.
+    # Skipped for vector input: its raster resolution is chosen by US at render
+    # time, so pixels-per-millimetre says nothing about the artwork's detail.
+    src_px_per_mm = max(src_iw, src_ih) / max(design_w_mm, 1e-6)
+    if svg_mask is None and src_px_per_mm >= FINE_DETAIL_SRC_PX_PER_MM:
+        user_warnings.append(
+            f"The image is {max(src_iw, src_ih)}px across but the design is only "
+            f"{design_w_mm:.0f}mm wide — fine detail (small text, thin lines) may "
+            "not survive at this size. Try a larger hoop, or simplify the artwork."
+        )
+    distinct_hexes = len({s.hex for s in color_stops})
+    if len(color_stops) > max_colors:
+        user_warnings.append(
+            f"Requested {max_colors} colours but the design uses {len(color_stops)} "
+            f"colour stops ({distinct_hexes} distinct threads): detail stitched on top "
+            "of a background fill opens a second stop of the same thread."
+        )
+    elif distinct_hexes < max_colors:
+        user_warnings.append(
+            f"Requested {max_colors} colours; the artwork only separated into "
+            f"{distinct_hexes} distinguishable colour{'s' if distinct_hexes != 1 else ''}."
+        )
 
     return Design(
         name="Digitized image",
@@ -1000,6 +1177,7 @@ def digitize_image(
         objects=objects,
         stitches=stitches,
         status="digitized",
+        warnings=user_warnings,
     )
 
 
@@ -1296,6 +1474,322 @@ def _scanline_fill(region, row_px: int, max_step_px: int, connect_px: float):
 
 
 MIN_STITCH_MM = 0.5  # below this a needle penetration risks thread break / needle strike
+
+# --- Travel runs, lock stitches and long-jump trims (v2 Part 25) -------------
+# Before this part the stream had NO travel and NO locks: `ConnectMethod`
+# declared TRIM / TRAVEL_RUN / JUMP and only TRIM was ever produced, there was
+# no tie-off code anywhere, and the corpus carried 1,206 jump moves — 638 of
+# them longer than the 12.7mm machine limit, the longest 87mm. An untrimmed
+# long jump drags a thread trail across the design; a cut without a lock is an
+# end that unravels in the wash.
+#
+# The blunt fix — trim every long jump — was counted and rejected: 695 jumps
+# exceed 10mm, and at the ~2.5s a machine spends per trim that is half an hour
+# of added runtime on this corpus alone. What professional files do instead is
+# TRAVEL: a needle-up move whose path stays inside the object's own region is
+# replaced by a running stitch that later stitching covers, and only a genuine
+# cross-fabric move earns a trim.
+#
+# Travel pitch: 2.0mm, the standard travel-run length; sub-thread-visible under
+# a fill or satin top layer.
+TRAVEL_STEP_MM = 2.0
+# A jump crossing open fabric longer than this gets a tie-off and a TRIM.
+# Below it, the machine's own movement is short enough that the trail is
+# accepted (and many machines auto-trim in this range themselves anyway).
+TRIM_JUMP_MM = 10.0
+# Lock-stitch geometry: a small triangle rather than the traditional
+# stitch-in-place, because stitching in place puts repeated penetrations in one
+# hole — the exact defect the 0.30mm penetration floor exists to prevent, and
+# the floor metric would (rightly) flag our own ties. Legs 0.70 / 0.61 / 0.61mm
+# all clear MIN_STITCH_MM; every same-side gap in the triangle clears the floor
+# with the zigzag triple test applied (verified by the corpus floor count
+# staying at 0 with ties emitted at every cut).
+TIE_ALONG_MM = 0.7
+TIE_LATERAL_MM = 0.5
+
+
+def _merge_adjacent_same_hex(stitches, color_stops, objects) -> int:
+    """Merge CONSECUTIVE colour stops that mount the same thread (v2 Part 25).
+
+    Measured on the corpus: 5 of the 10 fixtures asked the operator to mount a
+    thread they already had on the machine — fixture 04 opened two stops of one
+    hex with nothing between them. Each merge deletes one COLOR_CHANGE (an
+    operator re-thread) and replaces it with a TRIM.
+
+    ADJACENT stops only, by design. Non-adjacent same-hex stops exist for
+    layering (the deferred detail pass must sew AFTER the fills that cover its
+    holes), and merging across an intervening colour would re-order the sewing.
+    Adjacency preserves the stream order exactly, so it cannot break layering.
+
+    Returns the number of stops merged away. Mutates all three arguments.
+    """
+    from app.models.design import Stitch
+
+    if len(color_stops) < 2:
+        return 0
+    cc_idx = [i for i, s in enumerate(stitches) if s.command == "COLOR_CHANGE"]
+    remap: dict[int, int] = {}
+    kept: list = []
+    merged = 0
+    for pos, stop in enumerate(color_stops):  # already in stop_number order
+        if kept and stop.hex == kept[-1].hex:
+            # The (pos-1)-th COLOR_CHANGE separated this stop from the previous
+            # one; the thread does not change, so it becomes a plain TRIM.
+            i = cc_idx[pos - 1]
+            stitches[i] = Stitch(x=stitches[i].x, y=stitches[i].y, command="TRIM")
+            if i + 1 < len(stitches) and stitches[i + 1].command == "STITCH":
+                # A COLOR_CHANGE implied a repositioning the TRIM does not;
+                # without a JUMP the first stitch of the next block would be
+                # sewn as one long stitch from the trim position.
+                stitches.insert(i + 1, Stitch(x=stitches[i + 1].x, y=stitches[i + 1].y, command="JUMP"))
+                cc_idx = [j + 1 if j > i else j for j in cc_idx]
+            kept[-1].stitch_count += stop.stitch_count
+            remap[stop.stop_number] = kept[-1].stop_number
+            merged += 1
+            continue
+        new_number = len(kept) + 1
+        remap[stop.stop_number] = new_number
+        stop.stop_number = new_number
+        stop.thread_name = f"Color {new_number}"
+        kept.append(stop)
+    if merged:
+        color_stops[:] = kept
+        for o in objects:
+            o.color_stop = remap.get(o.color_stop, o.color_stop)
+    return merged
+
+
+def _route_travel(pts, region, step_px: float, dilate_px: int = 2):
+    """Replace needle-up jumps whose path stays inside the object's own region
+    with running stitches at TRAVEL_STEP_MM (v2 Part 25).
+
+    This is the industry alternative to trimming every long move: a travel run
+    inside the region is covered (or at worst bordered) by the object's own
+    stitching, costs no trim, and leaves no thread trail. Jumps that leave the
+    region are returned untouched for `_lock_stream` to judge.
+
+    The region is dilated a couple of pixels before testing because
+    boundary-paced satin ends sit ON the boundary, and a move between two
+    branch tips legitimately hugs the edge.
+    """
+    import math
+
+    import cv2
+    import numpy as np
+
+    if len(pts) < 2 or region is None:
+        return pts
+    mask = cv2.dilate(region, np.ones((2 * dilate_px + 1,) * 2, np.uint8)) > 0
+    h, w = mask.shape
+
+    def inside(ax, ay, bx, by, length):
+        n = max(2, int(length))  # ~1px sampling
+        for t in range(n + 1):
+            x = ax + (bx - ax) * t / n
+            y = ay + (by - ay) * t / n
+            iy, ix = round(y), round(x)
+            if not (0 <= iy < h and 0 <= ix < w) or not mask[iy, ix]:
+                return False
+        return True
+
+    # Boundary polylines for the detour fallback, computed lazily: a jump whose
+    # straight line leaves the region (a fill row hopping ACROSS a hole) can
+    # usually travel AROUND the obstruction along the region's own edge, where
+    # the border satin later covers the run. Without this, a plain donut
+    # produced 72 trims — one per hole-crossing row connection — versus the
+    # single trim the shape needs.
+    boundary: list | None = None
+
+    def get_boundary():
+        nonlocal boundary
+        if boundary is None:
+            k = np.ones((3, 3), np.uint8)
+            shrunk = cv2.erode(mask.astype(np.uint8) * 255, k)
+            cs, _ = cv2.findContours(shrunk, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_NONE)
+            boundary = [c.reshape(-1, 2).astype(np.float64) for c in cs if len(c) >= 8]
+        return boundary
+
+    def detour(ax, ay, bx, by):
+        """Points routing a->b along one boundary loop, or None."""
+        best = None
+        for poly in get_boundary():
+            d_a = np.hypot(poly[:, 0] - ax, poly[:, 1] - ay)
+            d_b = np.hypot(poly[:, 0] - bx, poly[:, 1] - by)
+            ia, ib = int(d_a.argmin()), int(d_b.argmin())
+            cost = float(d_a[ia] + d_b[ib])
+            if best is None or cost < best[0]:
+                best = (cost, poly, ia, ib)
+        if best is None:
+            return None
+        _cost, poly, ia, ib = best
+        n = len(poly)
+        fwd = (ib - ia) % n
+        idxs = ([(ia + s) % n for s in range(fwd + 1)] if fwd <= n - fwd
+                else [(ia - s) % n for s in range((n - fwd) + 1)])
+        path = [(float(poly[i][0]), float(poly[i][1])) for i in idxs]
+        # Resample to the travel pitch; the raw contour is one point per pixel.
+        keep = [path[0]]
+        acc = 0.0
+        for p, q in pairwise(path):
+            acc += math.hypot(q[0] - p[0], q[1] - p[1])
+            if acc >= step_px:
+                keep.append(q)
+                acc = 0.0
+        keep.append(path[-1])
+        return keep
+
+    out = [pts[0]]
+    for prev, cur in pairwise(pts):
+        if not cur[2]:
+            out.append(cur)
+            continue
+        ax, ay = float(prev[0]), float(prev[1])
+        bx, by = float(cur[0]), float(cur[1])
+        length = math.hypot(bx - ax, by - ay)
+        if length <= 1e-6:
+            out.append(cur)
+            continue
+        if inside(ax, ay, bx, by, length):
+            k = max(1, round(length / max(step_px, 1.0)))
+            for j in range(1, k):
+                out.append((ax + (bx - ax) * j / k, ay + (by - ay) * j / k, False))
+            out.append((bx, by, False))
+            continue
+        via = detour(ax, ay, bx, by)
+        if via is not None and all(
+            inside(p[0], p[1], q[0], q[1], math.hypot(q[0] - p[0], q[1] - p[1]))
+            for p, q in pairwise([(ax, ay), *via, (bx, by)])
+        ):
+            for p in via:
+                out.append((p[0], p[1], False))
+            out.append((bx, by, False))
+        else:
+            out.append(cur)  # genuinely cross-fabric: left for _lock_stream
+    return out
+
+
+def _tie_triangle(x: float, y: float, dx: float, dy: float,
+                  along: float = TIE_ALONG_MM) -> list[tuple[float, float]]:
+    """Three lock penetrations anchored at (x, y), oriented along unit (dx, dy):
+    out along the path, offset to the side, back to the anchor. `along` is the
+    out-leg length — `_lock_stream.tie` grows it past nearby penetrations so the
+    lock cannot land within the floor of the stitching it secures."""
+    import math
+
+    n = math.hypot(dx, dy)
+    dx, dy = (dx / n, dy / n) if n > 1e-9 else (1.0, 0.0)
+    px, py = -dy, dx
+    return [
+        (x + along * dx, y + along * dy),
+        (x + 0.5 * along * dx + TIE_LATERAL_MM * px,
+         y + 0.5 * along * dy + TIE_LATERAL_MM * py),
+        (x, y),
+    ]
+
+
+def _lock_stream(stitches: list) -> list:
+    """Post-pass over a finished stitch stream: lock every thread end.
+
+    - Before each TRIM / COLOR_CHANGE / END that follows stitching: a tie-off.
+    - At the first stitch of each new run after a cut: a tie-in.
+    - A JUMP longer than TRIM_JUMP_MM with no preceding TRIM: gains a tie-off
+      and a TRIM, so the machine cuts instead of dragging thread.
+
+    Runs on the assembled stream rather than inside the emission loop because
+    cuts are created in three places (object transition, colour change, END)
+    and a single pass cannot miss one of them. Per-object `stitch_count` values
+    are computed before this pass, so they deliberately exclude lock stitches —
+    they describe the object's own stitching, not its plumbing.
+    """
+    import math
+
+    from app.models.design import Stitch
+
+    out: list = []
+
+    def last_stitch_dir():
+        """Direction of the most recent stitched segment in `out`, or None."""
+        pts = [s for s in out if s.command == "STITCH"]
+        if len(pts) < 2:
+            return None
+        a, b = pts[-2], pts[-1]
+        return (b.x - a.x, b.y - a.y)
+
+    def tie(x, y, d, neighbours=()):
+        """Append lock penetrations at (x, y) along unit-ish (d), keeping every
+        new penetration at least MIN_PENETRATION_MM clear of `neighbours`.
+
+        Two search axes, both earned by measurement. A fixed 0.7mm back-step
+        produced 92 floor violations: on a 0.4mm-pitch satin end it lands 0.3mm
+        from the previous penetration. Growing the leg alone still failed on
+        fixture 03, because a satin end's back-direction points STRAIGHT ALONG
+        the zig line — every previous hole lies on that line, so no length
+        escapes it (measured: the leg grew to 1.6mm and still landed 0.05mm
+        from an old hole). Rotating the lock off the line is what works; length
+        growth remains as the second axis.
+        """
+        best = None
+        for rot in (0.0, 0.6, -0.6, 1.2, -1.2):  # radians; ±35° and ±70°
+            c, s_ = math.cos(rot), math.sin(rot)
+            rd = (d[0] * c - d[1] * s_, d[0] * s_ + d[1] * c)
+            for along in (TIE_ALONG_MM, TIE_ALONG_MM + 0.3, TIE_ALONG_MM + 0.6):
+                pts = _tie_triangle(x, y, rd[0], rd[1], along)
+                worst = min((math.hypot(px - nx, py - ny)
+                             for px, py in pts for nx, ny in neighbours), default=1e9)
+                if best is None or worst > best[0]:
+                    best = (worst, pts)
+                if worst >= MIN_PENETRATION_MM + 0.1:
+                    for tx, ty in pts:
+                        out.append(Stitch(x=tx, y=ty, command="STITCH"))
+                    return
+        # No candidate cleared the margin (dense ground everywhere): take the
+        # best available rather than skipping the lock — an unlocked end
+        # unravels, while a tight lock in dense stitching is exactly where
+        # extra penetrations matter least.
+        for tx, ty in best[1]:
+            out.append(Stitch(x=tx, y=ty, command="STITCH"))
+
+    def recent_penetrations(n=3):
+        pts = [s for s in out if s.command == "STITCH"]
+        return [(p.x, p.y) for p in pts[-n:]]
+
+    pending_tie_in = False
+    for i, s in enumerate(stitches):
+        if s.command in ("TRIM", "COLOR_CHANGE", "END"):
+            # Tie-off runs BACKWARD along the just-stitched path, so the lock
+            # lies on ground that is already covered — forward would overshoot
+            # 0.7mm past the object's edge onto bare fabric.
+            d = last_stitch_dir()
+            if d is not None and out and out[-1].command == "STITCH":
+                anchor = out[-1]
+                tie(anchor.x, anchor.y, (-d[0], -d[1]), recent_penetrations()[:-1])
+            out.append(s)
+            if s.command != "END":
+                pending_tie_in = True
+            continue
+        if s.command == "JUMP":
+            prev = out[-1] if out else None
+            if (prev is not None and prev.command == "STITCH"
+                    and math.hypot(s.x - prev.x, s.y - prev.y) > TRIM_JUMP_MM):
+                d = last_stitch_dir()
+                if d is not None:
+                    tie(prev.x, prev.y, (-d[0], -d[1]), recent_penetrations()[:-1])
+                out.append(Stitch(x=out[-1].x, y=out[-1].y, command="TRIM"))
+                pending_tie_in = True
+            out.append(s)
+            continue
+        # STITCH
+        if pending_tie_in:
+            # Tie in TOWARD the next move so the lock lies under the coming
+            # stitching. Direction from this landing to the next point.
+            nxt = next((t for t in stitches[i + 1:] if t.command == "STITCH"), None)
+            d = (nxt.x - s.x, nxt.y - s.y) if nxt is not None else (1.0, 0.0)
+            out.append(Stitch(x=s.x, y=s.y, command="STITCH"))
+            tie(s.x, s.y, d, [(nxt.x, nxt.y)] if nxt is not None else ())
+            pending_tie_in = False
+            continue
+        out.append(s)
+    return out
 # Fills may keep stitches down to this fraction of their own row pitch: the
 # row-to-row connection IS one pitch long by construction, and deleting it
 # recedes the fill edge (v2 Part 15). 0.95 keeps the pitch-length connection
@@ -3364,6 +3858,14 @@ def rebuild_design(design: Design) -> Design:
                     )
                     pts = _with_underlay(under, pts, connect_px)
             pts = _coalesce_short(pts, MIN_STITCH_MM / mm_per_px)
+            # Same travel routing as the digitizer (v2 Part 25): without it a
+            # rebuilt donut carried 63 hole-crossing trims that the fresh
+            # digitize of the same shape had already routed away.
+            pts = _route_travel(pts, mask, TRAVEL_STEP_MM / mm_per_px)
+            if _PENETRATION_FLOOR_MM:
+                pts = _drop_floor_reversals(
+                    pts, _PENETRATION_FLOOR_MM / mm_per_px, MAX_STITCH_MM / mm_per_px,
+                )
             if len(pts) < 2:
                 continue
 
@@ -3393,6 +3895,11 @@ def rebuild_design(design: Design) -> Design:
     if stitches:
         last = stitches[-1]
         stitches.append(Stitch(x=last.x, y=last.y, command="END"))
+
+    # Rebuilt streams get the same thread locks as freshly digitized ones
+    # (v2 Part 25) — otherwise one parameter edit would silently strip every
+    # tie the original stream carried.
+    stitches = _lock_stream(stitches)
 
     sxs = [s.x for s in stitches if s.command == "STITCH"] or [0.0]
     sys_ = [s.y for s in stitches if s.command == "STITCH"] or [0.0]

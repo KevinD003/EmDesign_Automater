@@ -1,0 +1,219 @@
+{
+  "fixture": "02_logo_fine_text_3color",
+  "params": {
+    "colors": 3,
+    "hoop": "130x180",
+    "fabric": "cotton"
+  },
+  "ok": true,
+  "error": null,
+  "warnings": [],
+  "runtime_s": 2.275,
+  "stitch_count": 6129,
+  "color_count": 4,
+  "object_count": 7,
+  "stitch_types": {
+    "TATAMI": 6,
+    "SATIN": 1
+  },
+  "objects_with_holes": 1,
+  "width_mm": 88.85,
+  "height_mm": 63.11,
+  "est_minutes": 7.66,
+  "jump_count": 28,
+  "trim_count": 21,
+  "color_changes": 3,
+  "max_stitch_mm": 8.78,
+  "mean_stitch_mm": 3.207,
+  "stitches_over_machine_limit": 0,
+  "stitches_under_0_5mm": 226,
+  "stitch_density_per_mm2": 1.14,
+  "filled_area_mm2": 5392.9,
+  "stitch_density_per_bbox_mm2": 1.09,
+  "fill_row_pitch_mm": 0.016,
+  "fill_rows_over_thread_width": 0,
+  "coverage_ratio": 1.0,
+  "segmentation_method": "rembg",
+  "satin_share": 0.143,
+  "classification": [
+    {
+      "seq": 1,
+      "region_median_w_mm": 8.19,
+      "skeleton_median_w_mm": 0.0,
+      "uncovered_share": 1.0,
+      "reason": "broad_fill_pregate",
+      "decision": "TATAMI"
+    },
+    {
+      "seq": 2,
+      "region_median_w_mm": 7.52,
+      "skeleton_median_w_mm": 0.0,
+      "uncovered_share": 1.0,
+      "reason": "broad_fill_pregate",
+      "decision": "TATAMI"
+    },
+    {
+      "seq": 3,
+      "region_median_w_mm": 0.58,
+      "skeleton_median_w_mm": 1.27,
+      "uncovered_share": 0.0,
+      "reason": "satin",
+      "decision": "SATIN"
+    },
+    {
+      "seq": 4,
+      "region_median_w_mm": 0.58,
+      "skeleton_median_w_mm": 0.0,
+      "uncovered_share": 0.0,
+      "reason": "no_medial_axis",
+      "decision": "TATAMI"
+    },
+    {
+      "seq": 5,
+      "region_median_w_mm": 0.98,
+      "skeleton_median_w_mm": 0.0,
+      "uncovered_share": 0.0,
+      "reason": "no_medial_axis",
+      "decision": "TATAMI"
+    },
+    {
+      "seq": 6,
+      "region_median_w_mm": 0.7,
+      "skeleton_median_w_mm": 0.0,
+      "uncovered_share": 0.0,
+      "reason": "no_medial_axis",
+      "decision": "TATAMI"
+    },
+    {
+      "seq": 7,
+      "region_median_w_mm": 1.13,
+      "skeleton_median_w_mm": 0.0,
+      "uncovered_share": 0.0,
+      "reason": "no_medial_axis",
+      "decision": "TATAMI"
+    }
+  ],
+  "coverage": {
+    "interior_pct": 99.4,
+    "edge_band_pct": 100.0,
+    "spill_pct": 3.8,
+    "interior_frac": 0.95,
+    "frames_deg": [
+      0.0,
+      22.5,
+      45.0,
+      67.5
+    ]
+  },
+  "penetration": {
+    "satin_objects": 7,
+    "penetrations": 2053,
+    "nominal_pitch_mm": 0.4,
+    "floor_mm": 0.3,
+    "min_spacing_mm": 0.301,
+    "min_spacing_object": "Fill 1 (#0f5a4b)",
+    "below_floor": 0,
+    "below_floor_share": 0.0,
+    "per_object": [
+      {
+        "object": 1,
+        "name": "Fill 1 (#0f5a4b)",
+        "penetrations": 1649,
+        "min_mm": 0.301,
+        "p05_mm": 0.369,
+        "median_mm": 0.39,
+        "below_floor": 0
+      },
+      {
+        "object": 2,
+        "name": "Fill 2 (#f0c33c)",
+        "penetrations": 314,
+        "min_mm": 0.302,
+        "p05_mm": 0.32,
+        "median_mm": 0.39,
+        "below_floor": 0
+      },
+      {
+        "object": 3,
+        "name": "Satin 3 (#fafafa)",
+        "penetrations": 29,
+        "min_mm": 0.309,
+        "p05_mm": 0.363,
+        "median_mm": 0.393,
+        "below_floor": 0
+      },
+      {
+        "object": 4,
+        "name": "Fill 4 (#0f5a4b)",
+        "penetrations": 9,
+        "min_mm": 0.371,
+        "p05_mm": 0.371,
+        "median_mm": 0.39,
+        "below_floor": 0
+      },
+      {
+        "object": 5,
+        "name": "Fill 5 (#0f5a4b)",
+        "penetrations": 18,
+        "min_mm": 0.337,
+        "p05_mm": 0.337,
+        "median_mm": 0.431,
+        "below_floor": 0
+      },
+      {
+        "object": 6,
+        "name": "Fill 6 (#0f5a4b)",
+        "penetrations": 11,
+        "min_mm": 0.374,
+        "p05_mm": 0.374,
+        "median_mm": 0.39,
+        "below_floor": 0
+      },
+      {
+        "object": 7,
+        "name": "Fill 7 (#0f5a4b)",
+        "penetrations": 23,
+        "min_mm": 0.308,
+        "p05_mm": 0.309,
+        "median_mm": 0.392,
+        "below_floor": 0
+      }
+    ]
+  },
+  "density": {
+    "cell_mm": 0.5,
+    "cells": 4102,
+    "max_per_cell": 12,
+    "p99_per_cell": 7,
+    "flag_at": 14,
+    "flagged_cells": 0,
+    "hottest": [
+      {
+        "x_mm": 47.2,
+        "y_mm": 56.8,
+        "count": 12
+      },
+      {
+        "x_mm": 56.8,
+        "y_mm": 63.2,
+        "count": 11
+      },
+      {
+        "x_mm": 54.8,
+        "y_mm": 62.8,
+        "count": 11
+      },
+      {
+        "x_mm": 48.2,
+        "y_mm": 58.2,
+        "count": 11
+      },
+      {
+        "x_mm": 51.8,
+        "y_mm": 39.2,
+        "count": 11
+      }
+    ]
+  },
+  "output_png": "docs/benchmarks/v2-part25/02_logo_fine_text_3color-output.png"
+}

@@ -1071,3 +1071,17 @@ code {
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
+
+/* Digitizer warnings (v2 Part 25): what was left out or altered, shown where
+   the user is already looking. Amber, not red — the design is usable, but
+   something was lost and they should know before they sew. */
+.design-warnings {
+  margin: 4px 8px 0;
+  padding: 6px 10px;
+  border: 1px solid #d9a514;
+  border-radius: 6px;
+  background: rgba(217, 165, 20, 0.12);
+  color: #8a6d00;
+  font-size: 12px;
+  line-height: 1.5;
+}

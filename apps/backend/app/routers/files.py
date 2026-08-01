@@ -46,7 +46,7 @@ def _clip(text: str) -> str:
 
 
 @router.post("/files/parse", response_model=Design)
-async def parse_file(file: Annotated[UploadFile, File()]) -> Design:
+def parse_file(file: Annotated[UploadFile, File()]) -> Design:
     """Decode an uploaded embroidery file (.DST/.PES/.JEF/...) into a Design."""
     basename, ext = _safe_name_and_ext(file.filename or "")
     if not ext:
@@ -57,7 +57,7 @@ async def parse_file(file: Annotated[UploadFile, File()]) -> Design:
                 f"(e.g. {COMMON_EXTENSIONS})"
             ),
         )
-    data = await file.read()
+    data = file.file.read()
     if not data:
         raise HTTPException(status_code=400, detail="Empty file")
     if len(data) > MAX_EMBROIDERY_FILE_BYTES:

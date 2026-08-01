@@ -125,13 +125,18 @@ export function PropertiesPanel() {
           </label>
           <label className="prop-row">
             <span>Underlay</span>
+            {/* Every type the generator can PRODUCE is listed for both families
+                (v2 Part 24 added DOUBLE_ZIGZAG and PARALLEL; this dropdown was
+                not updated with it, so an object could carry an underlay the
+                panel could neither display nor round-trip — the select showed
+                blank). Rebuild maps any non-NONE value to the width-appropriate
+                underlay for the object's current stitch type. */}
             <select value={underlay} onChange={(e) => setUnderlay(e.target.value)}>
               <option value="NONE">None</option>
-              {obj.stitchType === 'SATIN' ? (
-                <option value="CENTER_WALK">Center walk</option>
-              ) : (
-                <option value="EDGE_WALK">Edge walk</option>
-              )}
+              <option value="CENTER_WALK">Center walk</option>
+              <option value="EDGE_WALK">Edge walk</option>
+              <option value="DOUBLE_ZIGZAG">Double zigzag</option>
+              <option value="PARALLEL">Edge walk + tatami</option>
             </select>
           </label>
           <label className="prop-row">
