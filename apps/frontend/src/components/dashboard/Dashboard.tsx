@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { buildStatCards, fetchDashboard, isDashboardEmpty, relativeTime } from '../../lib/dashboard';
 import { useAuthStore } from '../../store/authStore';
+import { DesignAnalytics } from './DesignAnalytics';
 
 /**
  * Studio dashboard: the signed-in user's real metrics — My designs / Total stitches / Colors
@@ -48,6 +49,8 @@ export function Dashboard() {
           ? `☁ ${session?.email ?? 'your cloud account'}`
           : 'Local (this browser) — sign in to see your cloud designs'}
       </p>
+
+      <DesignAnalytics />
 
       {empty ? (
         <p className="muted">

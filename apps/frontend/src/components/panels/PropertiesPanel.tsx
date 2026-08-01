@@ -44,8 +44,24 @@ export function PropertiesPanel() {
     setErr(null);
   }, [obj?.sequenceOrder, obj?.density, obj?.stitchAngle, obj?.underlayType, obj?.pullCompensation, obj?.stitchType]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Offer the object's fill type + Appliqué; when already appliqué, allow reverting to a fill.
-  const typeOptions = obj ? (obj.stitchType === 'APPLIQUE' ? ['APPLIQUE', 'TATAMI', 'SATIN'] : [obj.stitchType, 'APPLIQUE']) : [];
+  // Fill family (interchangeable via rebuild): straight tatami, contour rows
+  // that follow the outline, and the Part 26 curved fills. Satin stays satin;
+  // Appliqué is always offered; an appliqué object can revert to any fill.
+  const FILLS = ['TATAMI', 'CONTOUR_FILL', 'SPIRAL_FILL', 'RADIAL_FILL'];
+  const typeOptions = obj
+    ? obj.stitchType === 'APPLIQUE'
+      ? ['APPLIQUE', ...FILLS, 'SATIN']
+      : FILLS.includes(obj.stitchType)
+        ? [...FILLS, 'APPLIQUE']
+        : [obj.stitchType, 'APPLIQUE']
+    : [];
+  const TYPE_LABEL: Record<string, string> = {
+    APPLIQUE: 'Appliqué',
+    TATAMI: 'Tatami (straight rows)',
+    CONTOUR_FILL: 'Contour (rows follow outline)',
+    SPIRAL_FILL: 'Spiral (one continuous path)',
+    RADIAL_FILL: 'Radial (sunburst)',
+  };
 
   const onApply = async () => {
     if (!design || !obj) return;
@@ -103,7 +119,7 @@ export function PropertiesPanel() {
             <select value={stype} onChange={(e) => setStype(e.target.value)}>
               {typeOptions.map((t) => (
                 <option key={t} value={t}>
-                  {t === 'APPLIQUE' ? 'Appliqué' : t}
+                  {TYPE_LABEL[t] ?? t}
                 </option>
               ))}
             </select>

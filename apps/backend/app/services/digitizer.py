@@ -1255,6 +1255,142 @@ def _edge_avoiding_angle(region) -> float:
     return round(ang - 180.0 if ang > 90.0 else ang, 1)
 
 
+def _spiral_fill(region, row_px: int, max_step_px: int, connect_px: float):
+    """Archimedean spiral fill (v2 Part 26). [(x_px, y_px, is_jump)].
+
+    ONE continuous path from the centre outward, turns spaced ``row_px`` apart —
+    which means a disc gets ZERO interior row-ends: the classic "curved fill
+    effect" the desktop suites sell, and the strongest possible answer to the
+    ragged-row-end problem for round shapes. The centre is the distance
+    transform's peak (the point deepest inside the region), not the bbox centre,
+    so an off-centre blob spirals around its own body.
+
+    Points outside the region are clipped: the walk marks a jump when it leaves
+    and re-enters, so a non-circular region gets spiral arcs clipped to its own
+    outline — downstream travel routing then decides what those hops become.
+    """
+    import math
+
+    import cv2
+    import numpy as np
+
+    m = (region > 0).astype(np.uint8)
+    if cv2.countNonZero(m) == 0:
+        return []
+    dist = cv2.distanceTransform(m, cv2.DIST_L2, 5)
+    _mn, _mx, _mnl, (cx, cy) = cv2.minMaxLoc(dist)
+    h, w = m.shape
+    # Far corner distance bounds the spiral's outer radius.
+    r_max = max(math.hypot(px - cx, py - cy) for px in (0, w) for py in (0, h))
+    pitch = max(1.0, float(row_px))
+    b = pitch / (2.0 * math.pi)  # r = b * theta
+
+    pts: list[tuple[float, float, bool]] = []
+    theta = 0.0
+    was_inside = False
+    while b * theta <= r_max:
+        r = b * theta
+        x = cx + r * math.cos(theta)
+        y = cy + r * math.sin(theta)
+        iy, ix = round(y), round(x)
+        inside = 0 <= iy < h and 0 <= ix < w and m[iy, ix] > 0
+        if inside:
+            pts.append((float(x), float(y), not was_inside and bool(pts)))
+        was_inside = inside
+        # Advance by ~a third of the pitch of ARC length, so the polyline hugs
+        # the curve near the centre and stays bounded far out; clamp keeps the
+        # very first steps (r ~ 0) from spinning forever.
+        theta += min(0.8, max(0.05, (pitch / 3.0) / max(r, pitch / 3.0)))
+    return _subdivide_long(pts, max_step_px)
+
+
+def _radial_fill(region, row_px: int, max_step_px: int, connect_px: float):
+    """Radial (sunburst) fill (v2 Part 26). [(x_px, y_px, is_jump)].
+
+    Spokes through the distance-transform peak, angle-stepped so the RIM spacing
+    equals the row pitch. The classic radial problem is the centre: spokes that
+    all reach it stack penetrations into one hole. Staggering solves it — every
+    second spoke stops at half radius, every fourth at three-quarters — the same
+    trick sunburst engravings use, and the density metric is the referee.
+
+    Spokes alternate direction (out on one, back on the next via the rim) so
+    consecutive spokes connect at their shared end instead of jumping.
+    """
+    import math
+
+    import cv2
+    import numpy as np
+
+    m = (region > 0).astype(np.uint8)
+    if cv2.countNonZero(m) == 0:
+        return []
+    dist = cv2.distanceTransform(m, cv2.DIST_L2, 5)
+    _mn, _mx, _mnl, (cx, cy) = cv2.minMaxLoc(dist)
+    h, w = m.shape
+    ys, xs = np.nonzero(m)
+    r_max = float(np.hypot(xs - cx, ys - cy).max())
+    pitch = max(1.0, float(row_px))
+    n_spokes = max(8, round(2.0 * math.pi * r_max / pitch))
+
+    def clip_ray(angle: float, r_inner: float):
+        """Points of the ray from r_inner to the region edge, inside only."""
+        out = []
+        steps = int(r_max - r_inner) + 1
+        for s in range(steps + 1):
+            r = r_inner + s
+            x, y = cx + r * math.cos(angle), cy + r * math.sin(angle)
+            iy, ix = round(y), round(x)
+            if 0 <= iy < h and 0 <= ix < w and m[iy, ix] > 0:
+                out.append((float(x), float(y)))
+            elif out:
+                break  # left the region: this spoke ends here
+        return out
+
+    pts: list[tuple[float, float, bool]] = []
+    for i in range(n_spokes):
+        angle = 2.0 * math.pi * i / n_spokes
+        # Stagger: deepest spokes stop at 2 pitches out, not at the centre —
+        # the first version sent every 4th spoke to r=0 and the density metric
+        # counted 59 penetrations in ONE cell there, an order of magnitude past
+        # the flag level. No spoke may touch the hub.
+        r_inner = max(2.0 * pitch, (0.08, 0.5, 0.25, 0.5)[i % 4] * r_max)
+        ray = clip_ray(angle, r_inner)
+        if len(ray) < 2:
+            continue
+        if i % 2 == 1:
+            ray.reverse()  # in on odd spokes: consecutive spokes share the rim
+        first = not pts or _dist(pts[-1], ray[0]) > connect_px
+        pts.append((ray[0][0], ray[0][1], first))
+        pts.append((ray[-1][0], ray[-1][1], False))
+    # The keep-out leaves a bare hub ~2 pitches across; a short spiral covers it
+    # in the same curved idiom, one continuous path, no stacked holes.
+    hub = np.zeros_like(m)
+    cv2.circle(hub, (int(cx), int(cy)), int(2.5 * pitch), 255, -1)
+    hub = cv2.bitwise_and(hub, m * 255)
+    centre = _spiral_fill(hub, row_px, max_step_px, connect_px)
+    if centre:
+        x, y, _f = centre[0]
+        centre[0] = (x, y, bool(pts) and _dist(pts[-1], (x, y)) > connect_px)
+    return _subdivide_long(pts + centre, max_step_px)
+
+
+def _subdivide_long(pts, max_step_px: int):
+    """Split any stitched segment longer than the machine step; jumps pass through."""
+    import math
+
+    out: list[tuple[float, float, bool]] = []
+    for prev, cur in pairwise([None, *pts]):
+        if prev is None or cur[2]:
+            out.append(cur)
+            continue
+        L = math.hypot(cur[0] - prev[0], cur[1] - prev[1])
+        k = max(1, math.ceil(L / max(max_step_px, 1)))
+        for j in range(1, k + 1):
+            out.append((prev[0] + (cur[0] - prev[0]) * j / k,
+                        prev[1] + (cur[1] - prev[1]) * j / k, False))
+    return out
+
+
 def _band_ratio(region) -> float:
     """How thick a region is relative to its own extent: ``2 * peak_dist / sqrt(area)``.
 
@@ -3822,6 +3958,21 @@ def rebuild_design(design: Design) -> Design:
                 pts = _satin_zigzag(top, rect, spacing_px, connect_px, max_step_px)
                 if ut and ut != "NONE":  # any non-NONE underlay → center-walk for satin
                     pts = _with_underlay(_center_walk(mask, rect, under_step_px, connect_px), pts, connect_px)
+            elif st in ("SPIRAL_FILL", "RADIAL_FILL"):
+                # Curved fills (v2 Part 26): user-selectable via the properties
+                # panel. `stitch_angle` does not describe either and is ignored.
+                fill_fn = _spiral_fill if st == "SPIRAL_FILL" else _radial_fill
+                pts = fill_fn(top, spacing_px, max_step_px, connect_px)
+                if ut and ut != "NONE":
+                    inset_px = max(1, round(EDGE_INSET_MM / mm_per_px))
+                    pts = _with_underlay(
+                        _edge_walk(
+                            mask, inset_px, under_step_px, connect_px,
+                            (_PENETRATION_FLOOR_MM / mm_per_px) if _PENETRATION_FLOOR_MM else 0.0,
+                            MAX_STITCH_MM / mm_per_px,
+                        ),
+                        pts, connect_px,
+                    )
             elif st == "CONTOUR_FILL":
                 # Rows follow the outline, so `stitch_angle` does not describe
                 # this object and is deliberately not consulted (v2 Part 24b).

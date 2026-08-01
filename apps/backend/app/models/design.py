@@ -48,6 +48,11 @@ class StitchType(str, Enum):
     MOTIF_FILL = "MOTIF_FILL"
     MOTIF_RUN = "MOTIF_RUN"
     CONTOUR_FILL = "CONTOUR_FILL"
+    # Curved fills (v2 Part 26): rows spiral out from / radiate through the
+    # region instead of running straight. User-selectable via rebuild — the
+    # "curved fill effects" the desktop suites sell as a premium feature.
+    SPIRAL_FILL = "SPIRAL_FILL"
+    RADIAL_FILL = "RADIAL_FILL"
     ACCORDION_FILL = "ACCORDION_FILL"
     LAYDOWN = "LAYDOWN"
     MANUAL = "MANUAL"

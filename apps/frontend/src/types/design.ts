@@ -26,6 +26,8 @@ export interface Stitch {
 export enum StitchType {
   Satin = 'SATIN',
   Tatami = 'TATAMI', // Fill
+  SpiralFill = 'SPIRAL_FILL', // curved fill: one continuous spiral (v2 Part 26)
+  RadialFill = 'RADIAL_FILL', // curved fill: sunburst spokes (v2 Part 26)
   RunningSingle = 'RUNNING_SINGLE',
   RunningDouble = 'RUNNING_DOUBLE',
   RunningTriple = 'RUNNING_TRIPLE',
