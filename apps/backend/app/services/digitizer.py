@@ -509,6 +509,70 @@ def _absorb_specks(labels, mm_per_px: float):
     return out
 
 
+# --- Dark-linework overlay for textured input (v2 Part 30) -------------------
+# The peacock comparison scored "texture & stitch artistry" 3/10 with one root
+# cause named buildable: the source patch edges nearly every element in dark
+# stem stitch — leaf veins, petal boundaries, quill separations, crest stripes —
+# and none of it survives segmentation, because a ~0.5mm dark line between two
+# colour fields quantizes into whichever field is nearest. So the linework is
+# recovered from the IMAGE, not the labels: a black-hat transform responds
+# exactly to thin-dark-on-lighter structure, the same medial-axis tracer that
+# routes satin turns the response into ordered polylines, and they are sewn as a
+# final running-stitch pass in the palette's darkest thread — the top layer, as
+# a hand digitizer sews outlines last.
+OUTLINE_BLACKHAT_MM = 0.6   # black-hat kernel radius: lines up to ~1.2mm wide respond
+OUTLINE_BLACKHAT_DELTA = 28  # min local-darkness response (0-255) to count as a line
+OUTLINE_MAX_HALF_MM = 0.7   # thicker structure is a region, not a line — dropped
+OUTLINE_MIN_MM = 4.0        # chains shorter than this are noise, not drawing
+OUTLINE_RUN_MM = 1.4        # running-stitch length along the line (stem-stitch scale)
+
+
+def _dark_linework(img, fg_mask, mm_per_px: float):
+    """Thin dark drawn lines in a textured image, as ordered px polylines."""
+    import math
+
+    import cv2
+    import numpy as np
+
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    k = max(3, 2 * round(OUTLINE_BLACKHAT_MM / mm_per_px) + 1)
+    bh = cv2.morphologyEx(gray, cv2.MORPH_BLACKHAT,
+                          cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k)))
+    near_fg = cv2.dilate(fg_mask, np.ones((5, 5), np.uint8)) > 0
+    lines = ((bh > OUTLINE_BLACKHAT_DELTA) & near_fg).astype(np.uint8)
+    if cv2.countNonZero(lines) == 0:
+        return []
+    # Blobs are regions wearing a dark colour, not drawing; a LINE is thin by
+    # definition, so anything past the half-width cap is cut before thinning.
+    dist = cv2.distanceTransform(lines, cv2.DIST_L2, 3)
+    lines[dist > max(2.0, OUTLINE_MAX_HALF_MM / mm_per_px)] = 0
+    lines = cv2.morphologyEx(lines, cv2.MORPH_OPEN, np.ones((2, 2), np.uint8))
+    if cv2.countNonZero(lines) == 0:
+        return []
+    _skel, branches = _axis_branches(lines, _distance_transform(lines), mm_per_px)
+    min_len = OUTLINE_MIN_MM / mm_per_px
+    out = []
+    for b in branches:
+        if len(b) < 2:
+            continue
+        if sum(math.dist(p, q) for p, q in pairwise(b)) >= min_len:
+            out.append([(float(x), float(y)) for x, y in b])
+    # Nearest-first chaining keeps the travel between lines short.
+    ordered = []
+    cur = (0.0, 0.0)
+    while out:
+        i = min(range(len(out)), key=lambda j: min(
+            (out[j][0][0] - cur[0]) ** 2 + (out[j][0][1] - cur[1]) ** 2,
+            (out[j][-1][0] - cur[0]) ** 2 + (out[j][-1][1] - cur[1]) ** 2))
+        chain = out.pop(i)
+        if ((chain[-1][0] - cur[0]) ** 2 + (chain[-1][1] - cur[1]) ** 2 <
+                (chain[0][0] - cur[0]) ** 2 + (chain[0][1] - cur[1]) ** 2):
+            chain.reverse()
+        ordered.append(chain)
+        cur = chain[-1]
+    return ordered
+
+
 def _interior_texture(img) -> float:
     """Median local luminance stddev in region INTERIORS, away from edges.
 
@@ -1227,6 +1291,63 @@ def digitize_image(
                     catalog_number="",
                     thread_name=f"Color {this_stop}",
                     hex=hexcol,
+                    stitch_count=len(stitches) - stop_start,
+                )
+            )
+
+    # Dark-linework overlay (v2 Part 30): the drawn outlines a photograph
+    # carries — leaf veins, petal boundaries, quill separations — recovered from
+    # the image and sewn last, on top, in the palette's darkest thread. Textured
+    # input only; flat artwork's dark lines are their own colour regions and
+    # digitize as objects already.
+    if is_textured and stitches:
+        chains = _dark_linework(img, fg_mask, mm_per_px)
+        if chains:
+            def _lum(h: str) -> float:
+                return 0.299 * int(h[1:3], 16) + 0.587 * int(h[3:5], 16) + 0.114 * int(h[5:7], 16)
+
+            line_hex = min((s.hex for s in color_stops), key=_lum) if color_stops else "#202020"
+            emitted_stop += 1
+            stitches.append(Stitch(x=stitches[-1].x, y=stitches[-1].y, command="COLOR_CHANGE"))
+            stop_start = len(stitches)
+            run_px = max(1.0, OUTLINE_RUN_MM / mm_per_px)
+            for chain in chains:
+                path = _resample_open(chain, run_px)
+                if len(path) < 2:
+                    continue
+                if stitches[-1].command != "COLOR_CHANGE":
+                    stitches.append(Stitch(x=stitches[-1].x, y=stitches[-1].y, command="TRIM"))
+                stitches.append(Stitch(x=path[0][0] * mm_per_px, y=path[0][1] * mm_per_px, command="JUMP"))
+                obj_start = len(stitches)
+                for x, y in path:
+                    stitches.append(Stitch(x=x * mm_per_px, y=y * mm_per_px, command="STITCH"))
+                seq += 1
+                objects.append(
+                    DesignObject(
+                        sequence_order=seq,
+                        name=f"Line {seq} ({line_hex})",
+                        stitch_type=StitchType.RUNNING_SINGLE,
+                        color_stop=emitted_stop,
+                        density=1.0 / OUTLINE_RUN_MM,
+                        stitch_angle=0.0,
+                        underlay_type=UnderlayType.NONE,
+                        pull_compensation=0.0,
+                        entry_point=Point(x=path[0][0] * mm_per_px, y=path[0][1] * mm_per_px),
+                        exit_point=Point(x=path[-1][0] * mm_per_px, y=path[-1][1] * mm_per_px),
+                        connect_method=ConnectMethod.TRIM,
+                        stitch_count=len(stitches) - obj_start,
+                        # The PATH, not an area: rebuild's RUNNING branch stitches
+                        # along the stored contour rather than filling it.
+                        contour=[Point(x=x * mm_per_px, y=y * mm_per_px) for x, y in path],
+                    )
+                )
+            color_stops.append(
+                ColorStop(
+                    stop_number=emitted_stop,
+                    thread_brand="Auto",
+                    catalog_number="",
+                    thread_name=f"Color {emitted_stop}",
+                    hex=line_hex,
                     stitch_count=len(stitches) - stop_start,
                 )
             )
