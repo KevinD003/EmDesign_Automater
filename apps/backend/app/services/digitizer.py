@@ -767,6 +767,7 @@ def digitize_image(
                 }
             )
             fill_angle = 0.0  # satin carries its column angle instead; see below
+            use_contour = False
             if skel_pts is not None:
                 # Satin now always comes from the medial axis. The old
                 # bounding-rect `_satin_zigzag` path is gone from digitizing:
@@ -833,11 +834,33 @@ def digitize_image(
                     (_PENETRATION_FLOOR_MM / mm_per_px) if _PENETRATION_FLOOR_MM else 0.0,
                     MAX_STITCH_MM / mm_per_px,
                 )
-                # v2 Part 24: rows follow the region's own long axis instead of
-                # the hard 0 degrees every fill got from Part 0 to Part 23.
-                fill_angle = _fill_angle(top_region)
-                fill_pts = _fill_by_component(top_region, row_px, max_step_px, connect_px,
-                                              angle_deg=fill_angle)
+                # A band — a ring, a frame, a letter bowl — is the shape no
+                # straight angle suits (v2 Part 24b). Requiring a hole as well as
+                # the thickness ratio is the conservative call: an open arc (a
+                # "C") would contour just as well, but a hole is unambiguous
+                # evidence that the region wraps something, and a shape that
+                # wraps nothing is the one at risk of a branching medial axis.
+                use_contour = (
+                    bool(hole_contours)
+                    and net_area * mm_per_px * mm_per_px >= CONTOUR_FILL_MIN_MM2
+                    and _band_ratio(top_region) <= CONTOUR_FILL_MAX_BAND_RATIO
+                )
+                if use_contour:
+                    fill_angle = 0.0  # rows follow the outline; no single angle describes them
+                    fill_pts = _contour_fill(
+                        top_region, row_px,
+                        max(1, min(max_step_px, round(CONTOUR_ROW_MAX_STEP_MM / mm_per_px))),
+                        connect_px,
+                    )
+                else:
+                    fill_pts = []
+                if not fill_pts:
+                    # v2 Part 24: rows follow the region's own long axis instead
+                    # of the hard 0 degrees every fill got from Part 0 to Part 23.
+                    use_contour = False
+                    fill_angle = _fill_angle(top_region)
+                    fill_pts = _fill_by_component(top_region, row_px, max_step_px, connect_px,
+                                                  angle_deg=fill_angle)
                 # Satin border on top of the fill (v2 Part 15) — the pro finish.
                 # Area-gated: bordering specks doubles them for nothing.
                 if net_area * mm_per_px * mm_per_px >= FILL_BORDER_MIN_MM2:
@@ -853,9 +876,14 @@ def digitize_image(
                 # the standard commercial recipe for a fill; up to Part 23 every
                 # fill got the edge run alone.
                 if net_area * mm_per_px * mm_per_px >= FILL_UNDERLAY_MIN_MM2:
+                    # For a contour fill no single angle describes the top rows,
+                    # so the underlay crosses the region's own axis instead —
+                    # anything straight crosses concentric rows somewhere, and
+                    # taking the axis keeps the choice from being arbitrary.
+                    base_angle = _fill_angle(top_region) if use_contour else fill_angle
                     par = _parallel_underlay(
                         region, inset_px, max(1, round(row_px * FILL_UNDERLAY_PITCH_MULT)),
-                        fill_angle + FILL_UNDERLAY_ANGLE_OFFSET_DEG,
+                        base_angle + FILL_UNDERLAY_ANGLE_OFFSET_DEG,
                         max_step_px, connect_px,
                         (_PENETRATION_FLOOR_MM / mm_per_px) if _PENETRATION_FLOOR_MM else 0.0,
                         MAX_STITCH_MM / mm_per_px,
@@ -923,7 +951,11 @@ def digitize_image(
                 DesignObject(
                     sequence_order=seq,
                     name=f"{'Satin' if is_satin else 'Fill'} {seq} ({hexcol})",
-                    stitch_type=StitchType.SATIN if is_satin else StitchType.TATAMI,
+                    stitch_type=(
+                        StitchType.SATIN if is_satin
+                        else StitchType.CONTOUR_FILL if use_contour
+                        else StitchType.TATAMI
+                    ),
                     color_stop=this_stop,
                     density=1.0 / (prof["satin_mm"] if is_satin else prof["row_mm"]),
                     stitch_angle=round(float(rect[2]), 1) if is_satin else fill_angle,
@@ -1043,6 +1075,110 @@ def _edge_avoiding_angle(region) -> float:
         return FILL_ANGLE_DEFAULT_DEG
     ang = min(scored, key=lambda s: (s[0], abs(s[1] - 45.0)))[1] % 180.0
     return round(ang - 180.0 if ang > 90.0 else ang, 1)
+
+
+def _band_ratio(region) -> float:
+    """How thick a region is relative to its own extent: ``2 * peak_dist / sqrt(area)``.
+
+    Near 0 for a band (a ring, a frame, a letter bowl) and above 1 for a disc,
+    because a band's thickness does not grow when you make the band longer. Used
+    to tell "this is a stroke too wide to satin" from "this is a blob", which is
+    the difference between contour rows flowing and contour rows tearing.
+    """
+    import math
+
+    import cv2
+    import numpy as np
+
+    m = (region > 0).astype(np.uint8)
+    area = int(m.sum())
+    if area <= 0:
+        return 0.0
+    peak = float(cv2.distanceTransform(m, cv2.DIST_L2, 5).max())
+    return 2.0 * peak / math.sqrt(area)
+
+
+def _contour_fill(region, row_px: int, max_step_px: int, connect_px: float, start=None):
+    """Fill whose rows FOLLOW the outline rather than crossing it (v2 Part 24b).
+
+    Returns [(x_px, y_px, is_jump)]. This is the "curved fill" the desktop suites
+    sell as contour / parallel fill, and the shape it exists for is a ring: no
+    straight angle is right for an annulus, because a straight row crosses the
+    band at 90 degrees at two points and runs along it at two others, so the
+    ragged row-ends bunch on the inside of the curve and the fill reads as a
+    stack of chords rather than a band.
+
+    Rows are ISO-DISTANCE curves of the region's own distance transform, spaced
+    ``row_px`` apart in that distance — and distance-to-boundary is measured
+    perpendicular to the boundary by definition, so the perpendicular spacing
+    between neighbouring rows is exactly the row pitch everywhere, including
+    where the band bends. Offsetting the outline polygon instead would need
+    self-intersection cleanup at every concave turn; the distance transform gets
+    that for free because a pinched region simply splits into two components at
+    the level where it pinches.
+    """
+    import cv2
+    import numpy as np
+
+    dist = cv2.distanceTransform((region > 0).astype(np.uint8), cv2.DIST_L2, 5)
+    peak = float(dist.max())
+    if peak <= 0.0:
+        return []
+    # One pixel tighter than the nominal row pitch, and the pixel is the point.
+    # A scanline fill's rows are exact: row y and row y+row_px are row_px apart by
+    # construction. A contour row is the boundary of `dist >= level`, and `dist`
+    # lives on the pixel grid, so each extracted row sits within +/-0.5px of its
+    # true iso-distance curve — which means two neighbouring rows can end up a
+    # full pixel FURTHER apart than nominal, and that pixel is wider than the
+    # 0.05mm of slack a 0.45mm pitch leaves against 0.4mm thread.
+    #
+    # Measured: at the nominal pitch, fixture 03 scored 98.4 interior and fixture
+    # 07 98.0, against 99.4 / 98.9 for the straight fill they replaced. One pixel
+    # tighter, both reach 99.4 / 99.0 — i.e. equal and slightly better. Multipliers
+    # of 0.9, 0.8 and 0.7 all produced byte-identical output because they round to
+    # the same integer pixel, which is the tell that the defect was quantisation
+    # and not density.
+    step = max(1.0, float(row_px) - 1.0)
+    # Start half a pitch in, so the first row sits a half-pitch from the edge
+    # exactly as a scanline fill's first row does, and run past the peak so the
+    # ridge down the middle of the band is covered rather than left as a seam.
+    levels = list(np.arange(step / 2.0, peak + step, step))
+
+    out: list[tuple[float, float, bool]] = []
+    cur = (float(start[0]), float(start[1])) if start else None
+    for level in levels:
+        band = (dist >= level).astype(np.uint8) * 255
+        if cv2.countNonZero(band) == 0:
+            continue
+        loops, _h = cv2.findContours(band, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
+        polys = []
+        for loop in loops:
+            pts = [(float(x), float(y)) for x, y in loop.reshape(-1, 2)]
+            if len(pts) < MIN_ARC_SAMPLES:
+                continue
+            polys.append(_resample_closed(pts, max(1.0, float(max_step_px))))
+        # Nearest-first within a level, so a level that has split into several
+        # islands does not hop back and forth between them.
+        while polys:
+            if cur is None:
+                idx = 0
+            else:
+                idx = min(range(len(polys)),
+                          key=lambda i: min(_dist(cur, p) for p in polys[i]))
+            poly = polys.pop(idx)
+            if cur is not None:
+                # Enter the loop at its closest point and walk from there, so the
+                # step in from the previous row is one pitch rather than a trip
+                # back to an arbitrary contour origin.
+                s = min(range(len(poly)), key=lambda i: _dist(cur, poly[i]))
+                poly = poly[s:] + poly[:s]
+            poly = poly + [poly[0]]  # close the loop
+            first = cur is None or _dist(cur, poly[0]) > connect_px
+            out.append((poly[0][0], poly[0][1], first))
+            for p in poly[1:]:
+                out.append((p[0], p[1], False))
+            cur = (poly[-1][0], poly[-1][1])
+    return out
 
 
 def _fill_angle(region) -> float:
@@ -1206,6 +1342,52 @@ FILL_BORDER_MIN_MM2 = 30.0
 # own axis.
 FILL_ANGLE_DEFAULT_DEG = 45.0
 FILL_ANGLE_MIN_ELONGATION = 1.15
+
+# --- Contour fill (v2 Part 24b) ---------------------------------------------
+# Rows that follow the outline, for a region that is a wide STROKE rather than a
+# blob — the thing the desktop suites sell as contour / curved fill, and the
+# fourth of the six fill behaviours listed in the gap analysis.
+#
+# Applied to BANDS and never to blobs. A straight row crosses a ring at 90
+# degrees at two points and runs along it at two others, so the ragged row-ends
+# bunch on the inside of the curve and the fill reads as a stack of chords.
+# Measured on a 40mm ring: contour rows cut jumps from 124 to 14 and spill from
+# 5.6% to 2.7% at equal interior coverage.
+#
+# Contouring a SOLID shape tears. Its medial axis is a branching tree rather than
+# a single curve, and the iso-distance rows crease along every branch: fixture
+# 07's star came back with 1,708 separate missed-interior components when the
+# trigger was loose enough to catch it.
+#
+# The test is therefore about SHAPE, not about which classification branch
+# rejected the region. An earlier version keyed on `reason ==
+# "wider_than_satin_cap"`, which silently missed every WIDE ring — a 10mm badge
+# border trips the cheap `broad_fill_pregate` and never reaches that branch at
+# all, so the most common contour-fill shape in real artwork was excluded.
+CONTOUR_FILL_MIN_MM2 = 60.0
+# `2 * peak_distance / sqrt(area)` — how thick a region is relative to its own
+# extent. Shape survey: narrow ring 0.154, letter-O bowl 0.269, wide ring 0.276,
+# square frame 0.303, very wide ring 0.405 | disc with a pinhole 0.505, solid
+# star 0.731, disc 1.111.
+#
+# 0.30 rather than the 0.45 the shape survey alone would suggest, and the corpus
+# is why. Measuring the regions that actually reach this branch: the two that
+# GAIN sit at 0.151 (fixture 07's ring: +0.1 interior, jumps 630 -> 461) and
+# 0.237 (fixture 03: jumps 144 -> 70). The three at 0.334, 0.430 and 0.439 all
+# LOSE — together they cost 0.11 interior for +9.6% stitches, because a region
+# that chunky has enough medial-axis branching for the rows to start creasing
+# even though it still has a hole. The shape survey says where a band stops
+# being a band; the corpus says where contouring stops paying, and that is the
+# tighter of the two.
+CONTOUR_FILL_MAX_BAND_RATIO = 0.30
+# Contour rows are resampled at most this far apart. A straight fill row can be
+# subdivided at the machine limit because a straight line has no chord error, but
+# a row that follows a curve does: e ~= s^2 / (8r). Measured on the ring probe at
+# its tightest radius (9.5mm), a 3.0mm step gives 0.118mm of chord error — under
+# a third of a thread width, so the deviation is hidden inside the thread that
+# draws it. Halving the step to 2.0mm bought +0.1 interior coverage for 48% more
+# stitches, which is not a trade worth making.
+CONTOUR_ROW_MAX_STEP_MM = 3.0
 
 # --- Underlay selection by column width (v2 Part 24) -------------------------
 # Until Part 24, `UnderlayType` declared six values and the generator assigned
@@ -3146,6 +3328,27 @@ def rebuild_design(design: Design) -> Design:
                 pts = _satin_zigzag(top, rect, spacing_px, connect_px, max_step_px)
                 if ut and ut != "NONE":  # any non-NONE underlay → center-walk for satin
                     pts = _with_underlay(_center_walk(mask, rect, under_step_px, connect_px), pts, connect_px)
+            elif st == "CONTOUR_FILL":
+                # Rows follow the outline, so `stitch_angle` does not describe
+                # this object and is deliberately not consulted (v2 Part 24b).
+                # Without this branch an edit-and-rebuild would silently convert a
+                # contour fill back into straight rows at whatever angle the
+                # object happened to be carrying.
+                pts = _contour_fill(
+                    top, spacing_px,
+                    max(1, min(max_step_px, round(CONTOUR_ROW_MAX_STEP_MM / mm_per_px))),
+                    connect_px,
+                )
+                if ut and ut != "NONE":
+                    inset_px = max(1, round(EDGE_INSET_MM / mm_per_px))
+                    pts = _with_underlay(
+                        _edge_walk(
+                            mask, inset_px, under_step_px, connect_px,
+                            (_PENETRATION_FLOOR_MM / mm_per_px) if _PENETRATION_FLOOR_MM else 0.0,
+                            MAX_STITCH_MM / mm_per_px,
+                        ),
+                        pts, connect_px,
+                    )
             elif st in ("RUNNING_SINGLE", "RUNNING_DOUBLE", "RUNNING_TRIPLE", "BACKSTITCH", "REDWORK", "MANUAL"):
                 # Running stitch ALONG the drawn path (open polyline), not an area fill.
                 passes = {"RUNNING_DOUBLE": 2, "BACKSTITCH": 2, "RUNNING_TRIPLE": 3}.get(st, 1)
