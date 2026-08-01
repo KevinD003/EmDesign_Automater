@@ -456,6 +456,47 @@ def _smooth_contour(contour, mm_per_px: float):
     return np.round(smoothed).astype(np.int32).reshape(-1, 1, 2)
 
 
+def _interior_texture(img) -> float:
+    """Median local luminance stddev in region INTERIORS, away from edges.
+
+    The gate for photographic/textured input (v2 Part 27). Interiors only,
+    because a naive whole-foreground measure confounds texture with EDGES —
+    fixture 04's thin linework scored 99.2 (it is all edge) while a photographed
+    embroidery patch scored 34.7, ranking flat art as more "textured" than a
+    photo of thread. Sampling ≥3px clear of Canny edges fixes the ranking:
+    corpus fixtures measure 0.00–4.10 (fixture 09's photographic background is
+    the max) and the embroidery photo 7.43.
+    """
+    import cv2
+    import numpy as np
+
+    g = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY).astype(np.float32)
+    mu = cv2.blur(g, (5, 5))
+    sd = np.sqrt(np.maximum(cv2.blur(g * g, (5, 5)) - mu * mu, 0))
+    sub = np.array([img[0, 0], img[0, -1], img[-1, 0], img[-1, -1]], np.float32).mean(axis=0)
+    fg = (np.linalg.norm(img.astype(np.float32) - sub, axis=2) >= 40).astype(np.uint8)
+    edges = cv2.Canny(g.astype(np.uint8), 60, 140)
+    interior = cv2.erode(fg, np.ones((5, 5), np.uint8)) & (cv2.dilate(edges, np.ones((5, 5), np.uint8)) == 0)
+    n = int(interior.sum())
+    # A very dense texture can shred the interior sample to nothing; 500 samples
+    # keeps the median stable, below that the gate abstains (known limitation).
+    return float(np.median(sd[interior > 0])) if n >= 500 else 0.0
+
+
+# Above this interior texture the image is photographic (a photo, a scan, a
+# photographed sew-out) and colour areas carry shading the quantizer will
+# shatter into speckle islands. Calibrated: the ten-fixture corpus (flat
+# artwork) measures 0.00-4.10, the peacock embroidery photo 7.43; 6.0 sits in
+# the gap, so the corpus takes the untouched path BY MEASUREMENT, not by hope.
+TEXTURE_SMOOTH_MIN = 6.0
+# Mean-shift parameters for the textured path. Chosen by counting >=50px
+# colour-layer fragments on the embroidery photo: raw 341, sp10/sr40 218,
+# sp14/sr52 159 (triple bilateral managed only 226). Fragments are the thing
+# being fixed — each one becomes an island object or a hole in a fill.
+TEXTURE_MS_SPATIAL = 14
+TEXTURE_MS_COLOR = 52
+
+
 def _decode_svg(data: bytes):
     """Decode an SVG into ``(bgr_image, exact_foreground_mask)`` — or None if
     the bytes are not SVG (v2 Part 25).
@@ -525,6 +566,10 @@ def digitize_image(
     hoop_w, hoop_h = _parse_hoop(hoop_size)
     ih, iw = img.shape[:2]
     src_ih, src_iw = ih, iw                          # pre-rescale, for warnings
+    # Texture is judged at SOURCE resolution: the granularity upscale's cubic
+    # interpolation smooths it (measured on the peacock photo: 7.43 at source,
+    # 5.86 after 2x — under the gate, so the smoothing silently never fired).
+    is_textured = svg_mask is None and _interior_texture(img) >= TEXTURE_SMOOTH_MIN
     mm_per_px = min(hoop_w / iw, hoop_h / ih) * 0.9  # 90% of hoop
     design_w_mm = iw * mm_per_px                     # physical width at this hoop
     # Work at a bounded resolution for speed; keep mm scale consistent.
@@ -549,6 +594,18 @@ def digitize_image(
         img = cv2.resize(img, (int(iw * f), int(ih * f)), interpolation=cv2.INTER_AREA)
         mm_per_px /= f
         ih, iw = img.shape[:2]
+
+    # Photographic input: posterize shading before quantization (v2 Part 27).
+    # A photo — including a photographed sew-out, thread sheen and all — carries
+    # per-region shading that k-means shatters into hundreds of speckle islands;
+    # the peacock test photo produced a tail of navy shreds. Mean-shift merges
+    # the shading while keeping edges. Gated on interior texture MEASURED AT
+    # SOURCE resolution (see `is_textured` above), so flat artwork — the whole
+    # bench corpus, 0.00-4.10 vs the 6.0 gate — takes the untouched path and
+    # stays byte-identical. Applied here, at work resolution, where the
+    # sp/sr parameters were calibrated.
+    if is_textured:
+        img = cv2.pyrMeanShiftFiltering(img, TEXTURE_MS_SPATIAL, TEXTURE_MS_COLOR)
 
     # ── Foreground/background separation (v2 Part 1) ──────────────────────────
     # Background is decided by WHERE a pixel is, not by what colour it is. The

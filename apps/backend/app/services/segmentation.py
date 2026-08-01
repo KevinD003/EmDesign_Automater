@@ -175,6 +175,24 @@ _INK_MIN_AREA_FRAC = 0.0002
 # background. Rationale: U2-Net reliably finds LARGE salient regions, so a large
 # area it excluded was excluded on purpose; only small pieces are its blind spot.
 _INK_MAX_AREA_FRAC = 0.02
+# A larger cap for components that do NOT touch the frame border (v2 Part 27).
+# The 2% cap was calibrated against photographic backgrounds — but measured,
+# every one of those touches the border (fixture 09's two candidates, 6.94% and
+# 9.19%, both do; fixture 03's gradient likewise), because a background by
+# nature runs to the frame edge. A dropped ARTWORK element floats free: the
+# peacock patch's entire left branch-with-flowers came back as one detached
+# 5.90% component, border-clear, and the 2% cap silently deleted it — the
+# Part 22 class of loss at a bigger size. Border contact is the principled
+# discriminator; the raised cap only applies when it is absent.
+_INK_MAX_AREA_FRAC_INTERIOR = 0.08
+# An ATTACHED missed component is normally the matte's own edge being a pixel
+# tight (Part 22 measured reclaiming that fringe: fixture 05 lost 0.5 interior
+# and gained 2.2 spill for nothing). But "attached" also describes a real
+# element the subject touches — the peacock patch's branch, which the bird
+# STANDS ON, came back as a 13k-px attached component and was refused. A matte
+# edge fringe is inherently THIN (1–2px); a real element has body. Attached
+# components at least this thick (max inscribed radius, px) are reclaimable.
+_ATTACHED_MIN_THICK_PX = 4.0
 # A reclaim candidate within this many pixels of the kept mask counts as that
 # mask's own edge, not a separate missed element.
 _ATTACHED_GAP_PX = 3
@@ -215,13 +233,25 @@ def _reclaim_ink(img, mask):
     # (measured: reclaiming attached fringe cost fixture 05 -0.5 interior and
     # +2.2 spill for no recovered content).
     near = cv2.dilate(mask, np.ones((2 * _ATTACHED_GAP_PX + 1,) * 2, np.uint8))
+    ih, iw = img.shape[:2]
+    max_area_interior = int(_INK_MAX_AREA_FRAC_INTERIOR * frame)
     out = mask.copy()
     for i in range(1, n):
-        if not (min_area <= stats[i, cv2.CC_STAT_AREA] <= max_area):
+        area = stats[i, cv2.CC_STAT_AREA]
+        x, y, w, h = (stats[i, k] for k in (cv2.CC_STAT_LEFT, cv2.CC_STAT_TOP,
+                                            cv2.CC_STAT_WIDTH, cv2.CC_STAT_HEIGHT))
+        touches_border = x == 0 or y == 0 or x + w >= iw or y + h >= ih
+        cap = max_area if touches_border else max_area_interior
+        if not (min_area <= area <= cap):
             continue
         comp = labels == i
         if near[comp].any():
-            continue
+            # Attached: reclaim only if the component has real body — a matte
+            # edge fringe never does.
+            comp_u8 = comp.astype(np.uint8)
+            thickness = float(cv2.distanceTransform(comp_u8, cv2.DIST_L2, 5).max())
+            if thickness < _ATTACHED_MIN_THICK_PX:
+                continue
         out[comp] = 255
     return out
 

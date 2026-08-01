@@ -1,0 +1,168 @@
+{
+  "fixture": "10_low_contrast_subject",
+  "params": {
+    "colors": 4,
+    "hoop": "130x180",
+    "fabric": "cotton"
+  },
+  "ok": true,
+  "error": null,
+  "warnings": [],
+  "runtime_s": 2.56,
+  "stitch_count": 6043,
+  "color_count": 4,
+  "object_count": 4,
+  "stitch_types": {
+    "SATIN": 2,
+    "TATAMI": 2
+  },
+  "objects_with_holes": 2,
+  "width_mm": 73.94,
+  "height_mm": 73.94,
+  "est_minutes": 7.55,
+  "jump_count": 169,
+  "trim_count": 128,
+  "color_changes": 3,
+  "max_stitch_mm": 8.97,
+  "mean_stitch_mm": 2.61,
+  "stitches_over_machine_limit": 0,
+  "stitches_under_0_5mm": 47,
+  "stitch_density_per_mm2": 1.45,
+  "filled_area_mm2": 4161.5,
+  "stitch_density_per_bbox_mm2": 1.11,
+  "fill_row_pitch_mm": 0.011,
+  "fill_rows_over_thread_width": 0,
+  "coverage_ratio": 1.0,
+  "segmentation_method": "rembg",
+  "satin_share": 0.5,
+  "classification": [
+    {
+      "seq": 1,
+      "region_median_w_mm": 1.09,
+      "skeleton_median_w_mm": 1.95,
+      "uncovered_share": 0.0,
+      "reason": "satin",
+      "decision": "SATIN"
+    },
+    {
+      "seq": 2,
+      "region_median_w_mm": 5.66,
+      "skeleton_median_w_mm": 9.16,
+      "uncovered_share": 0.592,
+      "reason": "wider_than_satin_cap",
+      "decision": "TATAMI"
+    },
+    {
+      "seq": 3,
+      "region_median_w_mm": 7.13,
+      "skeleton_median_w_mm": 0.0,
+      "uncovered_share": 1.0,
+      "reason": "broad_fill_pregate",
+      "decision": "TATAMI"
+    },
+    {
+      "seq": 4,
+      "region_median_w_mm": 1.29,
+      "skeleton_median_w_mm": 2.34,
+      "uncovered_share": 0.026,
+      "reason": "satin",
+      "decision": "SATIN"
+    }
+  ],
+  "coverage": {
+    "interior_pct": 99.6,
+    "edge_band_pct": 100.0,
+    "spill_pct": 4.1,
+    "interior_frac": 0.91,
+    "frames_deg": [
+      0.0,
+      22.5,
+      45.0,
+      67.5
+    ]
+  },
+  "penetration": {
+    "satin_objects": 4,
+    "penetrations": 1785,
+    "nominal_pitch_mm": 0.4,
+    "floor_mm": 0.3,
+    "min_spacing_mm": 0.301,
+    "min_spacing_object": "Fill 3 (#b2b4b0)",
+    "below_floor": 0,
+    "below_floor_share": 0.0,
+    "per_object": [
+      {
+        "object": 1,
+        "name": "Satin 1 (#8c9290)",
+        "penetrations": 103,
+        "min_mm": 0.305,
+        "p05_mm": 0.313,
+        "median_mm": 0.454,
+        "below_floor": 0
+      },
+      {
+        "object": 2,
+        "name": "Fill 2 (#a0a4a2)",
+        "penetrations": 921,
+        "min_mm": 0.305,
+        "p05_mm": 0.357,
+        "median_mm": 0.39,
+        "below_floor": 0
+      },
+      {
+        "object": 3,
+        "name": "Fill 3 (#b2b4b0)",
+        "penetrations": 668,
+        "min_mm": 0.301,
+        "p05_mm": 0.319,
+        "median_mm": 0.437,
+        "below_floor": 0
+      },
+      {
+        "object": 4,
+        "name": "Satin 4 (#8c9290)",
+        "penetrations": 93,
+        "min_mm": 0.303,
+        "p05_mm": 0.311,
+        "median_mm": 0.67,
+        "below_floor": 0
+      }
+    ]
+  },
+  "density": {
+    "cell_mm": 0.5,
+    "cells": 3842,
+    "max_per_cell": 7,
+    "p99_per_cell": 5,
+    "flag_at": 14,
+    "flagged_cells": 0,
+    "hottest": [
+      {
+        "x_mm": 78.2,
+        "y_mm": 70.8,
+        "count": 7
+      },
+      {
+        "x_mm": 38.8,
+        "y_mm": 58.8,
+        "count": 7
+      },
+      {
+        "x_mm": 77.2,
+        "y_mm": 49.8,
+        "count": 6
+      },
+      {
+        "x_mm": 77.2,
+        "y_mm": 47.8,
+        "count": 6
+      },
+      {
+        "x_mm": 78.2,
+        "y_mm": 46.2,
+        "count": 6
+      }
+    ]
+  },
+  "output_png": "docs/benchmarks/v2-part27/10_low_contrast_subject-output.png"
+}
