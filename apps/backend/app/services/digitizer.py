@@ -456,6 +456,59 @@ def _smooth_contour(contour, mm_per_px: float):
     return np.round(smoothed).astype(np.int32).reshape(-1, 1, 2)
 
 
+# A colour component smaller than this that is solidly surrounded by ONE other
+# cluster is shading noise, not an element (v2 Part 29). 3mm² is a few
+# thread widths long on each side — nothing sewable reads as an element at that size
+# inside a field of another colour — and DETAIL_DEFER_MAX_MM2 (60mm²) is forty
+# times larger, so genuine embedded detail (eyes, dots) is untouched.
+SPECK_ABSORB_MAX_MM2 = 3.0
+# The ring around a speck must be at least this share one single neighbour
+# cluster before absorption — a speck BETWEEN two regions keeps its own vote.
+SPECK_ABSORB_RING_SHARE = 0.7
+
+
+def _absorb_specks(labels, mm_per_px: float):
+    """Relabel sub-speck colour components to the cluster that surrounds them.
+
+    Operates on the quantized label map, so the fix happens before objects,
+    holes, or deferral ever exist: the surrounding fill simply grows over the
+    speck, no knockout, no extra object, no trim.
+    """
+    import cv2
+    import numpy as np
+
+    out = labels.copy()
+    max_px = SPECK_ABSORB_MAX_MM2 / max(mm_per_px * mm_per_px, 1e-9)
+    k3 = np.ones((3, 3), np.uint8)
+    ih, iw = out.shape
+    for c in np.unique(out):
+        if c < 0:
+            continue
+        n, lab, st, _cents = cv2.connectedComponentsWithStats((out == c).astype(np.uint8), 8)
+        for i in range(1, n):
+            if st[i, cv2.CC_STAT_AREA] > max_px:
+                continue
+            x, y, w, h = (st[i, k] for k in (cv2.CC_STAT_LEFT, cv2.CC_STAT_TOP,
+                                             cv2.CC_STAT_WIDTH, cv2.CC_STAT_HEIGHT))
+            wy0, wy1 = max(0, y - 2), min(ih, y + h + 2)
+            wx0, wx1 = max(0, x - 2), min(iw, x + w + 2)
+            comp = lab[wy0:wy1, wx0:wx1] == i
+            ring = cv2.dilate(comp.astype(np.uint8), k3).astype(bool) & ~comp
+            ring_vals = out[wy0:wy1, wx0:wx1][ring]
+            ring_vals = ring_vals[(ring_vals >= 0) & (ring_vals != c)]
+            if ring_vals.size == 0:
+                continue
+            vals, counts = np.unique(ring_vals, return_counts=True)
+            # Share is judged over OWNED OTHER-cluster ring pixels: a speck at
+            # a region's outer edge has background (-1) in its ring, and
+            # counting background as a dissenting vote left visible flecks at
+            # every leaf edge on the peacock while interior flecks absorbed.
+            # Same-cluster ring pixels cannot occur (the component is maximal).
+            if counts.max() >= SPECK_ABSORB_RING_SHARE * int(ring_vals.size):
+                out[wy0:wy1, wx0:wx1][comp] = vals[counts.argmax()]
+    return out
+
+
 def _interior_texture(img) -> float:
     """Median local luminance stddev in region INTERIORS, away from edges.
 
@@ -693,6 +746,34 @@ def digitize_image(
     labels[fg_flat] = [-1 if int(v) < 0 else order[remap[int(v)]] for v in fg_labels.reshape(-1)]
     labels = labels.reshape(ih, iw)
 
+    # Textured input: absorb colour specks into their surroundings (v2 Part 29).
+    # Even after mean-shift, a photographed sew-out leaves confetti — measured
+    # on the peacock: 52 of 128 objects were under 40 stitches, each one a trim,
+    # a lock, and a fleck of the wrong colour inside another region's fill. A
+    # component smaller than a few thread widths whose ring is solidly one other
+    # cluster IS that cluster, misassigned by shading. Runs before the deferral
+    # scan so deferral sees the cleaned map. Flat artwork never reaches this.
+    if is_textured:
+        labels = _absorb_specks(labels, mm_per_px)
+        # Seam fill (v2 Part 29): on flat artwork, blend pixels (-1) are
+        # anti-aliasing halos and deliberately belong to no cluster. On a
+        # photograph they are the BOUNDARIES between abutting regions — leaving
+        # them unowned put a white pinhole seam wherever navy met green on the
+        # peacock's tail, everywhere, which no real sew-out has. Each unowned
+        # foreground pixel joins its nearest cluster; regions then abut exactly,
+        # and the per-object pull compensation overlaps them as usual.
+        seam = (labels < 0) & (fg_mask > 0)
+        if seam.any():
+            _dist_t, nearest = cv2.distanceTransformWithLabels(
+                (labels < 0).astype(np.uint8), cv2.DIST_L2, 5,
+                labelType=cv2.DIST_LABEL_PIXEL,
+            )
+            owned_flat = np.flatnonzero(labels.reshape(-1) >= 0)
+            # nearest[] indexes pixels where labels>=0 by their DIST_LABEL_PIXEL id,
+            # which enumerates the ZERO pixels of the source mask in scan order.
+            lut = labels.reshape(-1)[owned_flat]
+            labels[seam] = lut[nearest[seam] - 1]
+
     substrate = _border_color(img)
     design_area_px = float(max(int(fg_flat.sum()), 1))
 
@@ -774,6 +855,16 @@ def digitize_image(
         # is coarse enough to survive it.
         if cv2.countNonZero(cv2.erode(mask, np.ones((3, 3), np.uint8))) > 0.5 * cv2.countNonZero(mask):
             mask = _open_preserving_detail(mask, mm_per_px)
+        # Textured input: solidify the ragged photographic boundary (v2 Part 29).
+        # A photographed sew-out's colour regions have fuzzy thread-fringe edges;
+        # a close at ~0.4mm heals the pinholes and gaps the fringe leaves, and
+        # the following open sheds the fringe hairs themselves. Flat artwork
+        # never takes this branch, so the corpus mask path is untouched.
+        if is_textured and cv2.countNonZero(mask):
+            kc = max(1, round(0.4 / mm_per_px))
+            ko = max(1, round(0.3 / mm_per_px))
+            mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((2 * kc + 1,) * 2, np.uint8))
+            mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((2 * ko + 1,) * 2, np.uint8))
         # Substrate rule: a cluster the colour of the garment is only ink where it
         # forms a small enclosed element (knocked-out type, counters, catchlights).
         # A large expanse of it is the garment showing through a thin outline.
