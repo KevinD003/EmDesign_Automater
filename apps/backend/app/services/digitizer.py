@@ -1633,21 +1633,49 @@ def _fill_by_component(region, row_px: int, max_step_px: int, connect_px: float,
     return out
 
 
+# Fill stagger cycle, in rows (v2 Part 28). Without stagger, every row's
+# interior penetrations land at the SAME positions along the row — measured on
+# a 40x20mm rectangle: 588 of 588 interior penetrations vertically aligned with
+# the previous row's, i.e. the needle punches columns of holes through the
+# fabric and the fill reads as train tracks. This is the "valley effect" the
+# Ink/Stitch fill documentation names, and every commercial digitizer staggers
+# against it (concept adopted from their public docs; implementation our own).
+# A 4-row cycle at 1/4-step offsets is the industry default.
+FILL_STAGGER_ROWS = 4
+# Penetrations closer than this fraction of a stitch step to a row END are
+# dropped: the row edge itself penetrates there, and a second hole a few tenths
+# of a millimetre inside it is the same-hole class of defect the floor guards.
+# The resulting end gap is at most 1.3 steps, comparable to the 1.5-step worst
+# case the previous rounding-based subdivision already produced.
+_STAGGER_END_GUARD = 0.3
+
+
 def _scanline_fill(region, row_px: int, max_step_px: int, connect_px: float):
     """Boustrophedon scanline fill of a filled-contour mask.
 
     Returns [(x_px, y_px, is_jump)] — stitch points row by row, alternating
-    direction; long runs subdivided; far row-to-row moves flagged as jumps.
+    direction; long runs subdivided on a STAGGERED grid; far row-to-row moves
+    flagged as jumps.
+
+    Interior penetrations sit on an absolute grid offset by the row's place in
+    the FILL_STAGGER_ROWS cycle — measured from the segment's absolute left end,
+    not its travel start, so the stagger diagonal runs one way across the whole
+    fill instead of herringboning with the serpentine direction.
     """
     import numpy as np
 
     pts: list[tuple[float, float, bool]] = []
     h = region.shape[0]
     left_to_right = True
+    row_idx = 0
+    step = max(1.0, float(max_step_px))
+    guard = _STAGGER_END_GUARD * step
     for y in range(0, h, row_px):
         cols = np.flatnonzero(region[y])
         if cols.size == 0:
             continue
+        phase = (row_idx % FILL_STAGGER_ROWS) / FILL_STAGGER_ROWS
+        row_idx += 1
         # Split the row into contiguous runs (handles concave shapes/holes).
         splits = np.flatnonzero(np.diff(cols) > 1)
         runs = np.split(cols, splits + 1)
@@ -1659,9 +1687,18 @@ def _scanline_fill(region, row_px: int, max_step_px: int, connect_px: float):
             a, b = (x0, x1) if left_to_right else (x1, x0)
             first = not pts or _dist(pts[-1], (a, y)) > connect_px
             pts.append((float(a), float(y), first))
-            n = max(1, round(abs(b - a) / max_step_px))
-            for i in range(1, n + 1):
-                pts.append((a + (b - a) * i / n, float(y), False))
+            lo, hi = (a, b) if a < b else (b, a)
+            inner = []
+            s = lo + phase * step
+            while s < hi:
+                if lo + guard <= s <= hi - guard:
+                    inner.append(s)
+                s += step
+            if a > b:
+                inner.reverse()
+            for s in inner:
+                pts.append((float(s), float(y), False))
+            pts.append((float(b), float(y), False))
         left_to_right = not left_to_right
     return pts
 
@@ -2279,10 +2316,19 @@ def _satin_zigzag(region, rect, step_px: int, connect_px: float, max_step_px: in
         pts.append((a[0], a[1], jump))
         prev = a
         n = max(1, int(np.ceil(_dist(a, b) / max_step_px)))
-        for i in range(1, n + 1):
-            p = (a[0] + (b[0] - a[0]) * i / n, a[1] + (b[1] - a[1]) * i / n)
-            pts.append((p[0], p[1], False))
-            prev = p
+        if n > 1:
+            # Staggered splits, same reason as `_emit_columns` (v2 Part 28):
+            # this is the path a USER-forced wide satin takes through rebuild,
+            # and aligned split points there perforate a line down the column.
+            phase = ((x // max(1, step_px)) % FILL_STAGGER_ROWS) / FILL_STAGGER_ROWS
+            guard = 0.3 / n
+            for i in range(n):
+                f = (i + phase) / n
+                if guard <= f <= 1.0 - guard:
+                    p = (a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f)
+                    pts.append((p[0], p[1], False))
+        pts.append((b[0], b[1], False))
+        prev = b
         top = not top
     if pts:
         pts[0] = (pts[0][0], pts[0][1], True)  # enter the column with a jump
@@ -3194,10 +3240,28 @@ def _emit_columns(pairs, max_step_px: int, prev_end, spacing_px: float):
         return [], prev_end
     first_jump = prev_end is None or _dist(prev_end, seq[0]) > spacing_px * 4
     out: list[tuple[float, float, bool]] = [(seq[0][0], seq[0][1], first_jump)]
-    for p0, p1 in pairwise(seq):
+    for k, (p0, p1) in enumerate(pairwise(seq)):
         n = max(1, int(np.ceil(_dist(p0, p1) / max(max_step_px, 1))))
-        for i in range(1, n + 1):
-            out.append((p0[0] + (p1[0] - p0[0]) * i / n, p0[1] + (p1[1] - p0[1]) * i / n, False))
+        if n > 1:
+            # STAGGERED split points (v2 Part 28). Even subdivision put every
+            # crossing's split penetration at the same fractions, so on a column
+            # wider than the machine step the splits of successive crossings
+            # lined up ~0.15mm apart down the column centre — measured on an
+            # 8mm straight bar as 383 same-side floor violations, a perforation
+            # line where the fabric would tear. Same defect as unstaggered fill
+            # rows, same cure: the split grid shifts by a quarter step per
+            # crossing (the concept Ink/Stitch documents as staggering split
+            # satin stitches; implementation our own). Adjacent crossings'
+            # splits now sit ~max_step/4 apart — an order of magnitude over
+            # the floor. Ends are guarded by 0.3 of a step so a split never
+            # lands nearly-in the boundary penetration's hole.
+            phase = (k % FILL_STAGGER_ROWS) / FILL_STAGGER_ROWS
+            guard = 0.3 / n
+            for i in range(n):
+                f = (i + phase) / n
+                if guard <= f <= 1.0 - guard:
+                    out.append((p0[0] + (p1[0] - p0[0]) * f, p0[1] + (p1[1] - p0[1]) * f, False))
+        out.append((p1[0], p1[1], False))
     return out, seq[-1]
 
 
