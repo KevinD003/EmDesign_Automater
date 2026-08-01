@@ -467,6 +467,65 @@ SPECK_ABSORB_MAX_MM2 = 3.0
 SPECK_ABSORB_RING_SHARE = 0.7
 
 
+# --- Gradient-band recovery for textured input (v2 Part 31) ------------------
+# The peacock comparison's biggest colour finding: the three lost colours (teal
+# neck transition, deep-navy shadow, pale-mint eye fringe) were all GRADIENT
+# PARTNERS of kept colours, merged away by the k-means cap. And because the
+# source is embroidery, its "gradients" are literally discrete thread bands —
+# so recovering the dropped colours as their own bands is faithful rendering,
+# not an approximation of blending. A cluster whose members split into two
+# well-separated colour modes, each owning real area, is two threads.
+SPLIT_DELTA_BGR = 30.0     # min mode separation; teal|brown-parent measured 49.8, mint|pale 32.8 — 36 missed mint by 3
+SPLIT_MIN_AREA_MM2 = 30.0  # each half must be sewable area, not a shading tail
+SPLIT_MAX_EXTRA = 3        # at most this many recovered shades per design
+
+
+def _split_bimodal_clusters(Z, fg_labels, centers, mm_per_px: float):
+    """Split clusters whose members are two distinct colour modes.
+
+    Returns (centers, fg_labels, n_splits); mutates fg_labels in place. Ranked
+    by separation x size and capped, so only the strongest few gradient bands
+    are recovered rather than shattering every shaded cluster.
+    """
+    import cv2
+    import numpy as np
+
+    min_px = SPLIT_MIN_AREA_MM2 / max(mm_per_px * mm_per_px, 1e-9)
+    candidates = []
+    for ci in range(len(centers)):
+        idx = np.flatnonzero(fg_labels == ci)
+        if len(idx) < 2 * min_px:
+            continue
+        members = Z[idx]
+        cv2.setRNGSeed(20260728)  # deterministic sub-split
+        _c, sub, _sub_cen = cv2.kmeans(
+            members, 2, None,
+            (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 10, 1.0), 3,
+            cv2.KMEANS_PP_CENTERS,
+        )
+        sub = sub.reshape(-1)
+        n0, n1 = int((sub == 0).sum()), int((sub == 1).sum())
+        if min(n0, n1) < min_px:
+            continue
+        m0 = np.median(members[sub == 0], axis=0)
+        m1 = np.median(members[sub == 1], axis=0)
+        gap = float(np.linalg.norm(m0 - m1))
+        if gap < SPLIT_DELTA_BGR:
+            continue
+        candidates.append((gap * min(n0, n1), ci, idx, sub, m0, m1))
+    n_splits = 0
+    centers = list(centers)
+    for _score, ci, idx, sub, m0, m1 in sorted(candidates, reverse=True, key=lambda t: t[0]):
+        if n_splits >= SPLIT_MAX_EXTRA:
+            break
+        centers[ci] = m0.astype(np.float32)
+        fg_labels[idx[sub == 1]] = len(centers)
+        centers.append(m1.astype(np.float32))
+        n_splits += 1
+    import numpy as _np
+    return _np.array(centers, _np.float32), fg_labels, n_splits
+
+
 def _absorb_specks(labels, mm_per_px: float):
     """Relabel sub-speck colour components to the cluster that surrounds them.
 
@@ -780,7 +839,14 @@ def digitize_image(
         diff = Z - centers[ci]
         d2[:, ci] = np.einsum("ij,ij->i", diff, diff)
     fg_labels = d2.argmin(axis=1).astype(np.int32)
-    if len(centers) > 1:
+    # The ambiguous-blend cut is SKIPPED for textured input (v2 Part 31): on
+    # flat artwork a pixel equidistant from two palette colours is an
+    # anti-aliasing halo, but on a photograph it is a real transition thread —
+    # and the cut was measured swallowing the peacock's entire teal band before
+    # gradient recovery could see it (the teal half showed up in the split scan
+    # only when the cut was off: #507164, 3,221px, gap 49.8 from its brown
+    # parent cluster).
+    if len(centers) > 1 and not is_textured:
         # A pixel roughly equidistant from two palette colours IS the blend
         # between them. Assigning it to the nearer one grows every shape by
         # about a pixel per side, which pushed a 3.6mm satin bar over the 4mm
@@ -789,6 +855,12 @@ def digitize_image(
         nearest2 = np.partition(d2, 1, axis=1)[:, :2]
         ambiguous = nearest2[:, 0] > AMBIGUOUS_BLEND_RATIO * nearest2[:, 1]
         fg_labels[ambiguous] = -1
+    # Gradient-band recovery (v2 Part 31, textured input only): clusters that
+    # merged two real thread colours under the k cap split back apart. Runs
+    # BEFORE the median recentre so both halves get their own true median.
+    n_shade_splits = 0
+    if is_textured:
+        centers, fg_labels, n_shade_splits = _split_bimodal_clusters(Z, fg_labels, centers, mm_per_px)
     # Truer thread colours (v2 Part 16): the k-means centroid averages every
     # member pixel INCLUDING anti-aliased blends, muddying flat-art colours.
     # The per-channel median of the cluster's members is robust to the blend
@@ -1433,6 +1505,12 @@ def digitize_image(
         user_warnings.append(
             f"Requested {max_colors} colours; the artwork only separated into "
             f"{distinct_hexes} distinguishable colour{'s' if distinct_hexes != 1 else ''}."
+        )
+    if n_shade_splits:
+        user_warnings.append(
+            f"{n_shade_splits} extra shade{'s' if n_shade_splits != 1 else ''} "
+            "recovered from colour gradients in the photo (each is a real thread "
+            "band the colour limit had merged away)."
         )
 
     return Design(

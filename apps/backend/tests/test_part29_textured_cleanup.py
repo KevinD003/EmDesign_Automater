@@ -89,3 +89,35 @@ def test_dark_linework_ignores_dark_regions():
         1 for c in chains for x, y in c if 80 < x < 220 and 80 < y < 220
     )
     assert inside == 0, "the tracer drew a spine through a solid dark region"
+
+
+def test_bimodal_cluster_splits_into_two_threads():
+    """v2 Part 31: a cluster holding two well-separated colour modes with real
+    area each is two threads the k cap merged — the peacock's teal came back
+    through exactly this (source #4e7164, recovered #4f7064)."""
+    from app.services.digitizer import _split_bimodal_clusters
+
+    rng = np.random.default_rng(3)
+    teal = np.array([100, 113, 78], np.float32)   # BGR
+    brown = np.array([70, 96, 116], np.float32)
+    Z = np.vstack([
+        teal + rng.normal(0, 3, (4000, 3)),
+        brown + rng.normal(0, 3, (9000, 3)),
+    ]).astype(np.float32)
+    labels = np.zeros(len(Z), np.int32)
+    centers = np.array([np.median(Z, axis=0)], np.float32)
+    centers2, labels2, n = _split_bimodal_clusters(Z, labels, centers, 0.106)
+    assert n == 1
+    assert len(centers2) == 2
+    assert len(set(labels2.tolist())) == 2
+
+
+def test_unimodal_cluster_does_not_split():
+    from app.services.digitizer import _split_bimodal_clusters
+
+    rng = np.random.default_rng(4)
+    Z = (np.array([90, 100, 60], np.float32) + rng.normal(0, 6, (12000, 3))).astype(np.float32)
+    labels = np.zeros(len(Z), np.int32)
+    centers = np.array([np.median(Z, axis=0)], np.float32)
+    _c, _l, n = _split_bimodal_clusters(Z, labels, centers, 0.106)
+    assert n == 0
