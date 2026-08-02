@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, File, Form, Header, HTTPException, UploadFile
 
 from app.models.design import Design
-from app.services import digitizer
+from app.services import digitizer, plans
 
 router = APIRouter(tags=["digitize"])
 
@@ -25,8 +25,11 @@ def digitize(
     fabric_type: str = Form("cotton"),
     hoop_size: str = Form("100x100"),
     max_colors: int = Form(6),
+    authorization: str | None = Header(default=None),
 ) -> Design:
     """Auto-digitize an uploaded image into an embroidery Design (classical CV v1)."""
+    hoop_w, hoop_h = digitizer._parse_hoop(hoop_size)
+    plans.check_hoop_allowed(authorization, hoop_w, hoop_h)
     data = file.file.read()
     if not data:
         raise HTTPException(status_code=400, detail="Empty file")

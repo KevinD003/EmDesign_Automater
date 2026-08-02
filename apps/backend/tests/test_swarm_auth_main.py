@@ -52,7 +52,8 @@ def test_login_then_me_with_bearer_token(client):
         "/api/auth/local/me", headers={"Authorization": f"Bearer {token}"}
     )
     assert me.status_code == 200
-    assert me.json() == {"userId": login.json()["userId"], "username": "Ada"}
+    body = me.json()
+    assert body["userId"] == login.json()["userId"] and body["username"] == "Ada"
 
 
 def test_profiles_list_shows_created_profile(client):

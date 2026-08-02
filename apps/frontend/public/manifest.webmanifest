@@ -1,0 +1,10 @@
+{
+  "name": "STITCHIQ — AI Embroidery Digitizing Studio",
+  "short_name": "STITCHIQ",
+  "description": "Turn images and text into machine-ready embroidery.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f1115",
+  "theme_color": "#0f1115",
+  "icons": [{ "src": "/og.png", "sizes": "1200x630", "type": "image/png", "purpose": "any" }]
+}

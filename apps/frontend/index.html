@@ -3,15 +3,87 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0f1115" />
+
+    <!-- ── SEO (v2 Part 35) ─────────────────────────────────────────
+         The app is a SPA, so the crawlable surface is this document plus
+         public/{robots.txt, sitemap.xml, llms.txt}. Swap the placeholder
+         domain in canonical/og:url/sitemap for the real one at deploy. -->
+    <title>STITCHIQ — AI Embroidery Digitizing Studio</title>
+    <meta
+      name="description"
+      content="STITCHIQ turns images and text into machine-ready embroidery: auto-digitizing with satin, tatami and curved fills, underlay and pull compensation, lettering, quality checks, and export to DST, PES, JEF, EXP and VP3."
+    />
+    <meta
+      name="keywords"
+      content="embroidery digitizing, auto digitizing, embroidery software, DST converter, PES converter, image to embroidery, machine embroidery, satin stitch, tatami fill, embroidery lettering"
+    />
+    <link rel="canonical" href="https://stitchiq.example.com/" />
+    <meta name="robots" content="index, follow" />
+
+    <!-- Open Graph / Twitter -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="STITCHIQ" />
+    <meta property="og:title" content="STITCHIQ — AI Embroidery Digitizing Studio" />
+    <meta
+      property="og:description"
+      content="Turn any image or text into machine-ready embroidery. Auto-digitizing, lettering, quality checks, and export to every major machine format."
+    />
+    <meta property="og:url" content="https://stitchiq.example.com/" />
+    <meta property="og:image" content="/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="STITCHIQ — AI Embroidery Digitizing Studio" />
+    <meta
+      name="twitter:description"
+      content="Turn any image or text into machine-ready embroidery. Export DST, PES, JEF, EXP, VP3."
+    />
+    <meta name="twitter:image" content="/og.png" />
+
+    <!-- Structured data (GEO: what AI search engines read first) -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "STITCHIQ",
+        "applicationCategory": "DesignApplication",
+        "operatingSystem": "Web",
+        "description": "AI embroidery digitizing studio: converts images and text into machine-ready stitch files with satin, tatami and curved fills, underlay, pull compensation, quality scoring and export to DST, PES, JEF, EXP and VP3.",
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD",
+          "description": "Free tier: full digitizing, lettering and export. Pro and Studio tiers add production packages, the optimizer, the photo pipeline and large-format hoops."
+        },
+        "featureList": [
+          "Image auto-digitizing (satin, tatami, contour, spiral and radial fills)",
+          "Photo and textured-source pipeline with outline verification",
+          "Embroidery lettering with arc baselines",
+          "Underlay, pull compensation and stitch-quality scoring",
+          "Machine export: DST, PES, JEF, EXP, VP3 + production package ZIP",
+          "TrueView 3D thread preview and stitch-out player"
+        ]
+      }
+    </script>
+
+    <link rel="manifest" href="/manifest.webmanifest" />
     <link
       rel="icon"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%A7%B5%3C/text%3E%3C/svg%3E"
     />
-    <title>STITCHIQ — AI Embroidery Studio</title>
   </head>
   <body>
     <!-- The only HTML file: a Vite bootstrap that mounts the React (TypeScript) app. -->
     <div id="root"></div>
+    <noscript>
+      <h1>STITCHIQ — AI Embroidery Digitizing Studio</h1>
+      <p>
+        STITCHIQ converts images and text into machine-ready embroidery files (DST, PES, JEF,
+        EXP, VP3) with automatic satin and tatami fills, underlay, pull compensation and
+        quality checks. Enable JavaScript to use the studio.
+      </p>
+    </noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

@@ -1,0 +1,7 @@
+# STITCHIQ — https://stitchiq.example.com (swap for the real domain at deploy)
+User-agent: *
+Allow: /
+Disallow: /api/
+
+# AI crawlers welcome — see /llms.txt for a structured summary.
+Sitemap: https://stitchiq.example.com/sitemap.xml

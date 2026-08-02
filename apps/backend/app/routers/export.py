@@ -5,13 +5,14 @@ from __future__ import annotations
 import io
 import math
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
 from app.models.design import Design, ValidationReport
 from app.services import embroidery_io
 from app.services import package as package_svc
 from app.services.optimizer import parse_hoop
+from app.services.plans import require_feature
 
 router = APIRouter(tags=["export"])
 
@@ -37,7 +38,7 @@ def formats() -> dict[str, object]:
     }
 
 
-@router.post("/export/package")
+@router.post("/export/package", dependencies=[Depends(require_feature("package_export"))])
 def export_package(design: Design, format: str = Query("dst")) -> StreamingResponse:
     """Bundle the full production package (machine file + master + worksheet + color card
     + preview + summary) as a ZIP (spec §4.8)."""

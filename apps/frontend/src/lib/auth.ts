@@ -14,6 +14,9 @@ export interface Session {
   provider?: 'supabase' | 'local';
   /** Display name for local profiles; Supabase sessions use email instead. */
   username?: string;
+  /** Account role/plan (v2 Part 35) — refreshed from /auth/local/me. */
+  role?: 'user' | 'admin';
+  plan?: 'free' | 'pro' | 'studio';
 }
 
 const SESSION_KEY = 'stitchiq:session';

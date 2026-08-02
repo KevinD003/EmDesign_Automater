@@ -160,4 +160,59 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ text, heightMm, fabricType, letter_spacing_mm: letterSpacingMm }),
     }),
+
+  // ── Local accounts (v2 Part 35): profile, recovery, admin ──
+  localMe: () => request<LocalAccount>('/api/auth/local/me'),
+  setAccountEmail: (email: string) =>
+    request<LocalAccount>('/api/auth/local/email', { method: 'POST', body: JSON.stringify({ email }) }),
+  /** Always resolves — the server never reveals whether the address exists. */
+  forgotPassword: (email: string) =>
+    request<{ sent: boolean }>('/api/auth/local/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    }),
+  resetPassword: (token: string, newPin: string) =>
+    request<{ ok: boolean; username: string }>('/api/auth/local/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ token, new_pin: newPin }),
+    }),
+  adminUsers: () => request<AdminUser[]>('/api/admin/users'),
+  adminSetPlan: (userId: string, plan: string) =>
+    request<AdminUser>(`/api/admin/users/${encodeURIComponent(userId)}/plan`, {
+      method: 'POST',
+      body: JSON.stringify({ plan }),
+    }),
+  adminSetRole: (userId: string, role: string) =>
+    request<AdminUser>(`/api/admin/users/${encodeURIComponent(userId)}/role`, {
+      method: 'POST',
+      body: JSON.stringify({ role }),
+    }),
+  adminStats: () => request<AdminStats>('/api/admin/stats'),
 };
+
+export interface LocalAccount {
+  userId: string;
+  username: string;
+  email: string | null;
+  role: 'user' | 'admin';
+  plan: 'free' | 'pro' | 'studio';
+}
+
+export interface AdminUser {
+  userId: string;
+  username: string;
+  hasPin: boolean;
+  createdAt: string;
+  email: string | null;
+  role: string;
+  plan: string;
+}
+
+export interface AdminStats {
+  users: number;
+  admins: number;
+  byPlan: Record<string, number>;
+  enforcing: boolean;
+  features: Record<string, string>;
+  planDescriptions: Record<string, string>;
+}

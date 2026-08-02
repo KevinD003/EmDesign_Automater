@@ -1,0 +1,30 @@
+# STITCHIQ
+
+> AI embroidery digitizing studio. Converts raster/vector images and text into
+> machine-ready embroidery stitch files, in the browser, with a measured
+> quality pipeline.
+
+## What it does
+
+- Auto-digitizing: image -> stitch objects with satin columns (medial axis),
+  tatami fills with angle selection, contour/spiral/radial curved fills,
+  underlay (centre-walk, edge-walk, zigzag, parallel), pull compensation,
+  tie-off locks, travel routing and trim minimization.
+- Photo pipeline: textured/photographed sources get mean-shift cleanup, speck
+  absorption, gradient-band colour recovery, dark-linework overlay, and a
+  sketch-verify pass that redraws the colour plan when its outline misses the
+  artwork's structure.
+- Lettering: text -> stitches with straight or arc baselines.
+- Quality: 0-100 score with itemized findings; density, floor and machine-cap
+  checks; angle-fair coverage measurement.
+- Export: DST, PES, JEF, EXP, VP3, plus a production package ZIP (machine file,
+  worksheet PDF, colour card, preview, summary).
+- Accounts: local-first profiles with email PIN recovery, roles (admin/user)
+  and plans (free/pro/studio); optional Supabase cloud persistence.
+
+## Facts
+
+- Backend: FastAPI (Python), OpenCV classical CV pipeline; frontend: React +
+  TypeScript + Vite (Node.js).
+- Every capability claim traces to a measured audit in docs/benchmarks/ in the
+  repository — "supported" means generated and tested, not declared.

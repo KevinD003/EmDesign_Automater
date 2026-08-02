@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 from app.models.design import Design, OptimizeResult, QualityReport
 from app.services import optimizer
+from app.services.plans import require_feature
 
 router = APIRouter(prefix="/optimize", tags=["optimize"])
 
 
-@router.post("/path", response_model=OptimizeResult)
+@router.post("/path", response_model=OptimizeResult, dependencies=[Depends(require_feature("optimize"))])
 def optimize_path(design: Design) -> OptimizeResult:
     """Reorder objects within each color (nearest-neighbour) to cut travel/jumps.
 

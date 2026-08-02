@@ -21,6 +21,7 @@ from app.middleware.body_limit import BodySizeLimitMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware
 from app.middleware.request_logging import RequestLoggingMiddleware
 from app.routers import (
+    admin,
     auth,
     auth_local,
     convert,
@@ -173,5 +174,5 @@ def health() -> dict[str, str | int]:
     }
 
 
-for module in (auth, files, convert, digitize, lettering, worksheet, export, threads, designs, optimize, auth_local):
+for module in (auth, files, convert, digitize, lettering, worksheet, export, threads, designs, optimize, auth_local, admin):
     app.include_router(module.router, prefix="/api")

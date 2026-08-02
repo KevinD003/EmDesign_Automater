@@ -7,9 +7,15 @@ import { QualityPanel } from './components/panels/QualityPanel';
 import { StitchPlayer } from './components/player/StitchPlayer';
 import { StitchCanvas } from './components/canvas/StitchCanvas';
 import { TrueView3D } from './components/trueview/TrueView3D';
-import { Dashboard } from './components/dashboard/Dashboard';
 import { Toasts } from './components/feedback/Toasts';
 import { AuthBar } from './components/auth/AuthBar';
+import { DashShell } from './components/dash/DashShell';
+import { OverviewPage } from './components/dash/OverviewPage';
+import { AnalyticsPage } from './components/dash/AnalyticsPage';
+import { AccountPage } from './components/dash/AccountPage';
+import { AdminPage } from './components/dash/AdminPage';
+import { ForgotPage, LoginPage, ResetPage, SignupPage } from './components/dash/AuthPages';
+import { parseRoute, type Route } from './lib/routes';
 import { useDesignStore } from './store/designStore';
 import { useAuthStore } from './store/authStore';
 
@@ -24,11 +30,19 @@ export default function App() {
   const selectedStop = useDesignStore((s) => s.selectedStop);
   const selectStop = useDesignStore((s) => s.selectStop);
   const [view, setView] = useState<'2d' | '3d'>('2d');
-  const [page, setPage] = useState<'studio' | 'dashboard'>('studio');
+  // Hash routing (v2 Part 35): pages live in the URL so email links (PIN
+  // reset) and dashboard sections survive a refresh on a static host.
+  const [route, setRoute] = useState<Route>(() => parseRoute(window.location.hash));
   const initAuth = useAuthStore((s) => s.init);
 
   // Restore any persisted cloud session on load (primes the API bearer token).
   useEffect(initAuth, [initAuth]);
+
+  useEffect(() => {
+    const onHash = () => setRoute(parseRoute(window.location.hash));
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
 
   // Global undo/redo shortcuts: Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z, Ctrl+Y.
   useEffect(() => {
@@ -52,27 +66,38 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
+  // Full-page routes render without the studio chrome.
+  if (route.page === 'login') return <LoginPage />;
+  if (route.page === 'signup') return <SignupPage />;
+  if (route.page === 'forgot') return <ForgotPage />;
+  if (route.page === 'reset') return <ResetPage token={route.token} />;
+  if (route.page === 'dashboard') {
+    return (
+      <>
+        <DashShell section={route.section}>
+          {route.section === 'overview' && <OverviewPage />}
+          {route.section === 'analytics' && <AnalyticsPage />}
+          {route.section === 'account' && <AccountPage />}
+          {route.section === 'admin' && <AdminPage />}
+        </DashShell>
+        <Toasts />
+      </>
+    );
+  }
+
   return (
     <div className="app-shell">
       <Toolbar />
       <nav className="page-nav">
         <div className="view-toggle">
-          <button type="button" className={page === 'studio' ? 'active' : ''} onClick={() => setPage('studio')}>
+          <a className="active" href="#/studio">
             Studio
-          </button>
-          <button
-            type="button"
-            className={page === 'dashboard' ? 'active' : ''}
-            onClick={() => setPage('dashboard')}
-          >
-            Dashboard
-          </button>
+          </a>
+          <a href="#/dashboard">Dashboard</a>
         </div>
         <AuthBar />
       </nav>
-      {page === 'dashboard' ? (
-        <Dashboard />
-      ) : (
+      {(
         <>
           <div className="app-body">
             <ColorObjectList />

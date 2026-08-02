@@ -97,7 +97,10 @@ def test_me_with_issued_token(client):
     ).json()
     resp = client.get("/api/auth/local/me", headers=_auth(created["accessToken"]))
     assert resp.status_code == 200
-    assert resp.json() == {"userId": created["userId"], "username": "Ada"}
+    body = resp.json()
+    assert body["userId"] == created["userId"] and body["username"] == "Ada"
+    # v2 Part 35 widened the wire shape with account metadata.
+    assert set(body) == {"userId", "username", "email", "role", "plan"}
 
 
 def test_me_garbage_token_and_missing_header_401(client):

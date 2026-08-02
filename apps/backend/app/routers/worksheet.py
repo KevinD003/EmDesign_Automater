@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import io
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
 from app.models.design import Design, Worksheet
 from app.services import worksheet_pdf
+from app.services.plans import require_feature
 
 router = APIRouter(tags=["worksheet"])
 
@@ -19,7 +20,7 @@ def build_worksheet(design: Design) -> Worksheet:
     return worksheet_pdf.build_worksheet(design)
 
 
-@router.post("/worksheet/pdf")
+@router.post("/worksheet/pdf", dependencies=[Depends(require_feature("worksheet_pdf"))])
 def worksheet_pdf_download(design: Design) -> StreamingResponse:
     """Render the production worksheet to a downloadable PDF (spec §4.9)."""
     worksheet = worksheet_pdf.build_worksheet(design)

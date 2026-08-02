@@ -5,10 +5,11 @@ from __future__ import annotations
 import base64
 import binascii
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 from app.models.design import ConvertRequest, ConvertResponse
 from app.services import embroidery_io
+from app.services.plans import require_feature
 
 router = APIRouter(tags=["convert"])
 
@@ -16,7 +17,7 @@ router = APIRouter(tags=["convert"])
 _COLORLESS = {"dst", "exp", "dsb", "dsz", "tap", "u01"}
 
 
-@router.post("/convert", response_model=ConvertResponse)
+@router.post("/convert", response_model=ConvertResponse, dependencies=[Depends(require_feature("convert"))])
 def convert(req: ConvertRequest) -> ConvertResponse:
     """Convert an embroidery file between machine formats.
 
