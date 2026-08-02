@@ -58,10 +58,16 @@ Implemented, gated to textured input so the flat corpus could not move.
 | only cuts yielding elongated lobes | 97.40 | 93.10 | 52,878 | 0 | 0 |
 
 It does what it was meant to — the big single-angle fill blobs became satin columns
-(objects over 200 stitches went 5 → 39). But it costs **1.1–1.4 points of edge-band
-coverage**, because a watershed ridge runs from the neck out to the outline and notches
-it. Outline crispness is precisely what makes stitching look finished, so trading it for
-+0.3 interior is a bad deal. **Reverted.**
+(objects over 200 stitches went 5 → 39). But re-scoring exposed something the table
+above hides, and it is worse than a bad trade: **the split design's declared outline is
+34% smaller** (1,034,193 px vs 1,569,069) and **spill rises 16.4% → 36.3%**. The
+watershed was not shaving a 1px ridge, it was destroying a third of each region's area,
+and the interior/edge figures above were computed against that shrunken reference — so
+they *flattered* the split rather than penalising it. **Reverted.**
+
+Lesson repeated from earlier parts: when a change alters the reference the metric is
+computed against, the metric stops being a comparison. Both designs had to be scored
+against one common outline before the verdict meant anything.
 
 ## 4. Fix attempt B — stronger contour smoothing (rejected)
 
@@ -81,7 +87,56 @@ Also swept: the textured close/open (0.4/0.3mm). Widening the close does **not**
 consolidate the fragments — object count rises rather than falls (1,014 → 1,143 at
 0.6mm close). Morphology is not the lever.
 
-## 5. The fix the evidence actually points to
+## 5. Applying the staged sketch-verify idea to stitching (Part 38 follow-up)
+
+The request was to run the Part 33 architecture over the stitch stage too:
+understand the shape, prepare the outline, decide colour and fill, set the needle angle,
+then stitch — verifying at each step. Two of those stages were built and measured, and
+**both verifications came back saying the stage is already fine**:
+
+**Verify the fill covers its region.** Implemented `_verified_fill`: stitch, measure what
+the rows actually cover as swept thread bands, and re-aim the needle if coverage falls
+short — adopting a retry only when it measures better, so it could never lower coverage.
+Result on the panel: **224 fills, ZERO below the 93% threshold, worst first attempt
+98.5%.** The verification never fires. Coverage of the region is not the defect; the code
+would have been dead weight, so it was removed.
+
+**Verify the needle angle against the source.** A photographed sew-out *shows* the real
+thread direction, so it can be read rather than guessed. Built the structure-tensor
+orientation field, validated it on synthetic stripes (worst error **1.4 deg**), and drove
+the fill angle from it with a fallback wherever the source shows no coherent direction.
+Result: angle agreement moved **49.6 -> 49.1 deg mean** and within-15-deg **16.7% ->
+17.6%**, with interior/edge/spill/floor/density all *identical*. That is inside the noise,
+and it only reaches the 224 tatami fills — 560 satin objects take their angle from the
+medial axis instead. Not shipped: a stream change that perturbs locks needs a gain that
+is visible above noise.
+
+### What the new instrument does say
+
+`scripts/measure_stitch_direction.py` (shipped) scores our stitch directions against a
+real sew-out. On the neckline panel:
+
+| | value |
+|---|---|
+| mean \|angle error\| | **49.9 deg** (0 = matches the sew-out, 45 = coin flip) |
+| median | 54.1 deg |
+| within 15 deg | 15.8% |
+| within 30 deg | 29.5% |
+
+Read honestly, with the caveats the script prints itself: registration is a linear map
+from the design's bounding box to the frame, validated per colour stop (most stops agree
+to 3-50 in BGR, so the mapping is sound); the outliers are real digitizing artifacts —
+our near-black objects land where the source's yellow lattice is, i.e. **we stitch thread
+into gaps the source leaves as bare fabric**. So part of that ~50 deg is genuine
+direction error and part is us stitching things that should not be stitched at all. The
+number is a baseline to beat, not a verdict on any one subsystem.
+
+The important consequence: **the direction error is spread evenly across satin (49.3),
+tatami (48.9) and running (52.6)**. It is not one bad stage. Any real fix has to change
+how direction is decided everywhere, which is the guided fill below — and it now has a
+target to optimise against instead of an opinion.
+
+## 6. The fix the evidence actually points to
 
 Direction must vary **within** an object, not be bought by cutting the object up:
 
@@ -100,7 +155,7 @@ Secondary, and separable: the region map handed to the fill is fragmented (media
 = 16 stitches). Consolidating same-thread neighbours *before* stitching would help
 independently of direction, and morphology is already ruled out as the way to do it.
 
-## 6. Guardrails
+## 7. Guardrails
 
 No engine change shipped, so nothing moved: 10/10 stream locks byte-identical, corpus
 untouched. The measurement scripts and the comparison image are the deliverable.
@@ -108,4 +163,7 @@ untouched. The measurement scripts and the comparison image are the deliverable.
 ## Files
 
 - `docs/benchmarks/v2-part37-stitch-gap.png` — source vs ours vs the rejected experiment
-- No changes to `app/services/digitizer.py` (both experiments reverted after measurement)
+- `apps/backend/scripts/measure_stitch_direction.py` — **shipped**: the stitch-direction
+  instrument, with a self-test on known angles and a registration check
+- No changes to `app/services/digitizer.py` (all four experiments reverted after
+  measurement: lobe separation, stronger smoothing, fill verification, source-read angle)
