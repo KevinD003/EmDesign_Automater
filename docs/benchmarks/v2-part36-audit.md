@@ -21,7 +21,12 @@ a synthetic average is never read as a real-world score:
 | **C — parametric** | 47 | Generated artwork spanning classes known to be hard: hairline linework, lattice trellis, tiny lettering, dense florals, badges with text, gradients, high colour count, thin borders, scattered specks, rings/holes, monograms, noisy subjects |
 
 Reproduce with `scripts/build_corpus100.py` (fixed seed) and `scripts/run_corpus100.py`
-(process pool). The 27MB of images and the raw JSON stay out of git by `.gitignore`.
+(process pool). **Tier A is tracked** (3.6MB — the real user photographs enter the repo
+here for the first time, and they are genuine regression inputs); tiers B and C are
+generated from it and are gitignored (24MB). Correction worth recording: the first
+`.gitignore` entry was written repo-root-relative and did not match
+`apps/backend/tests/...`, so all 100 images were committed once before this was fixed —
+they remain in history.
 
 ## 2. Results
 
