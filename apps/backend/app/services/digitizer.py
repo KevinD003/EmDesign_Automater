@@ -526,6 +526,63 @@ def _split_bimodal_clusters(Z, fg_labels, centers, mm_per_px: float):
     return _np.array(centers, _np.float32), fg_labels, n_splits
 
 
+# --- Sketch-then-verify (v2 Part 33) -----------------------------------------
+# The digitizing order a human uses: draw the outline sketch first, hold it
+# against the original, and only when the structure agrees start deciding which
+# colour fills where. The "sketch" here is the region-boundary map the colour
+# plan implies (label boundaries + the foreground outline); verification
+# measures it against the source's own edges. A low EDGE COVERAGE means the
+# plan merged two regions the artwork separates (a missing line in the sketch)
+# — the one failure a colour-count retry can actually fix.
+SKETCH_EDGE_TOL_PX = 2       # a sketch stroke within this of a true edge matches
+# Retry only when coverage falls below this. Calibrated against the corpus so
+# flat artwork NEVER retries (byte-identity preserved); see the measured table
+# in the Part 33 audit before moving it.
+SKETCH_MIN_COVERAGE = 0.55
+SKETCH_MAX_RETRIES = 2       # each retry re-plans with two more colours
+
+
+def _sketch_from_labels(labels, fg_mask):
+    """The plan's rough sketch: every boundary between differently-planned
+    regions, plus the design's outer outline. uint8 0/255."""
+    import cv2
+    import numpy as np
+
+    lab = labels.astype(np.int32)
+    edge = np.zeros(lab.shape, bool)
+    edge[:, 1:] |= lab[:, 1:] != lab[:, :-1]
+    edge[1:, :] |= lab[1:, :] != lab[:-1, :]
+    edge &= fg_mask > 0
+    outline = cv2.morphologyEx(fg_mask, cv2.MORPH_GRADIENT, np.ones((3, 3), np.uint8)) > 0
+    return ((edge | outline).astype(np.uint8)) * 255
+
+
+def _verify_sketch(sketch, img, fg_mask):
+    """(edge_coverage, stroke_precision) of the sketch against the source.
+
+    Coverage: share of the source's own strong edges that lie within
+    SKETCH_EDGE_TOL_PX of a sketch stroke — "did the plan draw every line the
+    artwork has?". Precision: share of sketch strokes lying near a true edge —
+    "did the plan invent lines?". Both in [0, 1].
+    """
+    import cv2
+    import numpy as np
+
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    near = cv2.dilate(fg_mask, np.ones((7, 7), np.uint8)) > 0
+    true_edges = (cv2.Canny(gray, 50, 120) > 0) & near
+    n_true = int(true_edges.sum())
+    n_sketch = int((sketch > 0).sum())
+    if n_true < 32 or n_sketch < 32:
+        return 1.0, 1.0  # nothing to verify against — a blank plan is not a failure
+    k = np.ones((2 * SKETCH_EDGE_TOL_PX + 1,) * 2, np.uint8)
+    sketch_zone = cv2.dilate(sketch, k) > 0
+    edge_zone = cv2.dilate(true_edges.astype(np.uint8) * 255, k) > 0
+    coverage = float((true_edges & sketch_zone).sum()) / n_true
+    precision = float(((sketch > 0) & edge_zone).sum()) / n_sketch
+    return coverage, precision
+
+
 def _absorb_specks(labels, mm_per_px: float):
     """Relabel sub-speck colour components to the cluster that surrounds them.
 
@@ -821,94 +878,119 @@ def digitize_image(
     # cubic upscaling widens anti-alias bands to ~up_f pixels, and a 1px erosion
     # let them seed phantom clusters — a 2x-upscaled two-colour square grew four
     # 0.15mm 'satin' slivers in the blend colour, which no needle could sew.
-    ek = max(1, round(up_f))
-    interior = cv2.erode(fg_mask, np.ones((2 * ek + 1, 2 * ek + 1), np.uint8))
-    pal_flat = interior.reshape(-1) > 0
-    if int(pal_flat.sum()) < max(16, 0.05 * int(fg_flat.sum())):
-        pal_flat = fg_flat  # design too thin to erode — fall back to all of it
-    Z_pal = flat_rgb[pal_flat]
+    # ── Sketch-then-verify planning loop (v2 Part 33) ────────────────────────
+    # A human digitizer sketches the outline first, checks it against the
+    # artwork, and only fills once the structure agrees. `_plan` produces one
+    # colour plan (the body below is the former inline quantization, moved, not
+    # changed); the sketch it implies is verified against the source's own
+    # edges, and a plan that failed to draw the artwork's lines is retried with
+    # a larger colour budget. Flat corpus fixtures verify on the first attempt
+    # by calibration, so their path — including RNG consumption — is identical.
+    def _plan(k):
+        ek = max(1, round(up_f))
+        interior = cv2.erode(fg_mask, np.ones((2 * ek + 1, 2 * ek + 1), np.uint8))
+        pal_flat = interior.reshape(-1) > 0
+        if int(pal_flat.sum()) < max(16, 0.05 * int(fg_flat.sum())):
+            pal_flat = fg_flat  # design too thin to erode — fall back to all of it
+        Z_pal = flat_rgb[pal_flat]
 
-    k = max(1, min(int(max_colors), 8, len(np.unique(Z_pal, axis=0))))
-    _, _, centers = cv2.kmeans(
-        Z_pal, k, None, (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 20, 1.0), 3, cv2.KMEANS_PP_CENTERS
-    )
-    # Assign every foreground pixel to its nearest palette colour. Looped over
-    # centres to keep memory at N×k.
-    d2 = np.empty((len(Z), len(centers)), np.float32)
-    for ci in range(len(centers)):
-        diff = Z - centers[ci]
-        d2[:, ci] = np.einsum("ij,ij->i", diff, diff)
-    fg_labels = d2.argmin(axis=1).astype(np.int32)
-    # The ambiguous-blend cut is SKIPPED for textured input (v2 Part 31): on
-    # flat artwork a pixel equidistant from two palette colours is an
-    # anti-aliasing halo, but on a photograph it is a real transition thread —
-    # and the cut was measured swallowing the peacock's entire teal band before
-    # gradient recovery could see it (the teal half showed up in the split scan
-    # only when the cut was off: #507164, 3,221px, gap 49.8 from its brown
-    # parent cluster).
-    if len(centers) > 1 and not is_textured:
-        # A pixel roughly equidistant from two palette colours IS the blend
-        # between them. Assigning it to the nearer one grows every shape by
-        # about a pixel per side, which pushed a 3.6mm satin bar over the 4mm
-        # satin/tatami threshold. Leave those unassigned instead: they belong to
-        # neither layer, and dropping them keeps shapes at their true width.
-        nearest2 = np.partition(d2, 1, axis=1)[:, :2]
-        ambiguous = nearest2[:, 0] > AMBIGUOUS_BLEND_RATIO * nearest2[:, 1]
-        fg_labels[ambiguous] = -1
-    # Gradient-band recovery (v2 Part 31, textured input only): clusters that
-    # merged two real thread colours under the k cap split back apart. Runs
-    # BEFORE the median recentre so both halves get their own true median.
-    n_shade_splits = 0
-    if is_textured:
-        centers, fg_labels, n_shade_splits = _split_bimodal_clusters(Z, fg_labels, centers, mm_per_px)
-    # Truer thread colours (v2 Part 16): the k-means centroid averages every
-    # member pixel INCLUDING anti-aliased blends, muddying flat-art colours.
-    # The per-channel median of the cluster's members is robust to the blend
-    # tail and lands on the ink the artwork actually used.
-    for ci in range(len(centers)):
-        member = Z[fg_labels == ci]
-        if len(member) > 8:
-            centers[ci] = np.median(member, axis=0)
-    centers = centers.astype(np.uint8)
+        k = max(1, min(int(k), 12, len(np.unique(Z_pal, axis=0))))  # 12: retry headroom past the base cap of 8
+        _, _, centers = cv2.kmeans(
+            Z_pal, k, None, (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 20, 1.0), 3, cv2.KMEANS_PP_CENTERS
+        )
+        # Assign every foreground pixel to its nearest palette colour. Looped over
+        # centres to keep memory at N×k.
+        d2 = np.empty((len(Z), len(centers)), np.float32)
+        for ci in range(len(centers)):
+            diff = Z - centers[ci]
+            d2[:, ci] = np.einsum("ij,ij->i", diff, diff)
+        fg_labels = d2.argmin(axis=1).astype(np.int32)
+        # The ambiguous-blend cut is SKIPPED for textured input (v2 Part 31): on
+        # flat artwork a pixel equidistant from two palette colours is an
+        # anti-aliasing halo, but on a photograph it is a real transition thread —
+        # and the cut was measured swallowing the peacock's entire teal band before
+        # gradient recovery could see it (the teal half showed up in the split scan
+        # only when the cut was off: #507164, 3,221px, gap 49.8 from its brown
+        # parent cluster).
+        if len(centers) > 1 and not is_textured:
+            # A pixel roughly equidistant from two palette colours IS the blend
+            # between them. Assigning it to the nearer one grows every shape by
+            # about a pixel per side, which pushed a 3.6mm satin bar over the 4mm
+            # satin/tatami threshold. Leave those unassigned instead: they belong to
+            # neither layer, and dropping them keeps shapes at their true width.
+            nearest2 = np.partition(d2, 1, axis=1)[:, :2]
+            ambiguous = nearest2[:, 0] > AMBIGUOUS_BLEND_RATIO * nearest2[:, 1]
+            fg_labels[ambiguous] = -1
+        # Gradient-band recovery (v2 Part 31, textured input only): clusters that
+        # merged two real thread colours under the k cap split back apart. Runs
+        # BEFORE the median recentre so both halves get their own true median.
+        n_shade_splits = 0
+        if is_textured:
+            centers, fg_labels, n_shade_splits = _split_bimodal_clusters(Z, fg_labels, centers, mm_per_px)
+        # Truer thread colours (v2 Part 16): the k-means centroid averages every
+        # member pixel INCLUDING anti-aliased blends, muddying flat-art colours.
+        # The per-channel median of the cluster's members is robust to the blend
+        # tail and lands on the ink the artwork actually used.
+        for ci in range(len(centers)):
+            member = Z[fg_labels == ci]
+            if len(member) > 8:
+                centers[ci] = np.median(member, axis=0)
+        centers = centers.astype(np.uint8)
 
-    # Merge perceptually-identical centroids so one colour never becomes two
-    # thread stops (a 1-colour wordmark asked to use 2 colours must return 1).
-    remap = _merge_centers(centers, MERGE_DELTA)
-    centers = np.array([centers[i] for i in sorted(set(remap.values()))], np.uint8)
-    order = {old: new for new, old in enumerate(sorted(set(remap.values())))}
+        # Merge perceptually-identical centroids so one colour never becomes two
+        # thread stops (a 1-colour wordmark asked to use 2 colours must return 1).
+        remap = _merge_centers(centers, MERGE_DELTA)
+        centers = np.array([centers[i] for i in sorted(set(remap.values()))], np.uint8)
+        order = {old: new for new, old in enumerate(sorted(set(remap.values())))}
 
-    labels = np.full(ih * iw, -1, np.int32)
-    # -1 marks an unassigned blend pixel and must stay -1 (no layer owns it).
-    labels[fg_flat] = [-1 if int(v) < 0 else order[remap[int(v)]] for v in fg_labels.reshape(-1)]
-    labels = labels.reshape(ih, iw)
+        labels = np.full(ih * iw, -1, np.int32)
+        # -1 marks an unassigned blend pixel and must stay -1 (no layer owns it).
+        labels[fg_flat] = [-1 if int(v) < 0 else order[remap[int(v)]] for v in fg_labels.reshape(-1)]
+        labels = labels.reshape(ih, iw)
 
-    # Textured input: absorb colour specks into their surroundings (v2 Part 29).
-    # Even after mean-shift, a photographed sew-out leaves confetti — measured
-    # on the peacock: 52 of 128 objects were under 40 stitches, each one a trim,
-    # a lock, and a fleck of the wrong colour inside another region's fill. A
-    # component smaller than a few thread widths whose ring is solidly one other
-    # cluster IS that cluster, misassigned by shading. Runs before the deferral
-    # scan so deferral sees the cleaned map. Flat artwork never reaches this.
-    if is_textured:
-        labels = _absorb_specks(labels, mm_per_px)
-        # Seam fill (v2 Part 29): on flat artwork, blend pixels (-1) are
-        # anti-aliasing halos and deliberately belong to no cluster. On a
-        # photograph they are the BOUNDARIES between abutting regions — leaving
-        # them unowned put a white pinhole seam wherever navy met green on the
-        # peacock's tail, everywhere, which no real sew-out has. Each unowned
-        # foreground pixel joins its nearest cluster; regions then abut exactly,
-        # and the per-object pull compensation overlaps them as usual.
-        seam = (labels < 0) & (fg_mask > 0)
-        if seam.any():
-            _dist_t, nearest = cv2.distanceTransformWithLabels(
-                (labels < 0).astype(np.uint8), cv2.DIST_L2, 5,
-                labelType=cv2.DIST_LABEL_PIXEL,
-            )
-            owned_flat = np.flatnonzero(labels.reshape(-1) >= 0)
-            # nearest[] indexes pixels where labels>=0 by their DIST_LABEL_PIXEL id,
-            # which enumerates the ZERO pixels of the source mask in scan order.
-            lut = labels.reshape(-1)[owned_flat]
-            labels[seam] = lut[nearest[seam] - 1]
+        # Textured input: absorb colour specks into their surroundings (v2 Part 29).
+        # Even after mean-shift, a photographed sew-out leaves confetti — measured
+        # on the peacock: 52 of 128 objects were under 40 stitches, each one a trim,
+        # a lock, and a fleck of the wrong colour inside another region's fill. A
+        # component smaller than a few thread widths whose ring is solidly one other
+        # cluster IS that cluster, misassigned by shading. Runs before the deferral
+        # scan so deferral sees the cleaned map. Flat artwork never reaches this.
+        if is_textured:
+            labels = _absorb_specks(labels, mm_per_px)
+            # Seam fill (v2 Part 29): on flat artwork, blend pixels (-1) are
+            # anti-aliasing halos and deliberately belong to no cluster. On a
+            # photograph they are the BOUNDARIES between abutting regions — leaving
+            # them unowned put a white pinhole seam wherever navy met green on the
+            # peacock's tail, everywhere, which no real sew-out has. Each unowned
+            # foreground pixel joins its nearest cluster; regions then abut exactly,
+            # and the per-object pull compensation overlaps them as usual.
+            seam = (labels < 0) & (fg_mask > 0)
+            if seam.any():
+                _dist_t, nearest = cv2.distanceTransformWithLabels(
+                    (labels < 0).astype(np.uint8), cv2.DIST_L2, 5,
+                    labelType=cv2.DIST_LABEL_PIXEL,
+                )
+                owned_flat = np.flatnonzero(labels.reshape(-1) >= 0)
+                # nearest[] indexes pixels where labels>=0 by their DIST_LABEL_PIXEL id,
+                # which enumerates the ZERO pixels of the source mask in scan order.
+                lut = labels.reshape(-1)[owned_flat]
+                labels[seam] = lut[nearest[seam] - 1]
+
+        return labels, centers, n_shade_splits
+
+    k_plan = min(int(max_colors), 8)  # the former hard cap; retries may exceed it
+    labels, centers, n_shade_splits = _plan(k_plan)
+    sketch = _sketch_from_labels(labels, fg_mask)
+    sketch_cov, _sketch_prec = _verify_sketch(sketch, img, fg_mask)
+    sketch_retries = 0
+    while sketch_cov < SKETCH_MIN_COVERAGE and sketch_retries < SKETCH_MAX_RETRIES:
+        sketch_retries += 1
+        k_plan += 2
+        labels2, centers2, splits2 = _plan(k_plan)
+        cov2, _prec2 = _verify_sketch(_sketch_from_labels(labels2, fg_mask), img, fg_mask)
+        if cov2 > sketch_cov:  # keep the better plan, whichever it is
+            labels, centers, n_shade_splits = labels2, centers2, splits2
+            sketch_cov = cov2
 
     substrate = _border_color(img)
     design_area_px = float(max(int(fg_flat.sum()), 1))
@@ -1511,6 +1593,21 @@ def digitize_image(
             f"{n_shade_splits} extra shade{'s' if n_shade_splits != 1 else ''} "
             "recovered from colour gradients in the photo (each is a real thread "
             "band the colour limit had merged away)."
+        )
+    # The outline check (v2 Part 33): sketch-then-verify. Quiet when the first
+    # plan holds; when a re-plan fired, the user asked for fewer colours than
+    # the artwork's structure needs, and that must be said rather than silently
+    # overridden in either direction.
+    if sketch_retries:
+        user_warnings.append(
+            f"Outline check: the first colour plan missed too many of the artwork's "
+            f"lines and was re-drawn with {k_plan} colours "
+            f"(structure now verified at {sketch_cov:.0%})."
+        )
+    elif sketch_cov < 0.9:
+        user_warnings.append(
+            f"Outline check: {sketch_cov:.0%} of the artwork's edges are captured "
+            "by the colour plan — fine detail beyond that is below stitchable scale."
         )
 
     return Design(
