@@ -207,6 +207,19 @@ _ATTACHED_MIN_THICK_PX = 4.0
 # off the rembg tier — the gate would have caused the regression it guards
 # against.
 _MATTE_MIN_INK_RECALL = 0.2
+# v2 Part 34 — the PARTIAL matte. A full-bleed neckline panel produced a matte
+# with ink recall 0.203: one point above the floor, yet keeping an arbitrary
+# diagonal fragment (11.5% of frame against 40.6% ink). A fixed floor cannot
+# split 0.203 (failure) from 0.407 (fixture 09, legitimate) with any safety, so
+# the decision is comparative instead: when the matte misses over half the ink
+# AND the classical flood tier explains nearly all of it with a sane foreground
+# fraction, the flood tier is the better hypothesis and wins. Calibration
+# (matte recall / flood ink recall): failures 0.203/1.000 and 0.004/0.998 both
+# reroute; fixture 09 at 0.407/0.656 keeps its matte because flood CANNOT
+# explain its ink (margin 0.294 on that side, 0.297 on the failure side); every
+# other input has matte recall >= 0.709 and never reaches the comparison.
+_MATTE_COMPARE_RECALL = 0.5   # below this, the matte must beat the flood tier
+_FLOOD_EXPLAINS_INK = 0.95    # flood recall needed to overrule the matte
 # A reclaim candidate within this many pixels of the kept mask counts as that
 # mask's own edge, not a separate missed element.
 _ATTACHED_GAP_PX = 3
@@ -302,7 +315,26 @@ def foreground_mask(img, data: bytes | None = None) -> tuple[object, str]:
             ).mean(axis=0)
             ink = np.linalg.norm(img.astype(np.float32) - substrate, axis=2) >= _INK_DELTA
             n_ink = int(ink.sum())
-            if n_ink < 64 or (ink & (mask > 0)).sum() >= _MATTE_MIN_INK_RECALL * n_ink:
+            matte_ok = n_ink < 64 or (
+                (ink & (mask > 0)).sum() >= _MATTE_MIN_INK_RECALL * n_ink
+            )
+            if matte_ok and n_ink >= 64:
+                # Partial-matte comparison (v2 Part 34): a matte that misses
+                # over half the ink only survives if the flood tier cannot
+                # explain that ink either — see the calibration note above.
+                recall = (ink & (mask > 0)).sum() / n_ink
+                if recall < _MATTE_COMPARE_RECALL:
+                    try:
+                        flood = _flood_mask(img)
+                        frac = float((flood > 0).mean())
+                        if (
+                            _REMBG_MIN_FG <= frac <= _REMBG_MAX_FG
+                            and (ink & (flood > 0)).sum() >= _FLOOD_EXPLAINS_INK * n_ink
+                        ):
+                            return flood, "floodfill"
+                    except Exception:  # noqa: BLE001, S110 - comparison is best-effort
+                        pass
+            if matte_ok:
                 return _reclaim_ink(img, mask), "rembg"
 
     try:
