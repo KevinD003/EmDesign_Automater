@@ -4,6 +4,8 @@ import { ColorObjectList } from './components/panels/ColorObjectList';
 import { ThreadPalette } from './components/panels/ThreadPalette';
 import { PropertiesPanel } from './components/panels/PropertiesPanel';
 import { QualityPanel } from './components/panels/QualityPanel';
+import { ThreadEditor } from './components/panels/ThreadEditor';
+import { StitchEditor } from './components/panels/StitchEditor';
 import { StitchPlayer } from './components/player/StitchPlayer';
 import { StitchCanvas } from './components/canvas/StitchCanvas';
 import { TrueView3D } from './components/trueview/TrueView3D';
@@ -134,7 +136,9 @@ export default function App() {
             </main>
             <div className="panel-right">
               <ThreadPalette />
+              <ThreadEditor />
               <PropertiesPanel />
+              <StitchEditor />
               <QualityPanel />
             </div>
           </div>

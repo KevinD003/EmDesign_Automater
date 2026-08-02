@@ -29,8 +29,11 @@ from app.routers import (
     digitize,
     export,
     files,
+    image_edit,
     lettering,
     optimize,
+    stitch_edit,
+    thread_edit,
     threads,
     worksheet,
 )
@@ -174,5 +177,5 @@ def health() -> dict[str, str | int]:
     }
 
 
-for module in (auth, files, convert, digitize, lettering, worksheet, export, threads, designs, optimize, auth_local, admin):
+for module in (auth, files, convert, digitize, lettering, worksheet, export, threads, designs, optimize, auth_local, admin, image_edit, thread_edit, stitch_edit):
     app.include_router(module.router, prefix="/api")

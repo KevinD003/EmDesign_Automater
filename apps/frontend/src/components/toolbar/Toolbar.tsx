@@ -11,6 +11,7 @@ import { toastError, toastSuccess } from '../feedback/toastStore';
 import { ProgressOverlay } from '../feedback/ProgressOverlay';
 import { DIGITIZE_STAGES, LETTERING_STAGES } from '../feedback/progressStages';
 import { DigitizeDialog } from '../dialogs/DigitizeDialog';
+import { ImageEditor } from '../dialogs/ImageEditor';
 import type { DigitizeParams } from '../dialogs/DigitizeDialog';
 import { LetteringDialog } from '../dialogs/LetteringDialog';
 import type { LetteringParams } from '../dialogs/LetteringDialog';
@@ -60,6 +61,10 @@ export function Toolbar() {
   const [busyOp, setBusyOp] = useState<null | BusyOp>(null);
   const busy = busyOp !== null;
   const [pendingImage, setPendingImage] = useState<File | null>(null);
+  // The image-prep step (v2 Part 36) sits between picking a file and the
+  // digitize params: prep is optional, so this holds the file only while
+  // the editor is open.
+  const [editingImage, setEditingImage] = useState<File | null>(null);
   const [showLettering, setShowLettering] = useState(false);
   const [exportFormat, setExportFormat] = useState('dst');
   const [report, setReport] = useState<ValidationReport | null>(null);
@@ -381,11 +386,22 @@ export function Toolbar() {
           Master
         </button>
       </div>
-      {pendingImage && (
+      {pendingImage && !editingImage && (
         <DigitizeDialog
           filename={pendingImage.name}
           onCancel={() => setPendingImage(null)}
           onConfirm={onDigitizeConfirm}
+          onPrepare={() => setEditingImage(pendingImage)}
+        />
+      )}
+      {editingImage && (
+        <ImageEditor
+          file={editingImage}
+          onCancel={() => setEditingImage(null)}
+          onApply={(edited) => {
+            setEditingImage(null);
+            setPendingImage(edited); // the prepared image goes on to digitizing
+          }}
         />
       )}
       {showLettering && (

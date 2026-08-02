@@ -6,7 +6,7 @@ assigned by fabric, actually widens coverage, and is honored (editable) on rebui
 
 from __future__ import annotations
 
-import itertools
+import math
 
 import cv2
 import numpy as np
@@ -70,18 +70,29 @@ def test_unknown_fabric_gets_the_default_profile():
     assert digitizer._fabric_profile("") == digitizer.FABRIC_DEFAULT
 
 
-def _fill_row_pitch(design) -> float:
-    """Median gap between distinct fill-row y's, measured in the central x band
-    so edge-walk underlay and outline stitches don't pollute the row set.
-    (Raw stitch COUNT is not a valid density proxy across fabrics: fleece's
-    larger pull comp widens the region, adding stitches while rows get sparser.)
+def _thread_per_area(design) -> float:
+    """Sewn thread length per mm² of the stitched extent (mm/mm²).
+
+    Raw stitch COUNT is not a valid density proxy across fabrics: fleece's
+    larger pull comp widens the region, adding stitches while rows get sparser.
+    Dividing thread length by the area it covers normalises that away — sparser
+    rows mean less thread over the same ground, whatever the fill angle.
+
+    v2 Part 36 replaced a row-pitch measurement that took gaps between distinct
+    *y* values. That only equals the pitch when the rows run horizontally: the
+    fill angle here comes from the edge-avoiding search, and on a symmetric
+    square two answers ~90 degrees apart are equally valid, so cotton picked 47
+    degrees and fleece -42 and the two y-gap sets were different projections —
+    the comparison passed by coincidence. When a palette fix made both fabrics
+    agree on 47 degrees the coincidence vanished and this test failed, without
+    anything being wrong with the fills.
     """
-    xs = [s.x for s in design.stitches if s.command == "STITCH"]
-    cx = (min(xs) + max(xs)) / 2.0
-    ys = sorted({round(s.y, 2) for s in design.stitches
-                 if s.command == "STITCH" and abs(s.x - cx) < 5.0})
-    gaps = sorted(b - a for a, b in itertools.pairwise(ys) if b - a > 0.05)
-    return gaps[len(gaps) // 2]
+    pts = [(s.x, s.y) for s in design.stitches if s.command == "STITCH"]
+    length = sum(math.dist(pts[i], pts[i + 1]) for i in range(len(pts) - 1))
+    xs = [p[0] for p in pts]
+    ys = [p[1] for p in pts]
+    area = (max(xs) - min(xs)) * (max(ys) - min(ys))
+    return length / max(area, 1e-9)
 
 
 def test_fleece_fill_rows_are_sparser_than_cotton():
@@ -98,7 +109,8 @@ def test_fleece_fill_rows_are_sparser_than_cotton():
     assert ok
     cotton = digitize_image(buf.tobytes(), "cotton", "100x100", max_colors=2)
     fleece = digitize_image(buf.tobytes(), "fleece", "100x100", max_colors=2)
-    assert _fill_row_pitch(fleece) > _fill_row_pitch(cotton)
+    # Sparser rows on fleece → less thread over the same ground.
+    assert _thread_per_area(fleece) < _thread_per_area(cotton)
     assert fleece.objects[0].density < cotton.objects[0].density
 
 

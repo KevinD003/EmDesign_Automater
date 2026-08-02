@@ -139,6 +139,20 @@ MERGE_DELTA = 18.0
 # two palette colours rather than a member of either (0.5 on squared distance
 # ≈ 0.71 on linear distance).
 AMBIGUOUS_BLEND_RATIO = 0.5
+# Two palette centres closer than this (BGR euclidean) are the same thread, so
+# a pixel between them is not a blend and must not be discarded (v2 Part 36).
+# Well under SPLIT_DELTA_BGR (30, "two real threads"), so it only ever catches
+# k-means duplicates, never a genuine near-pair.
+AMBIGUOUS_MIN_CENTRE_GAP = 12.0
+# Skip the blend cut for a cluster when it would remove more than this share of
+# that cluster's pixels — the shape is then mostly boundary (a thin stroke) and
+# the cut destroys it rather than trimming it. Calibrated in v2 Part 36.
+AMBIGUOUS_MAX_CUT_SHARE = 0.35
+# Palette-recovery for stroke-only colours (v2 Part 36): histogram bin width,
+# and the share of the foreground a missed colour mode must own to be seeded.
+PALETTE_BIN = 4          # 64 levels per channel
+THIN_PALETTE_MIN_SHARE = 0.01
+PALETTE_UNIFORM_TOL = 6  # max deviation from the local median to count as core
 
 # A cluster within this distance of the substrate (border) colour is the garment
 # showing through, not ink. Deliberately much tighter than v1's global 40.0 —
@@ -893,6 +907,60 @@ def digitize_image(
         if int(pal_flat.sum()) < max(16, 0.05 * int(fg_flat.sum())):
             pal_flat = fg_flat  # design too thin to erode — fall back to all of it
         Z_pal = flat_rgb[pal_flat]
+        # ...but a colour that exists ONLY in thin strokes is erased by that
+        # erosion and never enters the palette at all (v2 Part 36). Measured on
+        # a lattice trellis: the erosion kept the white diamonds and removed
+        # every line, so k-means saw three shades of white, the ink was never a
+        # cluster, and the design digitized to ZERO objects. The same hole
+        # applies to any outline-only colour — linework, stems, text strokes.
+        #
+        # Recovered by looking for colour MODES the eroded sample missed. A
+        # real ink is a sharp peak in the histogram (many pixels at nearly one
+        # value); an anti-aliasing blend is smeared along the gradient between
+        # two inks and never peaks. Requiring a local maximum is what keeps
+        # this from re-admitting the halos the erosion exists to exclude.
+        if pal_flat is not fg_flat:
+            # Only locally UNIFORM pixels may seed a recovered colour: a
+            # stroke's core is flat, while the blend band our own cubic upscale
+            # creates along its edge is a gradient. Without this the lattice's
+            # halo seeded four more "inks" spanning white->cyan, and the line
+            # shattered across them just as badly as before.
+            med = cv2.medianBlur(img, 3)
+            uniform = (
+                np.abs(img.astype(np.int16) - med.astype(np.int16)).max(axis=2)
+                <= PALETTE_UNIFORM_TOL
+            ).reshape(-1)
+            core_flat = fg_flat & uniform
+            if int(core_flat.sum()) < 64:
+                core_flat = fg_flat
+            fg_rgb = flat_rgb[core_flat]
+            bins = (fg_rgb // PALETTE_BIN).astype(np.int32)
+            keys = (bins[:, 0] << 12) | (bins[:, 1] << 6) | bins[:, 2]
+            pbins = (Z_pal // PALETTE_BIN).astype(np.int32)
+            seen = set(
+                np.unique((pbins[:, 0] << 12) | (pbins[:, 1] << 6) | pbins[:, 2]).tolist()
+            )
+            uk, cnt = np.unique(keys, return_counts=True)
+            mass = dict(zip(uk.tolist(), cnt.tolist()))
+            floor = max(64, THIN_PALETTE_MIN_SHARE * len(keys))
+            recover = []
+            for key, n in mass.items():
+                if key in seen or n < floor:
+                    continue
+                b, g, r = (key >> 12) & 63, (key >> 6) & 63, key & 63
+                peak = True
+                for db in (-1, 0, 1):
+                    for dg in (-1, 0, 1):
+                        for dr in (-1, 0, 1):
+                            if db == dg == dr == 0:
+                                continue
+                            nb = ((b + db) << 12) | ((g + dg) << 6) | (r + dr)
+                            if mass.get(nb, 0) > n:
+                                peak = False
+                if peak:
+                    recover.append(key)
+            if recover:
+                Z_pal = np.vstack([Z_pal, fg_rgb[np.isin(keys, recover)]])
 
         k = max(1, min(int(k), 12, len(np.unique(Z_pal, axis=0))))  # 12: retry headroom past the base cap of 8
         _, _, centers = cv2.kmeans(
@@ -905,6 +973,49 @@ def digitize_image(
             diff = Z - centers[ci]
             d2[:, ci] = np.einsum("ij,ij->i", diff, diff)
         fg_labels = d2.argmin(axis=1).astype(np.int32)
+        # Collapse duplicate palette centres (v2 Part 36). k-means always
+        # returns k centres even when the artwork holds fewer real colours, so
+        # asking a 2-colour image for 8 puts the spare centres INSIDE the
+        # anti-aliasing gradient between the two. Those centres then claim the
+        # halo, and every stroke shatters: a lattice trellis' 48,877px of line
+        # became 15,641 fragments averaging 3px, all under the speck filter, and
+        # the design digitized to zero objects. Merging centres closer than one
+        # thread's worth of colour re-forms the strokes. Non-degenerate palettes
+        # have no such pairs, so the corpus is untouched.
+        if len(centers) > 1:
+            cf = centers.astype(np.float32)
+            counts = np.bincount(fg_labels, minlength=len(cf))
+            # Greedy merge into the DOMINANT centre, never transitively. A
+            # union-find over "closer than the gap" chains white -> halo ->
+            # halo -> ink across an anti-aliasing gradient and collapses the
+            # whole image into one cluster (measured: it did exactly that on
+            # the lattice). Anchoring every merge to an already-kept, larger
+            # centre keeps two real colours apart no matter how finely the
+            # blend between them is sampled.
+            remap = np.full(len(cf), -1, np.int32)
+            kept: list[int] = []
+            for i in np.argsort(-counts):
+                target = next(
+                    (
+                        k
+                        for k in kept
+                        if float(np.linalg.norm(cf[i] - cf[k])) < AMBIGUOUS_MIN_CENTRE_GAP
+                    ),
+                    None,
+                )
+                if target is None:
+                    remap[i] = len(kept)
+                    kept.append(int(i))
+                else:
+                    remap[i] = remap[target]
+            if len(kept) < len(cf):
+                centers = np.array([cf[k] for k in kept], dtype=centers.dtype)
+                fg_labels = remap[fg_labels]
+                d2 = np.empty((len(Z), len(centers)), np.float32)
+                for ci in range(len(centers)):
+                    diff = Z - centers[ci]
+                    d2[:, ci] = np.einsum("ij,ij->i", diff, diff)
+                fg_labels = d2.argmin(axis=1).astype(np.int32)
         # The ambiguous-blend cut is SKIPPED for textured input (v2 Part 31): on
         # flat artwork a pixel equidistant from two palette colours is an
         # anti-aliasing halo, but on a photograph it is a real transition thread —
@@ -918,8 +1029,44 @@ def digitize_image(
             # about a pixel per side, which pushed a 3.6mm satin bar over the 4mm
             # satin/tatami threshold. Leave those unassigned instead: they belong to
             # neither layer, and dropping them keeps shapes at their true width.
-            nearest2 = np.partition(d2, 1, axis=1)[:, :2]
-            ambiguous = nearest2[:, 0] > AMBIGUOUS_BLEND_RATIO * nearest2[:, 1]
+            #
+            # ...but ONLY when the two nearest centres are actually different
+            # colours (v2 Part 36). k-means always returns k centres even when
+            # the artwork holds fewer distinct colours, so a 2-colour image
+            # asked for 8 gets DUPLICATE centres. Every ink pixel is then
+            # equidistant from two identical centres, the ratio test calls it a
+            # blend, and the ink is discarded: measured on a lattice trellis,
+            # 57,532px of line — the entire design — went unassigned and the
+            # digitize returned ZERO objects. A pixel between two centres of
+            # the same colour is not a blend of two threads; it is solidly that
+            # colour. Requiring a real gap leaves non-degenerate palettes (every
+            # corpus fixture) bit-identical.
+            order2 = np.argpartition(d2, 1, axis=1)[:, :2]
+            nearest2 = np.take_along_axis(d2, order2, axis=1)
+            gap = np.linalg.norm(
+                centers[order2[:, 0]].astype(np.float32)
+                - centers[order2[:, 1]].astype(np.float32),
+                axis=1,
+            )
+            ambiguous = (nearest2[:, 0] > AMBIGUOUS_BLEND_RATIO * nearest2[:, 1]) & (
+                gap >= AMBIGUOUS_MIN_CENTRE_GAP
+            )
+            # A shape that is MOSTLY boundary cannot afford to lose its
+            # boundary (v2 Part 36). Dropping the blend ring costs a chunky
+            # shape a pixel per side — the whole point — but on a thin stroke
+            # the ring IS the stroke: on a lattice trellis the cut removed
+            # 57,318 of 95,227 line pixels (60%) and severed what was left into
+            # 521 islands of ~73px, every one under the 2mm² speck floor, so
+            # the design digitized to ZERO objects (measured: with the cut
+            # disabled the same image yields 12 objects). So the cut is applied
+            # per cluster and skipped where it would take more than
+            # AMBIGUOUS_MAX_CUT_SHARE of that cluster's ink. Chunky artwork is
+            # a few percent boundary and never trips it.
+            for c in range(len(centers)):
+                in_c = fg_labels == c
+                n_c = int(in_c.sum())
+                if n_c and int((ambiguous & in_c).sum()) > AMBIGUOUS_MAX_CUT_SHARE * n_c:
+                    ambiguous &= ~in_c
             fg_labels[ambiguous] = -1
         # Gradient-band recovery (v2 Part 31, textured input only): clusters that
         # merged two real thread colours under the k cap split back apart. Runs
@@ -1113,7 +1260,20 @@ def digitize_image(
                 while child != -1:
                     hole_contours.append(contours[child])
                     child = hier[child][0]
-            net_area = cv2.contourArea(contour) - sum(cv2.contourArea(h) for h in hole_contours)
+            # Area in PIXELS, not polygon area (v2 Part 36). `contourArea` uses
+            # the shoelace formula over pixel CENTRES, so a 1px-wide stroke
+            # encloses zero area however long it is, and a 2px stroke reads
+            # about half its ink. The min-area filter then deleted thin artwork
+            # outright: hairline linework, small lettering and a lattice
+            # trellis each produced 15,641 contours of "area 0" and digitized
+            # to ZERO objects. Counting the drawn pixels measures what the
+            # filter has always meant — how much ink is here. For chunky shapes
+            # the two agree, which is why the corpus streams are unchanged.
+            probe = np.zeros_like(mask)
+            cv2.drawContours(probe, [contour], -1, 255, thickness=cv2.FILLED)
+            if hole_contours:
+                cv2.drawContours(probe, hole_contours, -1, 0, thickness=cv2.FILLED)
+            net_area = float(cv2.countNonZero(probe))
             if net_area < min_area_px:
                 dropped_speck_count += 1
                 _DROP_LOG.append((float(net_area * mm_per_px * mm_per_px),

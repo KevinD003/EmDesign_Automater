@@ -1401,3 +1401,100 @@ button:focus-visible, select:focus-visible, input:focus-visible, summary:focus-v
   .dz-nav { flex-direction: row; }
   .dz-side-foot { margin-top: 0; flex-direction: row; margin-left: auto; }
 }
+
+/* ══ Editors (v2 Part 36) — image prep, thread chart, stitch stream ══ */
+
+/* Image editor dialog: preview left, grouped controls right. */
+.ie-dialog { width: min(1080px, 94vw); max-height: 92vh; overflow: auto; }
+.ie-body { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 16px; }
+.ie-preview {
+  position: relative;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  min-height: 320px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.ie-preview img { max-width: 100%; max-height: 60vh; display: block; }
+.ie-loading, .ie-busy { color: var(--muted); font-size: 12px; }
+.ie-busy { position: absolute; right: 8px; top: 8px; background: rgba(0,0,0,.55); padding: 2px 8px; border-radius: 6px; }
+.ie-controls { display: flex; flex-direction: column; gap: 14px; overflow-y: auto; max-height: 60vh; }
+.ie-group h3 { font-size: 12px; color: var(--muted); margin: 0 0 6px; text-transform: uppercase; letter-spacing: .06em; }
+.ie-slider { display: flex; flex-direction: column; gap: 2px; font-size: 12px; margin-bottom: 6px; }
+.ie-slider span { display: flex; justify-content: space-between; color: var(--muted); }
+.ie-slider em { font-style: normal; color: var(--text); font-variant-numeric: tabular-nums; }
+.ie-slider input[type='range'] { width: 100%; }
+.ie-toggle { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.ie-row { display: flex; gap: 14px; }
+.ie-analysis { margin-top: 8px; font-size: 12px; }
+.ie-analysis ul { margin: 0 0 8px; padding-left: 16px; display: flex; flex-direction: column; gap: 4px; }
+.ie-err { color: #ff6b6b; font-size: 12px; }
+
+/* Thread editor */
+.te-panel { display: flex; flex-direction: column; gap: 8px; }
+.te-add { display: flex; gap: 6px; flex-wrap: wrap; }
+.te-add input { flex: 1 1 70px; min-width: 0; }
+.te-add input[type='color'] { flex: 0 0 34px; padding: 0; height: 28px; }
+.te-list { display: flex; flex-direction: column; gap: 4px; max-height: 190px; overflow-y: auto; }
+.te-row { display: grid; grid-template-columns: 16px 1fr auto 22px; align-items: center; gap: 8px; font-size: 12px; }
+.te-swatch { width: 14px; height: 14px; border-radius: 4px; border: 1px solid rgba(255,255,255,.2); }
+.te-mini { display: flex; gap: 1px; }
+.te-mini span { width: 8px; height: 14px; }
+.te-apply {
+  background: none; border: 0; color: var(--text); text-align: left;
+  cursor: pointer; padding: 2px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.te-apply:hover { color: var(--accent-2); text-decoration: underline; }
+.te-del { background: none; border: 0; color: var(--muted); cursor: pointer; }
+.te-del:hover { color: #ff6b6b; }
+.te-sub { font-size: 12px; color: var(--muted); margin: 6px 0 0; text-transform: uppercase; letter-spacing: .06em; }
+.te-ok { color: #86efac; font-size: 12px; margin: 0; }
+.te-err { color: #ff6b6b; font-size: 12px; margin: 0; }
+
+/* Stitch (DST) editor */
+.se-panel { display: flex; flex-direction: column; gap: 8px; }
+.se-range { display: flex; gap: 8px; align-items: flex-end; }
+.se-range label { display: flex; flex-direction: column; font-size: 11px; color: var(--muted); gap: 2px; flex: 1; }
+.se-range input { width: 100%; }
+.se-ops { display: flex; flex-wrap: wrap; gap: 6px; }
+.se-ops button { font-size: 11px; padding: 4px 8px; }
+.se-transform { display: flex; flex-direction: column; gap: 6px; }
+.se-transform label { display: flex; flex-direction: column; font-size: 11px; color: var(--muted); gap: 2px; }
+.se-transform em { font-style: normal; color: var(--text); }
+.se-notes { font-size: 11px; color: #86efac; display: flex; flex-direction: column; gap: 2px; }
+.se-err { color: #ff6b6b; font-size: 12px; margin: 0; }
+
+/* ── Studio right rail + canvas warnings (v2 Part 36) ──────────────────
+   The rail was a 3-row grid sized for exactly three panels; the thread and
+   stitch editors made five, so the extra panels were squeezed to nothing
+   (the thread editor collapsed to its heading, the transform sliders were
+   clipped). A scrolling column holds any number of panels. */
+.panel-right {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+}
+.panel-right > .panel {
+  overflow: visible;
+  flex: 0 0 auto;
+  border-bottom: 1px solid var(--line);
+}
+
+/* The canvas area centres its children, which squeezed the warning banner
+   into a one-word-wide column beside the artwork. It must span the area. */
+.canvas-area > .design-warnings {
+  position: absolute;
+  top: 8px;
+  left: 12px;
+  right: 120px;
+  z-index: 4;
+  margin: 0;
+  max-height: 30%;
+  overflow-y: auto;
+  background: rgba(20, 16, 0, 0.92);
+  color: #f2c94c;
+}

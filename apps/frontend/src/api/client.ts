@@ -188,7 +188,91 @@ export const api = {
       body: JSON.stringify({ role }),
     }),
   adminStats: () => request<AdminStats>('/api/admin/stats'),
+
+  // ── Image prep (v2 Part 36) ──
+  analyzeImage: (file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return request<ImageAnalysis>('/api/image/analyze', { method: 'POST', body: form, headers: {} });
+  },
+  /** Apply the edit chain server-side; resolves to a PNG Blob for preview/digitizing. */
+  editImage: async (file: File, params: Record<string, string | number | boolean>): Promise<Blob> => {
+    const form = new FormData();
+    form.append('file', file);
+    for (const [k, v] of Object.entries(params)) form.append(k, String(v));
+    const res = await fetch(`${API_BASE}/api/image/edit`, { method: 'POST', body: form, headers: authHeaders() });
+    if (!res.ok) throw new Error(await errorMessage(res, '/api/image/edit'));
+    return res.blob();
+  },
+
+  // ── Thread editor (v2 Part 36) ──
+  listCustomThreads: () => request<CustomThread[]>('/api/threads/custom'),
+  addCustomThread: (t: { brand: string; name: string; code?: string; hex: string }) =>
+    request<CustomThread>('/api/threads/custom', { method: 'POST', body: JSON.stringify(t) }),
+  updateCustomThread: (id: string, patch: Partial<CustomThread>) =>
+    request<CustomThread>(`/api/threads/custom/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    }),
+  deleteCustomThread: (id: string) =>
+    request<void>(`/api/threads/custom/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  listPalettes: () => request<SavedPalette[]>('/api/threads/palettes'),
+  savePalette: (name: string, colors: { hex: string; name?: string; brand?: string; code?: string }[]) =>
+    request<SavedPalette>('/api/threads/palettes', { method: 'POST', body: JSON.stringify({ name, colors }) }),
+  deletePalette: (id: string) =>
+    request<void>(`/api/threads/palettes/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+  // ── Stitch (DST) editor (v2 Part 36) ──
+  editStitches: (design: Design, ops: StitchOp[]) =>
+    request<{ design: Design; notes: string[]; stats: StreamStatsWire }>('/api/stitches/edit', {
+      method: 'POST',
+      body: JSON.stringify({ design, ops }),
+    }),
+  stitchStats: (design: Design) =>
+    request<StreamStatsWire>('/api/stitches/stats', { method: 'POST', body: JSON.stringify(design) }),
 };
+
+export interface ImageAnalysis {
+  measurements: { contrastSpan: number; detailVariance: number; meanSaturation: number; colourCells: number };
+  tips: string[];
+  suggested: { autoLevels: boolean; sharpen: number; denoise: number; posterize: number };
+}
+
+export interface CustomThread {
+  id: string;
+  brand: string;
+  name: string;
+  code: string;
+  hex: string;
+  custom: boolean;
+  createdAt: string;
+}
+
+export interface SavedPalette {
+  id: string;
+  name: string;
+  colors: { hex: string; name: string; brand: string; code: string }[];
+  createdAt: string;
+}
+
+export type StitchOp =
+  | { op: 'delete'; start: number; end: number }
+  | { op: 'setCommand'; start: number; end: number; command: string }
+  | { op: 'insert'; index: number; x: number; y: number; command?: string }
+  | { op: 'movePoint'; index: number; x: number; y: number }
+  | { op: 'transform'; start: number; end: number; dx?: number; dy?: number; scale?: number; rotateDeg?: number; mirrorX?: boolean; mirrorY?: boolean }
+  | { op: 'splitColor'; index: number }
+  | { op: 'removeTrims'; start: number; end: number };
+
+export interface StreamStatsWire {
+  total: number;
+  stitches: number;
+  jumps: number;
+  trims: number;
+  colorChanges: number;
+  longestMm: number;
+  overLimit: number;
+}
 
 export interface LocalAccount {
   userId: string;

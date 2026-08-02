@@ -32,3 +32,5 @@ apps/*/.env
 # saved designs. Committing these leaks working credentials — a token from git
 # authenticated against a fresh server 22h later (v2 Part 21 review).
 apps/backend/data/
+tests/fixtures/corpus100/
+apps/backend/scripts/corpus100*.json

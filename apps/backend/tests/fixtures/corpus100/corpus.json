@@ -1,0 +1,502 @@
+[
+ {
+  "name": "A01_real_peacock_patch_photo",
+  "tier": "A-real",
+  "class": "user-supplied embroidery"
+ },
+ {
+  "name": "A02_real_neckline_black",
+  "tier": "A-real",
+  "class": "user-supplied embroidery"
+ },
+ {
+  "name": "A03_real_neckline_panel",
+  "tier": "A-real",
+  "class": "user-supplied embroidery"
+ },
+ {
+  "name": "A_fixture_01_flat_2color_logo",
+  "tier": "A-real",
+  "class": "quality-bench fixture"
+ },
+ {
+  "name": "A_fixture_02_logo_fine_text_3color",
+  "tier": "A-real",
+  "class": "quality-bench fixture"
+ },
+ {
+  "name": "A_fixture_03_gradient_soft_subject",
+  "tier": "A-real",
+  "class": "quality-bench fixture"
+ },
+ {
+  "name": "A_fixture_04_thin_line_outline",
+  "tier": "A-real",
+  "class": "quality-bench fixture"
+ },
+ {
+  "name": "A_fixture_05_wordmark_caps",
+  "tier": "A-real",
+  "class": "quality-bench fixture"
+ },
+ {
+  "name": "A_fixture_06_wordmark_script",
+  "tier": "A-real",
+  "class": "quality-bench fixture"
+ },
+ {
+  "name": "A_fixture_07_circular_badge",
+  "tier": "A-real",
+  "class": "quality-bench fixture"
+ },
+ {
+  "name": "A_fixture_08_mascot_detail",
+  "tier": "A-real",
+  "class": "quality-bench fixture"
+ },
+ {
+  "name": "A_fixture_09_nonuniform_background",
+  "tier": "A-real",
+  "class": "quality-bench fixture"
+ },
+ {
+  "name": "A_fixture_10_low_contrast_subject",
+  "tier": "A-real",
+  "class": "quality-bench fixture"
+ },
+ {
+  "name": "B00_crop",
+  "tier": "B-real-derived",
+  "class": "real photo, crop"
+ },
+ {
+  "name": "B01_rotate",
+  "tier": "B-real-derived",
+  "class": "real photo, rotate"
+ },
+ {
+  "name": "B02_scale",
+  "tier": "B-real-derived",
+  "class": "real photo, scale"
+ },
+ {
+  "name": "B03_recolour",
+  "tier": "B-real-derived",
+  "class": "real photo, recolour"
+ },
+ {
+  "name": "B04_crop_rot",
+  "tier": "B-real-derived",
+  "class": "real photo, crop_rot"
+ },
+ {
+  "name": "B05_lowlight",
+  "tier": "B-real-derived",
+  "class": "real photo, lowlight"
+ },
+ {
+  "name": "B06_crop",
+  "tier": "B-real-derived",
+  "class": "real photo, crop"
+ },
+ {
+  "name": "B07_rotate",
+  "tier": "B-real-derived",
+  "class": "real photo, rotate"
+ },
+ {
+  "name": "B08_scale",
+  "tier": "B-real-derived",
+  "class": "real photo, scale"
+ },
+ {
+  "name": "B09_recolour",
+  "tier": "B-real-derived",
+  "class": "real photo, recolour"
+ },
+ {
+  "name": "B10_crop_rot",
+  "tier": "B-real-derived",
+  "class": "real photo, crop_rot"
+ },
+ {
+  "name": "B11_lowlight",
+  "tier": "B-real-derived",
+  "class": "real photo, lowlight"
+ },
+ {
+  "name": "B12_crop",
+  "tier": "B-real-derived",
+  "class": "real photo, crop"
+ },
+ {
+  "name": "B13_rotate",
+  "tier": "B-real-derived",
+  "class": "real photo, rotate"
+ },
+ {
+  "name": "B14_scale",
+  "tier": "B-real-derived",
+  "class": "real photo, scale"
+ },
+ {
+  "name": "B15_recolour",
+  "tier": "B-real-derived",
+  "class": "real photo, recolour"
+ },
+ {
+  "name": "B16_crop_rot",
+  "tier": "B-real-derived",
+  "class": "real photo, crop_rot"
+ },
+ {
+  "name": "B17_lowlight",
+  "tier": "B-real-derived",
+  "class": "real photo, lowlight"
+ },
+ {
+  "name": "B18_crop",
+  "tier": "B-real-derived",
+  "class": "real photo, crop"
+ },
+ {
+  "name": "B19_rotate",
+  "tier": "B-real-derived",
+  "class": "real photo, rotate"
+ },
+ {
+  "name": "B20_scale",
+  "tier": "B-real-derived",
+  "class": "real photo, scale"
+ },
+ {
+  "name": "B21_recolour",
+  "tier": "B-real-derived",
+  "class": "real photo, recolour"
+ },
+ {
+  "name": "B22_crop_rot",
+  "tier": "B-real-derived",
+  "class": "real photo, crop_rot"
+ },
+ {
+  "name": "B23_lowlight",
+  "tier": "B-real-derived",
+  "class": "real photo, lowlight"
+ },
+ {
+  "name": "B24_crop",
+  "tier": "B-real-derived",
+  "class": "real photo, crop"
+ },
+ {
+  "name": "B25_rotate",
+  "tier": "B-real-derived",
+  "class": "real photo, rotate"
+ },
+ {
+  "name": "B26_scale",
+  "tier": "B-real-derived",
+  "class": "real photo, scale"
+ },
+ {
+  "name": "B27_recolour",
+  "tier": "B-real-derived",
+  "class": "real photo, recolour"
+ },
+ {
+  "name": "B28_crop_rot",
+  "tier": "B-real-derived",
+  "class": "real photo, crop_rot"
+ },
+ {
+  "name": "B29_lowlight",
+  "tier": "B-real-derived",
+  "class": "real photo, lowlight"
+ },
+ {
+  "name": "B30_crop",
+  "tier": "B-real-derived",
+  "class": "real photo, crop"
+ },
+ {
+  "name": "B31_rotate",
+  "tier": "B-real-derived",
+  "class": "real photo, rotate"
+ },
+ {
+  "name": "B32_scale",
+  "tier": "B-real-derived",
+  "class": "real photo, scale"
+ },
+ {
+  "name": "B33_recolour",
+  "tier": "B-real-derived",
+  "class": "real photo, recolour"
+ },
+ {
+  "name": "B34_crop_rot",
+  "tier": "B-real-derived",
+  "class": "real photo, crop_rot"
+ },
+ {
+  "name": "B35_lowlight",
+  "tier": "B-real-derived",
+  "class": "real photo, lowlight"
+ },
+ {
+  "name": "B36_crop",
+  "tier": "B-real-derived",
+  "class": "real photo, crop"
+ },
+ {
+  "name": "B37_rotate",
+  "tier": "B-real-derived",
+  "class": "real photo, rotate"
+ },
+ {
+  "name": "B38_scale",
+  "tier": "B-real-derived",
+  "class": "real photo, scale"
+ },
+ {
+  "name": "B39_recolour",
+  "tier": "B-real-derived",
+  "class": "real photo, recolour"
+ },
+ {
+  "name": "C00_dense_floral",
+  "tier": "C-parametric",
+  "class": "dense_floral"
+ },
+ {
+  "name": "C01_hairline_linework",
+  "tier": "C-parametric",
+  "class": "hairline_linework"
+ },
+ {
+  "name": "C02_lattice_trellis",
+  "tier": "C-parametric",
+  "class": "lattice_trellis"
+ },
+ {
+  "name": "C03_badge_with_text",
+  "tier": "C-parametric",
+  "class": "badge_with_text"
+ },
+ {
+  "name": "C04_tiny_lettering",
+  "tier": "C-parametric",
+  "class": "tiny_lettering"
+ },
+ {
+  "name": "C05_gradient_field",
+  "tier": "C-parametric",
+  "class": "gradient_field"
+ },
+ {
+  "name": "C06_thin_border",
+  "tier": "C-parametric",
+  "class": "thin_border"
+ },
+ {
+  "name": "C07_scattered_specks",
+  "tier": "C-parametric",
+  "class": "scattered_specks"
+ },
+ {
+  "name": "C08_big_flat_areas",
+  "tier": "C-parametric",
+  "class": "big_flat_areas"
+ },
+ {
+  "name": "C09_rings_holes",
+  "tier": "C-parametric",
+  "class": "rings_holes"
+ },
+ {
+  "name": "C10_monogram",
+  "tier": "C-parametric",
+  "class": "monogram"
+ },
+ {
+  "name": "C11_many_colours",
+  "tier": "C-parametric",
+  "class": "many_colours"
+ },
+ {
+  "name": "C12_noisy_subject",
+  "tier": "C-parametric",
+  "class": "noisy_subject"
+ },
+ {
+  "name": "C13_dense_floral",
+  "tier": "C-parametric",
+  "class": "dense_floral"
+ },
+ {
+  "name": "C14_hairline_linework",
+  "tier": "C-parametric",
+  "class": "hairline_linework"
+ },
+ {
+  "name": "C15_lattice_trellis",
+  "tier": "C-parametric",
+  "class": "lattice_trellis"
+ },
+ {
+  "name": "C16_badge_with_text",
+  "tier": "C-parametric",
+  "class": "badge_with_text"
+ },
+ {
+  "name": "C17_tiny_lettering",
+  "tier": "C-parametric",
+  "class": "tiny_lettering"
+ },
+ {
+  "name": "C18_gradient_field",
+  "tier": "C-parametric",
+  "class": "gradient_field"
+ },
+ {
+  "name": "C19_thin_border",
+  "tier": "C-parametric",
+  "class": "thin_border"
+ },
+ {
+  "name": "C20_scattered_specks",
+  "tier": "C-parametric",
+  "class": "scattered_specks"
+ },
+ {
+  "name": "C21_big_flat_areas",
+  "tier": "C-parametric",
+  "class": "big_flat_areas"
+ },
+ {
+  "name": "C22_rings_holes",
+  "tier": "C-parametric",
+  "class": "rings_holes"
+ },
+ {
+  "name": "C23_monogram",
+  "tier": "C-parametric",
+  "class": "monogram"
+ },
+ {
+  "name": "C24_many_colours",
+  "tier": "C-parametric",
+  "class": "many_colours"
+ },
+ {
+  "name": "C25_noisy_subject",
+  "tier": "C-parametric",
+  "class": "noisy_subject"
+ },
+ {
+  "name": "C26_dense_floral",
+  "tier": "C-parametric",
+  "class": "dense_floral"
+ },
+ {
+  "name": "C27_hairline_linework",
+  "tier": "C-parametric",
+  "class": "hairline_linework"
+ },
+ {
+  "name": "C28_lattice_trellis",
+  "tier": "C-parametric",
+  "class": "lattice_trellis"
+ },
+ {
+  "name": "C29_badge_with_text",
+  "tier": "C-parametric",
+  "class": "badge_with_text"
+ },
+ {
+  "name": "C30_tiny_lettering",
+  "tier": "C-parametric",
+  "class": "tiny_lettering"
+ },
+ {
+  "name": "C31_gradient_field",
+  "tier": "C-parametric",
+  "class": "gradient_field"
+ },
+ {
+  "name": "C32_thin_border",
+  "tier": "C-parametric",
+  "class": "thin_border"
+ },
+ {
+  "name": "C33_scattered_specks",
+  "tier": "C-parametric",
+  "class": "scattered_specks"
+ },
+ {
+  "name": "C34_big_flat_areas",
+  "tier": "C-parametric",
+  "class": "big_flat_areas"
+ },
+ {
+  "name": "C35_rings_holes",
+  "tier": "C-parametric",
+  "class": "rings_holes"
+ },
+ {
+  "name": "C36_monogram",
+  "tier": "C-parametric",
+  "class": "monogram"
+ },
+ {
+  "name": "C37_many_colours",
+  "tier": "C-parametric",
+  "class": "many_colours"
+ },
+ {
+  "name": "C38_noisy_subject",
+  "tier": "C-parametric",
+  "class": "noisy_subject"
+ },
+ {
+  "name": "C39_dense_floral",
+  "tier": "C-parametric",
+  "class": "dense_floral"
+ },
+ {
+  "name": "C40_hairline_linework",
+  "tier": "C-parametric",
+  "class": "hairline_linework"
+ },
+ {
+  "name": "C41_lattice_trellis",
+  "tier": "C-parametric",
+  "class": "lattice_trellis"
+ },
+ {
+  "name": "C42_badge_with_text",
+  "tier": "C-parametric",
+  "class": "badge_with_text"
+ },
+ {
+  "name": "C43_tiny_lettering",
+  "tier": "C-parametric",
+  "class": "tiny_lettering"
+ },
+ {
+  "name": "C44_gradient_field",
+  "tier": "C-parametric",
+  "class": "gradient_field"
+ },
+ {
+  "name": "C45_thin_border",
+  "tier": "C-parametric",
+  "class": "thin_border"
+ },
+ {
+  "name": "C46_scattered_specks",
+  "tier": "C-parametric",
+  "class": "scattered_specks"
+ }
+]

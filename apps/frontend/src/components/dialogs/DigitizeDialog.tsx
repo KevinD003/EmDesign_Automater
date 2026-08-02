@@ -10,13 +10,15 @@ interface DigitizeDialogProps {
   filename: string;
   onCancel: () => void;
   onConfirm: (params: DigitizeParams) => void;
+  /** Opens the image editor first (v2 Part 36) — prep is optional. */
+  onPrepare?: () => void;
 }
 
 const FABRICS = ['cotton', 'polo/knit', 'denim', 'fleece', 'cap', 'towel'];
 const HOOPS = ['100x100', '130x180', '200x200', '260x160'];
 
 /** Pre-digitize parameters (spec §4.2: fabric + hoop are digitizing inputs). */
-export function DigitizeDialog({ filename, onCancel, onConfirm }: DigitizeDialogProps) {
+export function DigitizeDialog({ filename, onCancel, onConfirm, onPrepare }: DigitizeDialogProps) {
   const [fabricType, setFabricType] = useState('cotton');
   const [hoopSize, setHoopSize] = useState('100x100');
   const [maxColors, setMaxColors] = useState(6);
@@ -56,6 +58,11 @@ export function DigitizeDialog({ filename, onCancel, onConfirm }: DigitizeDialog
           />
         </label>
         <div className="dialog-actions">
+          {onPrepare ? (
+            <button type="button" onClick={onPrepare} title="Crop, straighten, levels, posterize before digitizing">
+              Prepare image…
+            </button>
+          ) : null}
           <button type="button" onClick={onCancel}>
             Cancel
           </button>
