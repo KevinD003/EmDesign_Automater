@@ -193,6 +193,20 @@ _INK_MAX_AREA_FRAC_INTERIOR = 0.08
 # edge fringe is inherently THIN (1–2px); a real element has body. Attached
 # components at least this thick (max inscribed radius, px) are reclaimable.
 _ATTACHED_MIN_THICK_PX = 4.0
+# The rembg matte must cover at least this share of strong-ink pixels to be
+# trusted (v2 Part 32) — below it, the matte has found something other than the
+# artwork. Calibrated against every fixture, not hoped about:
+#   corpus recalls: 0.407 (fixture 09 — its photographic backdrop counts as
+#   "ink" by colour distance, so a low-but-real recall is CORRECT there),
+#   0.709 (fixture 03), 0.92-1.00 (the other eight).
+#   the failure this gate exists for: 0.004 — the neckline design on black,
+#   where U2-Net kept the empty neck OPENING as the subject and discarded
+#   every flower.
+# 0.2 sits far under the legitimate minimum and 50x above the failure. A first
+# draft used 0.5 and the calibration run itself caught it kicking fixture 09
+# off the rembg tier — the gate would have caused the regression it guards
+# against.
+_MATTE_MIN_INK_RECALL = 0.2
 # A reclaim candidate within this many pixels of the kept mask counts as that
 # mask's own edge, not a separate missed element.
 _ATTACHED_GAP_PX = 3
@@ -271,7 +285,25 @@ def foreground_mask(img, data: bytes | None = None) -> tuple[object, str]:
         if mask is not None:
             if mask.shape[:2] != (h, w):
                 mask = cv2.resize(mask, (w, h), interpolation=cv2.INTER_NEAREST)
-            return _reclaim_ink(img, mask), "rembg"
+            # Matte plausibility gate (v2 Part 32). U2-Net finds the
+            # PHOTOGRAPHIC SUBJECT, and on a neckline design on black it decided
+            # the subject was the empty neck OPENING — it kept 15.6% of the
+            # frame, almost none of it ink, and discarded every flower.
+            # `_reclaim_ink` could not repair that: the missed embroidery was
+            # one 35%-of-frame border-touching component, which both area caps
+            # correctly refuse. So the matte itself is audited against the ink
+            # evidence: if it covers less than half of the strongly-non-substrate
+            # pixels, it is not segmenting THIS kind of image, and the classical
+            # tiers (built exactly for uniform-substrate artwork) take over.
+            import numpy as np
+
+            substrate = np.array(
+                [img[0, 0], img[0, -1], img[-1, 0], img[-1, -1]], dtype=np.float32
+            ).mean(axis=0)
+            ink = np.linalg.norm(img.astype(np.float32) - substrate, axis=2) >= _INK_DELTA
+            n_ink = int(ink.sum())
+            if n_ink < 64 or (ink & (mask > 0)).sum() >= _MATTE_MIN_INK_RECALL * n_ink:
+                return _reclaim_ink(img, mask), "rembg"
 
     try:
         mask = _flood_mask(img)

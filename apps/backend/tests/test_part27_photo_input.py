@@ -105,3 +105,32 @@ def test_detached_interior_element_over_two_percent_is_reclaimed():
     cv2.rectangle(img, (40, 40), (160, 120), (30, 90, 140), -1)  # 9600px ≈ 6%
     out = _reclaim_ink(img, kept)
     assert out[80, 100] == 255
+
+
+def test_inverted_matte_is_rejected_by_ink_recall():
+    """v2 Part 32: on a neckline design on black, U2-Net kept the empty neck
+    OPENING as the subject (ink recall 0.004) and the design digitized to ONE
+    object. A matte covering under 20% of strong-ink pixels is not segmenting
+    the artwork and must yield to the classical tiers. The gate's first draft
+    (0.5) was itself caught by calibration: fixture 09's legitimate matte
+    measures 0.407, and 0.5 would have caused the regression it guards against.
+    """
+    from app.services import segmentation as S
+
+    img = np.zeros((400, 400, 3), np.uint8)          # black substrate
+    cv2.circle(img, (100, 200), 60, (40, 160, 60), -1)
+    cv2.circle(img, (300, 200), 60, (140, 60, 160), -1)
+    cv2.rectangle(img, (80, 40), (320, 90), (60, 60, 200), -1)
+
+    # Simulate the failure: a matte that keeps only an empty central region.
+    bad = np.zeros((400, 400), np.uint8)
+    cv2.rectangle(bad, (170, 120), (230, 300), 255, -1)  # covers no ink
+    orig = S._rembg_mask
+    S._rembg_mask = lambda data: bad
+    try:
+        mask, method = S.foreground_mask(img, b"fake")
+        assert method != "rembg", "an inverted matte must not win the tier race"
+        # The classical tier must recover the actual elements.
+        assert mask[200, 100] > 0 and mask[200, 300] > 0
+    finally:
+        S._rembg_mask = orig
