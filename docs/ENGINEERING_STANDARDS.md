@@ -78,10 +78,18 @@ over the limit must be named in the report with its actual line count.**
 - Code you **rewrite** should move toward the limit — Part 4 took `_skeleton_satin`
   from 133 to 53 lines.
 - Pre-existing long code you do not touch is **out of scope**. `digitize_image`
-  (336) and `rebuild_design` (129) are known and are not a given part's problem.
+  (822) and `rebuild_design` (183) are known and are not a given part's problem.
 
-`app/services/digitizer.py` is over the file limit at ~1,800 lines and is the
-standing exception; splitting it is its own piece of work.
+`app/services/digitizer.py` was the standing exception. **Part 42 split it** into
+`app/services/digitizer/` — ten modules under a strict bottom-up layering, pinned by
+`tests/test_digitizer_package_layering.py`, which fails if any import points upward.
+
+Two exceptions remain, and both are deliberate. `constants.py` (760) is a flat list of
+tunables with their measured rationale in comments — no control flow, so the length is
+documentation. `pipeline.py` (1,131) is one function's fault: `digitize_image` is still
+822 lines around a 412-line cluster loop carrying 18 mutable locals in and 7 out.
+Extracting that loop needs a state carrier — a design change, not a move — so it is its
+own piece of work.
 
 ## 4. Security and secrets
 

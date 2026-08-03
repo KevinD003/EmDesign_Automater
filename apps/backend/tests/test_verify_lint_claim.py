@@ -20,14 +20,14 @@ def _audit(tmp_path, body: str) -> Path:
 
 def test_a_correct_claim_passes(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(V, "ruff_findings", lambda files: 14)
-    a = _audit(tmp_path, "prose\nLINT-VERIFY: findings=14 files=apps/backend/app/services/digitizer.py\n")
+    a = _audit(tmp_path, "prose\nLINT-VERIFY: findings=14 files=apps/backend/app/services/digitizer/pipeline.py\n")
     assert V.check_audit(a) == []
     assert "verified" in capsys.readouterr().out
 
 
 def test_a_wrong_claim_fails(tmp_path, monkeypatch):
     monkeypatch.setattr(V, "ruff_findings", lambda files: 15)
-    a = _audit(tmp_path, "LINT-VERIFY: findings=14 files=apps/backend/app/services/digitizer.py\n")
+    a = _audit(tmp_path, "LINT-VERIFY: findings=14 files=apps/backend/app/services/digitizer/pipeline.py\n")
     fails = V.check_audit(a)
     assert len(fails) == 1 and "claims 14" in fails[0] and "reports 15" in fails[0]
 
@@ -52,5 +52,5 @@ def test_ruff_findings_counts_a_real_finding(tmp_path):
 
 def test_main_fails_on_a_mismatch(tmp_path, monkeypatch):
     monkeypatch.setattr(V, "ruff_findings", lambda files: 3)
-    _audit(tmp_path, "LINT-VERIFY: findings=2 files=apps/backend/app/services/digitizer.py\n")
+    _audit(tmp_path, "LINT-VERIFY: findings=2 files=apps/backend/app/services/digitizer/pipeline.py\n")
     assert V.main([str(tmp_path)]) == 1

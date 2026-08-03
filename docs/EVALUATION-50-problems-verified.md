@@ -18,7 +18,7 @@ session re-solving finished work.
 | "Naive background removal, corner-pixel compare, no ML" (P001) | U2-Net/rembg matte with a measured ink-recall plausibility gate and a classical fallback ladder (Parts 22, 27, 32, 34) |
 | "Raw findContours with zero smoothing" (P002) | Douglas-Peucker + Chaikin, and the strength was **swept and proven already optimal** (Part 37) |
 | "Entire pipeline classical OpenCV, no ML anywhere" (P005) | The segmentation stage is a neural matte. Fair as written about the *stitch* stage |
-| "digitizer.py (686+ lines) needs modularization" (P026) | It is **4,731 lines** — the item is right and **7× understated** |
+| "digitizer.py (686+ lines) needs modularization" (P026) | It was **4,731 lines** — the item is right and **7× understated**. **Closed in Part 42**: ten modules, strict layering, streams byte-identical |
 | "Monolithic … in-browser rendering never visually verified" (P004) | Verified repeatedly this session via Playwright, but those scripts live in a scratchpad, **not committed**. Genuine gap, wrong reason |
 
 ## The one finding worth acting on immediately
@@ -84,7 +84,7 @@ does not have, and it is invisible until someone selects one. Either implement o
 | P038 | Mobile | Dashboard responsive; Studio is desktop-only |
 | P041→P044 | Machine profiles | Format capabilities yes; per-machine hoop/limit database no |
 | P049 | Accessibility | aria-labels and roles present; no audit, no keyboard-only pass |
-| P026 | Modularity | **4,731-line `digitizer.py`** — the single largest maintainability risk |
+| P026 | Modularity | ~~**4,731-line `digitizer.py`**~~ **DONE, Part 42** — split into a ten-module package. Residual: `digitize_image` is still 822 lines |
 
 ### OPEN (12) — genuinely not built
 
@@ -122,7 +122,7 @@ of its P2/P3 list:
 
 ## Suggested order
 
-1. `P026` split `digitizer.py` — 4,731 lines makes every later change riskier.
+1. ~~`P026` split `digitizer.py`~~ — **done, Part 42** (`docs/benchmarks/v2-part42-audit.md`).
 2. The unimplemented-stitch-type audit — implement or delete; stop advertising phantoms.
 3. `P004` commit the visual-regression harness — the last four parts each caught a defect
    only by looking at a render; that should not be manual.

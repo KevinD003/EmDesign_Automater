@@ -15,7 +15,7 @@ import cv2
 import numpy as np
 
 from app.services import digitizer as D
-from app.services.digitizer import _sketch_from_labels, _verify_sketch, digitize_image
+from app.services.digitizer import _sketch_from_labels, _verify_sketch, digitize_image, pipeline
 
 
 def _checkerboard() -> bytes:
@@ -66,19 +66,22 @@ def test_failed_plan_is_redrawn_and_the_user_is_told():
     """End to end: at max_colors=1 the checkerboard's first plan measures
     coverage 0.493 — below the gate — and the re-plan at a larger budget
     recovers both reds. Exceeding the user's colour ask is never silent."""
+    # Patch where the call site resolves the name, not on the package facade:
+    # `digitize_image` lives in `digitizer.pipeline` and looks `_verify_sketch` up
+    # in that module's globals, so rebinding the re-export would spy on nothing.
     attempts = []
-    orig = D._verify_sketch
+    orig = pipeline._verify_sketch
 
     def spy(sk, im, fg):
         r = orig(sk, im, fg)
         attempts.append(r)
         return r
 
-    D._verify_sketch = spy
+    pipeline._verify_sketch = spy
     try:
         d = digitize_image(_checkerboard(), "cotton", "100x100", max_colors=1)
     finally:
-        D._verify_sketch = orig
+        pipeline._verify_sketch = orig
     assert len(attempts) >= 2, "the failed plan was not retried"
     assert attempts[0][0] < D.SKETCH_MIN_COVERAGE
     assert max(a[0] for a in attempts) > 0.9

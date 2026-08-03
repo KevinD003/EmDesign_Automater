@@ -133,7 +133,7 @@ falls back to a middle-of-the-road default profile** rather than erroring, so a 
 `"cottn"` will digitize, just not with cotton's numbers.
 
 The fabric setting is not cosmetic. It selects a row of five stitch parameters
-(`FABRIC_PROFILES`, `apps/backend/app/services/digitizer.py`) that are applied while the
+(`FABRIC_PROFILES`, `apps/backend/app/services/digitizer/constants.py`) that are applied while the
 design is generated:
 
 | Fabric | Pull comp (mm/side) | Tatami row pitch (mm) | Satin pitch (mm) | Underlay step (mm) | Edge inset (mm) |
