@@ -67,6 +67,11 @@ the real ones.** That single number is the target.
 | **Wider morphological close on textured masks** | 0.4mm → 0.6/0.8/1.0mm | Object count **rises** (1,014 → 1,143). Morphology is not the consolidation lever |
 | **Verifying that a fill covers its region** | Built stitch→measure→re-aim | Never fires (see above). Dead code |
 | **Reading the fill angle from the source's structure tensor** | Validated field, drove `_fill_angle` from it | Gain **within noise** (49.6 → 49.1 mean) because it reaches only the 224 tatami fills; **560 satin objects take their angle from the medial axis**. The idea is right, the insertion point was wrong — it must feed *all* stitch types |
+| **Refusing satin so the measured angle can fill instead** (Part 39) | Every gate improved: direction **49.9 → 42.5**, interior 97.30, edge **96.20**, spill 16.00 | It **floods enclosed gaps**: the lattice diamonds fill solid with thread (`v2-part39-lattice-flood.png`). A satin path follows the axis so gaps never matter; a fill floods any hole not captured in `hole_contours`. **Fix the hole capture BEFORE re-trying anything that converts satin to fill** — and note the metrics *rewarded* the flooding |
+
+**Two facts established in Part 39, carry them forward:**
+- The ~50° error is **not** registration noise: well-registered segments measure 50.3°, mis-registered ones 47.8°. The target is legitimate.
+- By **segment count** it is satin **30,332** vs tatami **3,794** (~8:1), not the 560/224 object split. Anything touching only fills cannot move the number.
 
 ---
 
@@ -213,3 +218,7 @@ stitches per object well above 16.
 **Start by running `scripts/measure_stitch_direction.py <panel> --hoop 360x350
 --check-registration --self-test` and reproducing 49.9°. If you cannot reproduce the
 baseline, fix that before writing any engine code.**
+
+**Then read `docs/benchmarks/v2-part39-audit.md` §5 — it names the two things to fix
+before pursuing G1: enclosed-gap capture when satin is refused, and a bare-fabric gate,
+without which the metrics actively reward stitching over gaps the source leaves open.**
