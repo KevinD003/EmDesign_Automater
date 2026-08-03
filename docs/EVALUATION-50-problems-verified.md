@@ -100,7 +100,7 @@ does not have, and it is invisible until someone selects one. Either implement o
 | P040 | Collaboration | Nothing |
 | P041 | Version history | Nothing |
 | P043 | Marketplace | Nothing |
-| P048 | Cross-stitch mode | Enum member only |
+| P048 | Cross-stitch mode | ~~Enum member only~~ **Enum member REMOVED in Part 43** — it silently produced tatami. Genuinely absent now, honestly so |
 | P050 | i18n | Nothing (the grep hit was a false positive) |
 
 ---
@@ -117,13 +117,13 @@ of its P2/P3 list:
    that should be one satin column is stitched as a run of stubs.
 3. **Missing bead-chain ornament** — a signature dot-row in the test design is dropped
    entirely by the speck filters (Part 40 review).
-4. **Sixteen declared-but-unimplemented stitch types** (above).
+4. ~~**Sixteen declared-but-unimplemented stitch types**~~ — **done, Part 43.** Measured properly it was **13 misleading names behind 9 real behaviours**, not 16 behind 4; all 13 removed.
 5. **Nine corpus designs still digitize to zero stitches**, all thin-stroke classes.
 
 ## Suggested order
 
 1. ~~`P026` split `digitizer.py`~~ — **done, Part 42** (`docs/benchmarks/v2-part42-audit.md`).
-2. The unimplemented-stitch-type audit — implement or delete; stop advertising phantoms.
+2. ~~The unimplemented-stitch-type audit~~ — **done, Part 43** (`docs/benchmarks/v2-part43-audit.md`).
 3. `P004` commit the visual-regression harness — the last four parts each caught a defect
    only by looking at a render; that should not be manual.
 4. The direction/fragmentation work (items 1–2 above).

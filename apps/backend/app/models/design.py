@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from enum import Enum
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic.alias_generators import to_camel
 
 
@@ -35,32 +35,57 @@ class StitchCommand(str, Enum):
 
 
 class StitchType(str, Enum):
+    """Every member here has a generator behind it. That is the whole rule.
+
+    v2 Part 43 removed thirteen members that did not. The enum used to declare 23
+    and the engine produced **nine distinct streams**: selecting `CROSS_STITCH`,
+    `CHENILLE`, `PHOTO_STITCH` or eight others fell through `rebuild_design`'s
+    final `else` and returned a byte-identical tatami fill, with nothing to tell
+    you. `BACKSTITCH` was byte-identical to `RUNNING_DOUBLE` and `REDWORK` to
+    `RUNNING_SINGLE`. An API that advertises a capability and quietly substitutes
+    another is worse than one that never offered it.
+
+    They are listed in `LEGACY_STITCH_TYPES` below so designs saved while they
+    existed still load, mapped to what they actually produced at the time.
+    Re-adding any of them is a one-line change *once its generator exists*.
+    """
+
     SATIN = "SATIN"
     TATAMI = "TATAMI"  # Fill
     RUNNING_SINGLE = "RUNNING_SINGLE"
     RUNNING_DOUBLE = "RUNNING_DOUBLE"
     RUNNING_TRIPLE = "RUNNING_TRIPLE"
-    BACKSTITCH = "BACKSTITCH"
-    STEMSTITCH = "STEMSTITCH"
-    CROSS_STITCH = "CROSS_STITCH"
-    ZIGZAG = "ZIGZAG"
-    E_STITCH = "E_STITCH"
-    MOTIF_FILL = "MOTIF_FILL"
-    MOTIF_RUN = "MOTIF_RUN"
     CONTOUR_FILL = "CONTOUR_FILL"
     # Curved fills (v2 Part 26): rows spiral out from / radiate through the
     # region instead of running straight. User-selectable via rebuild — the
     # "curved fill effects" the desktop suites sell as a premium feature.
     SPIRAL_FILL = "SPIRAL_FILL"
     RADIAL_FILL = "RADIAL_FILL"
-    ACCORDION_FILL = "ACCORDION_FILL"
-    LAYDOWN = "LAYDOWN"
-    MANUAL = "MANUAL"
-    PHOTO_STITCH = "PHOTO_STITCH"
-    GRADIENT_BLEND = "GRADIENT_BLEND"
     APPLIQUE = "APPLIQUE"
-    CHENILLE = "CHENILLE"
-    REDWORK = "REDWORK"
+    # Not a generator — provenance. It marks a path the user placed by hand, and
+    # rebuild deliberately runs along it rather than re-deriving a fill, so the
+    # edit survives. It produces the same stream as RUNNING_SINGLE by design.
+    MANUAL = "MANUAL"
+
+
+# Removed in Part 43, mapped to the stream each one actually produced, so a
+# design saved before then keeps loading and rebuilding identically.
+LEGACY_STITCH_TYPES: dict[str, StitchType] = {
+    "BACKSTITCH": StitchType.RUNNING_DOUBLE,   # was `passes=2`, i.e. a double run
+    "REDWORK": StitchType.RUNNING_SINGLE,      # was `passes=1`
+    # All eleven of these hit the `else` branch and came out as tatami.
+    "STEMSTITCH": StitchType.TATAMI,
+    "CROSS_STITCH": StitchType.TATAMI,
+    "ZIGZAG": StitchType.TATAMI,
+    "E_STITCH": StitchType.TATAMI,
+    "MOTIF_FILL": StitchType.TATAMI,
+    "MOTIF_RUN": StitchType.TATAMI,
+    "ACCORDION_FILL": StitchType.TATAMI,
+    "LAYDOWN": StitchType.TATAMI,
+    "PHOTO_STITCH": StitchType.TATAMI,
+    "GRADIENT_BLEND": StitchType.TATAMI,
+    "CHENILLE": StitchType.TATAMI,
+}
 
 
 class UnderlayType(str, Enum):
@@ -138,6 +163,19 @@ class DesignObject(CamelModel):
     contour: list[Point] | None = None
     # Interior holes (e.g. letter counters like 'o'); carved out of the fill.
     holes: list[list[Point]] | None = None
+
+    @field_validator("stitch_type", mode="before")
+    @classmethod
+    def _migrate_removed_stitch_types(cls, v):
+        """Accept a design saved while the phantom types still existed (Part 43).
+
+        Rejecting them would 422 a design that used to load, so they map to the
+        stream each one really produced. This is a data migration, not an offer:
+        the values are gone from the enum, so nothing new can be created with one.
+        """
+        if isinstance(v, str) and v in LEGACY_STITCH_TYPES:
+            return LEGACY_STITCH_TYPES[v]
+        return v
 
 
 class Design(CamelModel):

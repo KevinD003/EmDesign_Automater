@@ -22,31 +22,27 @@ export interface Stitch {
   command: StitchCommand;
 }
 
-/** Supported stitch types (spec §4.3). */
+/**
+ * Supported stitch types (spec §4.3).
+ *
+ * Every member has a generator behind it in the backend. v2 Part 43 removed the
+ * thirteen that did not: eleven (cross-stitch, chenille, photo-stitch, motif,
+ * and so on) fell through `rebuild_design`'s final `else` and silently returned
+ * a byte-identical tatami fill, and `BACKSTITCH` / `REDWORK` were byte-identical
+ * to running double / single. Mirrors `StitchType` in models/design.py — keep in
+ * sync, and do not add a name here before the generator exists.
+ */
 export enum StitchType {
   Satin = 'SATIN',
   Tatami = 'TATAMI', // Fill
+  ContourFill = 'CONTOUR_FILL', // rows follow the outline (v2 Part 24b)
   SpiralFill = 'SPIRAL_FILL', // curved fill: one continuous spiral (v2 Part 26)
   RadialFill = 'RADIAL_FILL', // curved fill: sunburst spokes (v2 Part 26)
   RunningSingle = 'RUNNING_SINGLE',
   RunningDouble = 'RUNNING_DOUBLE',
   RunningTriple = 'RUNNING_TRIPLE',
-  Backstitch = 'BACKSTITCH',
-  Stemstitch = 'STEMSTITCH',
-  CrossStitch = 'CROSS_STITCH',
-  Zigzag = 'ZIGZAG',
-  EStitch = 'E_STITCH',
-  MotifFill = 'MOTIF_FILL',
-  MotifRun = 'MOTIF_RUN',
-  ContourFill = 'CONTOUR_FILL',
-  AccordionFill = 'ACCORDION_FILL',
-  Laydown = 'LAYDOWN',
-  Manual = 'MANUAL',
-  PhotoStitch = 'PHOTO_STITCH',
-  GradientBlend = 'GRADIENT_BLEND',
   Applique = 'APPLIQUE',
-  Chenille = 'CHENILLE',
-  Redwork = 'REDWORK',
+  Manual = 'MANUAL', // provenance, not a generator: a path the user placed by hand
 }
 
 /** Underlay strategies (spec §4.3). */

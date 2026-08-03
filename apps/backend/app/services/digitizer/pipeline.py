@@ -1056,11 +1056,11 @@ def rebuild_design(design: Design) -> Design:
                         ),
                         pts, connect_px,
                     )
-            elif st in ("RUNNING_SINGLE", "RUNNING_DOUBLE", "RUNNING_TRIPLE", "BACKSTITCH", "REDWORK", "MANUAL"):
+            elif st in ("RUNNING_SINGLE", "RUNNING_DOUBLE", "RUNNING_TRIPLE", "MANUAL"):
                 # Running stitch ALONG the drawn path (open polyline), not an area fill.
-                passes = {"RUNNING_DOUBLE": 2, "BACKSTITCH": 2, "RUNNING_TRIPLE": 3}.get(st, 1)
+                passes = {"RUNNING_DOUBLE": 2, "RUNNING_TRIPLE": 3}.get(st, 1)
                 pts = _manual_run(poly, max_step_px, passes)
-            else:
+            elif st == "TATAMI":
                 pts = _scanline_angled(top, float(o.stitch_angle), spacing_px, max_step_px, connect_px)
                 if ut and ut != "NONE":  # any non-NONE underlay → edge-walk for fills
                     inset_px = max(1, round(EDGE_INSET_MM / mm_per_px))
@@ -1070,6 +1070,16 @@ def rebuild_design(design: Design) -> Design:
                         MAX_STITCH_MM / mm_per_px,
                     )
                     pts = _with_underlay(under, pts, connect_px)
+            else:
+                # There is deliberately no catch-all fill here (v2 Part 43). This
+                # branch used to be `else: tatami`, which is how eleven declared
+                # stitch types quietly produced tatami and nobody found out. If a
+                # new StitchType member ever lands without a generator, it fails
+                # here and names itself rather than shipping the wrong stitch.
+                raise ValueError(
+                    f"{o.name}: no generator for stitch type {st!r}. Every StitchType "
+                    f"member needs a branch here — see the enum docstring in models/design.py."
+                )
             pts = _coalesce_short(pts, MIN_STITCH_MM / mm_per_px)
             # Same travel routing as the digitizer (v2 Part 25): without it a
             # rebuilt donut carried 63 hole-crossing trims that the fresh
