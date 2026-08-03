@@ -158,17 +158,6 @@ PALETTE_UNIFORM_TOL = 6  # max deviation from the local median to count as core
 # showing through, not ink. Deliberately much tighter than v1's global 40.0 —
 # at 40 the cream muzzle of fixture 08 (Δ 34.8) was deleted as "background".
 SUBSTRATE_DELTA = 12.0
-# ...unless the region is small and fully enclosed by ink (catchlights, small
-# highlights). Above this share of the foreground a substrate-coloured region is
-# the garment showing through and must not be stitched.
-#
-# Measured separation: a letter's counter is ~18% of the design's foreground and
-# fixture 04's ring interior 32-54%, while genuine enclosed detail (catchlights)
-# is well under 1%. Note this is a HEURISTIC over a genuine ambiguity — a glyph
-# counter and knocked-out type are the same shape geometrically, distinguishable
-# only by scale. Fixture 02's knocked-out type is unaffected because it is not
-# substrate-coloured (Δ 19.9 from the page white), so it never reaches this rule.
-SUBSTRATE_ENCLOSED_MAX_AREA = 0.05
 # ...and an absolute cap, which is the discriminator that actually works: a
 # highlight/catchlight is a few mm², a glyph counter at legible text sizes is
 # tens of mm². Measured: mascot catchlight ≈4mm², the counter of a 25mm "O" ≈90mm².
@@ -366,43 +355,6 @@ def _is_background(center_bgr, corners_bgr) -> bool:
     import numpy as np
 
     return bool(np.linalg.norm(center_bgr.astype(float) - corners_bgr.astype(float)) < 40.0)
-
-
-def _drop_large_substrate_regions(mask, design_area_px: float, mm_per_px: float = 0.0, fg_mask=None):
-    """Decide which garment-coloured regions are actually ink.
-
-    Two independent tests, both of which a region must pass:
-
-    * **Enclosure** — the region must be completely surrounded by ink. A
-      catchlight sits inside a dark pupil and passes; the aperture of a "G" or
-      "C" opens onto the background and fails. This is the test that carries the
-      decision, because it is topological rather than a tuned magnitude.
-    * **Size** — a region fully enclosed by ink can still be the garment showing
-      through a closed outline (fixture 04's ring interior is enclosed by its
-      ring). Small in both relative and absolute terms keeps highlights while
-      rejecting large enclosed fields.
-    """
-    import cv2
-    import numpy as np
-
-    n, labelled, stats, _ = cv2.connectedComponentsWithStats((mask > 0).astype(np.uint8), 8)
-    px_area = (mm_per_px * mm_per_px) if mm_per_px > 0 else 0.0
-    outside = None if fg_mask is None else (fg_mask == 0)
-    kernel = np.ones((5, 5), np.uint8)
-    keep = np.zeros_like(mask)
-    for i in range(1, n):
-        area_px = stats[i, cv2.CC_STAT_AREA]
-        if area_px > SUBSTRATE_ENCLOSED_MAX_AREA * design_area_px:
-            continue
-        if px_area and area_px * px_area > SUBSTRATE_MAX_MM2:
-            continue
-        if outside is not None:
-            comp = (labelled == i).astype(np.uint8)
-            halo = cv2.dilate(comp, kernel) > 0
-            if bool((halo & outside).any()):
-                continue  # opens onto the background — an aperture, not a highlight
-        keep[labelled == i] = 255
-    return keep
 
 
 def _border_color(img):
@@ -655,6 +607,10 @@ OUTLINE_BLACKHAT_DELTA = 28  # min local-darkness response (0-255) to count as a
 OUTLINE_MAX_HALF_MM = 0.7   # thicker structure is a region, not a line — dropped
 OUTLINE_MIN_MM = 4.0        # chains shorter than this are noise, not drawing
 OUTLINE_RUN_MM = 1.4        # running-stitch length along the line (stem-stitch scale)
+# Below this substrate luminance the cloth is darker than any thread the
+# artwork could outline with, so the dark-linework pass has nothing real to
+# find and would trace the gaps between elements (v2 Part 41).
+DARK_CLOTH_LUM = 60.0
 
 
 def _dark_linework(img, fg_mask, mm_per_px: float):
@@ -1140,7 +1096,6 @@ def digitize_image(
             sketch_cov = cov2
 
     substrate = _border_color(img)
-    design_area_px = float(max(int(fg_flat.sum()), 1))
 
     # Darkest-first stitching order (spec §4.2). Clusters emptied by halo
     # suppression are skipped so they never open a colour stop.
@@ -1165,6 +1120,8 @@ def digitize_image(
     color_stops: list[ColorStop] = []
     objects: list[DesignObject] = []
     seq = 0
+    substrate_px = 0            # garment-coloured pixels deliberately left unstitched
+    substrate_owned = np.zeros(fg_mask.shape, np.uint8)
     dropped_speck_count = 0     # regions under min_region_mm2 at THIS hoop size
     emitted_mask = np.zeros((ih, iw), np.uint8)  # px that became stitched objects
     skeleton_satin_used = 0        # diagnostics for the bench/audit
@@ -1241,7 +1198,21 @@ def digitize_image(
         # and this rule was measured deleting exactly that (the white disc of
         # the white-on-white probe survived the mask and died here).
         if svg_mask is None and float(np.linalg.norm(center.astype(float) - substrate)) < SUBSTRATE_DELTA:
-            mask = _drop_large_substrate_regions(mask, design_area_px, mm_per_px, fg_mask)
+            # The garment is not a thread (v2 Part 41). A cluster the colour of
+            # the cloth is the cloth showing between the design's elements, and
+            # stitching it lays thread over bare fabric: measured on the black
+            # neckline panel, 2,925 stitches (5.1% of all sewing) went into
+            # near-black stops sitting 10.5 from the substrate — the gaps
+            # BETWEEN petals, rendered as thread.
+            #
+            # This used to keep small enclosed regions as "knocked-out detail"
+            # (a catchlight in a pupil, a counter). That is the wrong default
+            # for embroidery: you do not stitch the background colour, you let
+            # the cloth show. SVG input still keeps its declared elements — a
+            # white shape on a white page is artwork the file states outright.
+            substrate_px += int(cv2.countNonZero(mask))
+            substrate_owned[mask > 0] = 255
+            continue
         # RETR_CCOMP: 2-level hierarchy — top-level outlines + their interior holes
         # (letter counters, donuts). RETR_EXTERNAL would fill an 'o' solid.
         contours, hierarchy = cv2.findContours(mask, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
@@ -1615,12 +1586,33 @@ def digitize_image(
     # input only; flat artwork's dark lines are their own colour regions and
     # digitize as objects already.
     if is_textured and stitches:
-        chains = _dark_linework(img, fg_mask, mm_per_px)
+        # "Dark linework" only exists when the artwork's lines are darker than
+        # the cloth (v2 Part 41). On a dark garment nothing can be, so the
+        # black-hat finds the GAPS BETWEEN elements and traces the garment
+        # itself: measured on the black neckline panel, this pass alone emitted
+        # 2,644 stitches of near-black thread over bare fabric, and simply
+        # dropping the black colour stop only recoloured them to the next
+        # darkest thread, which is worse — visible thread on bare cloth.
+        substrate_lum = float(
+            0.114 * substrate[0] + 0.587 * substrate[1] + 0.299 * substrate[2]
+        )
+        chains = (
+            _dark_linework(img, fg_mask, mm_per_px)
+            if substrate_lum >= DARK_CLOTH_LUM
+            else []
+        )
         if chains:
             def _lum(h: str) -> float:
                 return 0.299 * int(h[1:3], 16) + 0.587 * int(h[3:5], 16) + 0.114 * int(h[5:7], 16)
 
             line_hex = min((s.hex for s in color_stops), key=_lum) if color_stops else "#202020"
+            _lh = line_hex.lstrip("#")
+            _line_bgr = np.array([int(_lh[4:6], 16), int(_lh[2:4], 16), int(_lh[0:2], 16)], np.float32)
+            if float(np.linalg.norm(_line_bgr - substrate)) < SUBSTRATE_DELTA:
+                # Drawing the garment's own colour onto the garment (v2 Part 41):
+                # the darkest available thread IS the cloth here, so this pass
+                # would trace the gaps between elements in invisible thread.
+                chains = []
             emitted_stop += 1
             stitches.append(Stitch(x=stitches[-1].x, y=stitches[-1].y, command="COLOR_CHANGE"))
             stop_start = len(stitches)
@@ -1709,7 +1701,9 @@ def digitize_image(
     # is partially covered was digitized; an element with zero overlap is gone.
     # Owned means labels >= 0: blend pixels the halo suppression deliberately
     # leaves at -1 belong to no element.
-    owned = (labels >= 0).astype(np.uint8)
+    # Cloth left bare on purpose is not 'lost artwork' — excluding it keeps the
+    # dropped-detail warning honest.
+    owned = ((labels >= 0) & (substrate_owned == 0)).astype(np.uint8)
     n_own, own_lab, own_stats, _c = cv2.connectedComponentsWithStats(owned, connectivity=8)
     lost_px = 0
     covered = np.bincount(own_lab[emitted_mask > 0].reshape(-1), minlength=n_own)
