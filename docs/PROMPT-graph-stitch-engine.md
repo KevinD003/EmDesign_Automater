@@ -219,6 +219,12 @@ stitches per object well above 16.
 --check-registration --self-test` and reproducing 49.9°. If you cannot reproduce the
 baseline, fix that before writing any engine code.**
 
+**Read `docs/benchmarks/v2-part40-review.md` first — a side-by-side against the original
+ranks the defects by visibility, and the top TWO are not direction: (1) we lay 2,925
+stitches (5.1% of sewing) of near-black thread plus 230 running objects onto bare fabric
+the original leaves empty; (2) the bead-chain border is missing entirely. Both are
+cheaper and more visible than the direction work below — do them first.**
+
 **Then read `docs/benchmarks/v2-part39-audit.md` §5 — it names the two things to fix
 before pursuing G1: enclosed-gap capture when satin is refused, and a bare-fabric gate,
 without which the metrics actively reward stitching over gaps the source leaves open.**
