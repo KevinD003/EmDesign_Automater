@@ -140,13 +140,34 @@ def check_registration(design, src) -> float:
     return mean
 
 
-def score(design, src) -> dict:
+# A segment only tells us about OUR direction if we are looking at the same
+# element the sew-out has there. Where the source colour under a stitch is
+# nothing like the thread we laid, we are comparing our angle to some other
+# element's thread and the answer is noise.
+#
+# On the reference panel the per-stop distance averages 35.9 and its largest stop
+# (12,801 samples, 38% of everything scored) sits at 100.2, so this is not a
+# hypothetical. Measured, gating changes the verdict very little — 49.5 ungated
+# against 45.8 keeping only the best-matched 13.7% — which is exactly why the
+# gate is worth reporting: it rules misregistration OUT as the explanation
+# instead of leaving it as an untested excuse.
+COLOUR_GATE_BGR = 45.0
+
+
+def score(design, src, colour_gate: float | None = None) -> dict:
     theta, coh = orientation_field(src)
     sh, sw = src.shape[:2]
     to_px = _mapper(design, (sh, sw))
+    # Blurred, because a single pixel of a photographed sew-out is shading noise.
+    soft = cv2.GaussianBlur(src, (9, 9), 0)
+    stop_bgr = []
+    for c in design.color_stops:
+        h = c.hex.lstrip("#")
+        stop_bgr.append(np.array([int(h[4:6], 16), int(h[2:4], 16), int(h[0:2], 16)], np.float32))
     per_type: dict[str, list[float]] = defaultdict(list)
     errs: list[float] = []
     weights: list[float] = []
+    gated: list[tuple[float, float]] = []
 
     try:
         from measure_stitch_quality import _object_slices
@@ -155,7 +176,15 @@ def score(design, src) -> dict:
         slices = [(None, list(design.stitches))]
 
     for obj, seg in slices:
-        ty = str(getattr(getattr(obj, "stitch_type", None), "value", "ALL"))
+        # `Design` sets `use_enum_values=True`, so `stitch_type` is already a
+        # plain string. Reaching for `.value` silently returned the "ALL" default
+        # for every object, which collapsed the whole per-type breakdown into one
+        # bucket — the breakdown has been reporting nothing since it was written.
+        raw = getattr(obj, "stitch_type", None)
+        ty = str(getattr(raw, "value", raw) or "ALL")
+        ours = None
+        if stop_bgr and getattr(obj, "color_stop", None):
+            ours = stop_bgr[min(max(obj.color_stop - 1, 0), len(stop_bgr) - 1)]
         prev = None
         for s in seg:
             if _cmd(s) != "STITCH":
@@ -174,6 +203,10 @@ def score(design, src) -> dict:
                         errs.append(e)
                         weights.append(length)
                         per_type[ty].append(e)
+                        if ours is not None:
+                            d = float(np.linalg.norm(soft[py, px].astype(np.float32) - ours))
+                            if d <= (colour_gate if colour_gate is not None else COLOUR_GATE_BGR):
+                                gated.append((e, length))
             prev = s
 
     if not errs:
@@ -185,6 +218,10 @@ def score(design, src) -> dict:
         "within_15_pct": 100 * sum(1 for e in errs if e < 15) / len(errs),
         "within_30_pct": 100 * sum(1 for e in errs if e < 30) / len(errs),
         "by_type": {k: (len(v), st.mean(v)) for k, v in per_type.items()},
+        "qualified_n": len(gated),
+        "qualified_share": (len(gated) / len(errs)) if errs else 0.0,
+        "qualified_mean_deg": (sum(e * w for e, w in gated) / sum(w for _, w in gated))
+        if gated else float("nan"),
     }
 
 
@@ -233,6 +270,13 @@ def main() -> None:
     print(f"  within 30 deg  {r['within_30_pct']:.1f}%")
     for ty, (n, m) in sorted(r["by_type"].items(), key=lambda kv: -kv[1][0]):
         print(f"    {ty:16s} n={n:6d} mean={m:5.1f}")
+    # Never quote the headline without this line. It is the answer to the first
+    # question anyone should ask of a bad score: are we even comparing the same
+    # element? If the qualified figure tracks the headline, the answer is yes and
+    # the score is about our directions.
+    print(f"  well-registered subset (source colour within {COLOUR_GATE_BGR:.0f} "
+          f"of our thread): {r['qualified_share'] * 100:.1f}% of segments, "
+          f"mean {r['qualified_mean_deg']:.1f} deg")
 
 
 if __name__ == "__main__":
