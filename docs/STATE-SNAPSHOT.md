@@ -1,6 +1,6 @@
 # STITCHIQ — current state, for the reviewer
 
-**Generated at commit `78cf6a4`, STATUS v88, latest part 50.** Paste this alongside any
+**Generated at commit `f33c512`, STATUS v88, latest part 50.** Paste this alongside any
 audit. It exists because four of the last five review briefs were built on state that had
 moved: the fix proposed was already shipped, or the number quoted came from an old run.
 
@@ -54,10 +54,19 @@ behind 9 real behaviours).
 
 ## What is genuinely open
 
-1. **R004 implementation — the direction field.** The largest remaining quality gap.
-   Part 46 ruled out four explanations for the 49.9° (convention bug, fragmentation,
-   satin-specific, misregistration) and showed per-region PCA is at its ceiling. Scope is
-   in `docs/PROMPT-direction-field.md`. Multi-part.
+1. **R004 — the direction field, at D2.** Part 46 ruled out four explanations for the
+   49.9° and showed per-region PCA is at its ceiling. **Part 50 built D0 and D1**: an
+   instrument that ranks candidate fields before any generator consumes one, and a
+   contour-parallel field that scores **33.91° against the current 38.27°** on the
+   photographed sew-out, at 0.06–0.09 s on the 771-region panel, consumed by nothing.
+
+   **D2's problem is already measured**: the field washes out in large interiors —
+   committed share is 81–94% on thin strokes but **7–14% on large flat areas** — so D2 has
+   to decide what happens where the field is undecided, not merely whether to use it.
+   Falling back to the region's principal axis is the first candidate to score.
+
+   **D2's bar comes from the instrument, not from a brief:** beat 38.27° on the panel
+   without losing coverage. Please do not set a correlation target in advance.
 2. **R008 — bead-chain ornament.** Still real content loss, but **re-scoped by Part 49**.
    Grouping the dropped specks does not work: coverage rises smoothly 3.5% → 67% as the
    rules loosen, with no knee, and the longest run found is 10 beads. The cause is that
