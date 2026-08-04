@@ -38,3 +38,10 @@ apps/backend/data/
 apps/backend/tests/fixtures/corpus100/B*.png
 apps/backend/tests/fixtures/corpus100/C*.png
 apps/backend/scripts/corpus100*.json
+
+# Visual-regression failure artifacts (v2 Part 44). The BASELINES under
+# apps/backend/tests/visual/baselines/ are committed and are the reference;
+# diffs/ is written only when a render disagrees with one, so it is output to
+# look at, never something to check in.
+apps/backend/tests/visual/diffs/
+apps/backend/tests/visual/contact-sheet.png

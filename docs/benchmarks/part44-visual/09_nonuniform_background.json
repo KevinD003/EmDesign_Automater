@@ -1,0 +1,141 @@
+{
+  "fixture": "09_nonuniform_background",
+  "params": {
+    "colors": 4,
+    "hoop": "130x180",
+    "fabric": "cotton"
+  },
+  "ok": true,
+  "error": null,
+  "warnings": [],
+  "runtime_s": 0.964,
+  "stitch_count": 2313,
+  "color_count": 2,
+  "object_count": 2,
+  "stitch_types": {
+    "TATAMI": 2
+  },
+  "objects_with_holes": 1,
+  "width_mm": 54.51,
+  "height_mm": 61.62,
+  "est_minutes": 2.89,
+  "jump_count": 38,
+  "trim_count": 28,
+  "color_changes": 1,
+  "max_stitch_mm": 8.87,
+  "mean_stitch_mm": 2.751,
+  "stitches_over_machine_limit": 0,
+  "stitches_under_0_5mm": 20,
+  "stitch_density_per_mm2": 1.39,
+  "filled_area_mm2": 1666.5,
+  "stitch_density_per_bbox_mm2": 0.69,
+  "fill_row_pitch_mm": 0.017,
+  "fill_rows_over_thread_width": 0,
+  "coverage_ratio": 1.0,
+  "segmentation_method": "rembg",
+  "satin_share": 0.0,
+  "classification": [
+    {
+      "seq": 1,
+      "region_median_w_mm": 7.14,
+      "skeleton_median_w_mm": 0.0,
+      "uncovered_share": 1.0,
+      "reason": "broad_fill_pregate",
+      "decision": "TATAMI"
+    },
+    {
+      "seq": 2,
+      "region_median_w_mm": 0.2,
+      "skeleton_median_w_mm": 0.0,
+      "uncovered_share": 1.0,
+      "reason": "sub_thread_feature",
+      "decision": "SKIPPED"
+    },
+    {
+      "seq": 2,
+      "region_median_w_mm": 4.28,
+      "skeleton_median_w_mm": 0.0,
+      "uncovered_share": 0.0,
+      "reason": "no_medial_axis",
+      "decision": "TATAMI"
+    }
+  ],
+  "coverage": {
+    "interior_pct": 99.6,
+    "edge_band_pct": 100.0,
+    "spill_pct": 6.7,
+    "interior_frac": 0.908,
+    "frames_deg": [
+      0.0,
+      22.5,
+      45.0,
+      67.5
+    ]
+  },
+  "penetration": {
+    "satin_objects": 2,
+    "penetrations": 727,
+    "nominal_pitch_mm": 0.4,
+    "floor_mm": 0.3,
+    "min_spacing_mm": 0.3,
+    "min_spacing_object": "Fill 1 (#eb3c46)",
+    "below_floor": 0,
+    "below_floor_share": 0.0,
+    "per_object": [
+      {
+        "object": 1,
+        "name": "Fill 1 (#eb3c46)",
+        "penetrations": 556,
+        "min_mm": 0.3,
+        "p05_mm": 0.322,
+        "median_mm": 0.468,
+        "below_floor": 0
+      },
+      {
+        "object": 2,
+        "name": "Fill 2 (#fcf6e6)",
+        "penetrations": 171,
+        "min_mm": 0.304,
+        "p05_mm": 0.326,
+        "median_mm": 0.455,
+        "below_floor": 0
+      }
+    ]
+  },
+  "density": {
+    "cell_mm": 0.5,
+    "cells": 1694,
+    "max_per_cell": 8,
+    "p99_per_cell": 4,
+    "flag_at": 14,
+    "flagged_cells": 0,
+    "hottest": [
+      {
+        "x_mm": 56.2,
+        "y_mm": 65.8,
+        "count": 8
+      },
+      {
+        "x_mm": 56.8,
+        "y_mm": 51.2,
+        "count": 7
+      },
+      {
+        "x_mm": 54.8,
+        "y_mm": 64.8,
+        "count": 7
+      },
+      {
+        "x_mm": 58.8,
+        "y_mm": 28.8,
+        "count": 6
+      },
+      {
+        "x_mm": 60.8,
+        "y_mm": 51.2,
+        "count": 6
+      }
+    ]
+  },
+  "output_png": "docs/benchmarks/part44-visual/09_nonuniform_background-output.png"
+}

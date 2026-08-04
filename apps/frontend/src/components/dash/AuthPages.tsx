@@ -1,6 +1,7 @@
 import { useState, type FormEvent, type ReactNode } from 'react';
 import { api } from '../../api/client';
 import { navigate } from '../../lib/routes';
+import { initialTheme } from '../../lib/theme';
 import { createAndAdopt, loginAndAdopt } from '../auth/localSession';
 
 /**
@@ -11,8 +12,12 @@ import { createAndAdopt, loginAndAdopt } from '../auth/localSession';
  */
 
 function AuthFrame({ title, children }: { title: string; children: ReactNode }) {
+  // Same token surface as the dashboard, so it needs the same data-theme. Without
+  // it these pages always resolved to .dz-root's dark default, which is how a
+  // light-mode user got a black sign-in page off a white dashboard (Part 44).
+  const theme = initialTheme();
   return (
-    <div className="dz-root dz-auth-root">
+    <div className="dz-root dz-auth-root" data-theme={theme}>
       <div className="dz-auth-card dz-card">
         <a className="dz-brand dz-auth-brand" href="#/studio">
           <span aria-hidden>🧵</span> STITCHIQ

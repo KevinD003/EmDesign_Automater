@@ -178,9 +178,9 @@ def main() -> None:
         if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
             continue
         for sub in ast.walk(node):
-            if isinstance(sub, ast.Name) and sub.id in defs and sub.id != node.name:
-                if rank[mod[sub.id]] > rank[mod[node.name]]:
-                    problems.append(f"{node.name} [{mod[node.name]}] -> {sub.id} [{mod[sub.id]}]")
+            if (isinstance(sub, ast.Name) and sub.id in defs and sub.id != node.name
+                    and rank[mod[sub.id]] > rank[mod[node.name]]):
+                problems.append(f"{node.name} [{mod[node.name]}] -> {sub.id} [{mod[sub.id]}]")
     if problems:
         print("LAYERING VIOLATIONS — fix OVERRIDE before writing:")
         for p in sorted(set(problems)):

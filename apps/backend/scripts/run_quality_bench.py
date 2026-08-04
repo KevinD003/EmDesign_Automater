@@ -372,6 +372,8 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--tag", default="v1-baseline", help="output name/folder under docs/benchmarks (default: v1-baseline)")
     ap.add_argument("--only", default=None, help="run a single fixture by stem, e.g. 08_mascot_detail")
+    ap.add_argument("--no-visual", action="store_true",
+                    help="skip the visual regression comparison (numbers only)")
     args = ap.parse_args()
 
     fixtures = sorted(p for p in FIXTURE_DIR.glob("*.png") if not p.name.startswith("_"))
@@ -416,6 +418,29 @@ def main() -> int:
 
     print(f"\ngrid    → {_rel(grid)}")
     print(f"summary → {_rel(summary_path)}")
+
+    # The numbers above say how much thread went down and where; they have never
+    # said whether the result LOOKS right. Parts 39-41 each found a defect that
+    # every metric here scored as fine. So the bench now also reports the visual
+    # diff against the committed baselines (v2 Part 44).
+    if not args.no_visual:
+        print("\nvisual regression vs committed baselines:")
+        import visual_regression as vr
+
+        changed = []
+        for name in sorted(vr.FIXTURES):
+            actual, _ = vr.render_fixture(name)
+            v = vr.compare(name, actual)
+            if v["ok"]:
+                print(f"  ok        {name:26s} ssim {v['ssim']:.6f}")
+            else:
+                why = v.get("reason") or f"ssim {v['ssim']:.6f}, {v['changed_px']} px changed"
+                changed.append(name)
+                print(f"  CHANGED   {name:26s} {why}")
+        if changed:
+            print(f"  -> {len(changed)} render(s) changed; diffs in tests/visual/diffs/. "
+                  f"Accept with scripts/visual_regression.py --update", file=sys.stderr)
+
     if summary["failed"]:
         print(f"FAILED  → {', '.join(summary['failed'])}", file=sys.stderr)
     return 0

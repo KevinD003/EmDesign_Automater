@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { navigate } from '../../lib/routes';
+import { initialTheme, saveTheme, type Theme } from '../../lib/theme';
 import { useAuthStore } from '../../store/authStore';
 import { useAccount } from './useAccount';
 
@@ -12,18 +13,6 @@ import { useAccount } from './useAccount';
  * deliberately dark — it is a canvas tool, like every pro editor.
  */
 
-const THEME_KEY = 'stitchiq:theme';
-
-function initialTheme(): 'light' | 'dark' {
-  try {
-    const saved = localStorage.getItem(THEME_KEY);
-    if (saved === 'light' || saved === 'dark') return saved;
-  } catch {
-    /* no storage */
-  }
-  return window.matchMedia?.('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
-}
-
 export function DashShell({
   section,
   children,
@@ -33,17 +22,11 @@ export function DashShell({
 }) {
   const session = useAuthStore((s) => s.session);
   const { account } = useAccount();
-  const [theme, setTheme] = useState<'light' | 'dark'>(initialTheme);
+  const [theme, setTheme] = useState<Theme>(initialTheme);
 
   // The tokens live on .dz-root's own data-theme (below), so nothing needs to
   // be stamped on <html>; this only remembers the choice across visits.
-  useEffect(() => {
-    try {
-      localStorage.setItem(THEME_KEY, theme);
-    } catch {
-      /* no storage */
-    }
-  }, [theme]);
+  useEffect(() => saveTheme(theme), [theme]);
 
   const nav = [
     { key: 'overview', label: 'Overview', hash: '#/dashboard', icon: '◫' },
