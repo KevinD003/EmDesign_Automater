@@ -38,7 +38,7 @@ Checked by running the code, not by reading it. Each was proposed as missing:
 
 | | value | measured at |
 |---|---|---|
-| Backend tests | 849 passed, 2 xfailed (Part 48); Part 49 adds 4, full run pending | Part 48 |
+| Backend tests | **854 passed, 2 xfailed** | Part 49 |
 | Frontend tests | 131 passed, `tsc` clean | Part 48 |
 | `ruff check app` | 12 (the standing baseline) | Part 49 |
 | Stitch-stream locks | **4** fixtures, sha256 of the whole stream | — |

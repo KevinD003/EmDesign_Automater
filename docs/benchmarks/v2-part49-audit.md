@@ -135,17 +135,19 @@ stitch path.
 
 | Gate | Before | After |
 |---|---|---|
+| Backend suite | 849 passed, 2 xfailed | **854 passed, 2 xfailed** (+5) |
 | Fuzz suite | 7 passed | **7 passed** (regressed to a >10 min hang, then fixed) |
-| Tests over the changed code | — | **45 passed** (drop log, locks, layering, routing, empty-success) |
 | `ruff check app` | 12 | **12** |
 | Stitch stream locks | 4 pass | **4 pass, unchanged** |
 | Visual baselines | 10/10 | **10/10, unchanged** |
 
 An earlier draft of this section quoted "853 passed" from arithmetic — 849 plus the four
-new tests — before the run finished. It was removed before committing, and it would have
-been wrong: the run came back **1 failed, 769 passed**, stopping at the fuzz test above.
-Quoting a count you have not seen is the habit this series keeps catching in the briefs it
-reviews, and it was one command away from appearing here.
+tests written at the time — before the run finished. It was removed before committing, and
+it would have been wrong **twice over**: that run came back **1 failed, 769 passed**,
+stopping at the fuzz test above, and the final count is **854**, because fixing the
+regression added a fifth test. Both errors point the same way. Quoting a count you have not
+seen is the habit this series keeps catching in the briefs it reviews, and it was one
+command away from appearing here.
 
 Tests in `tests/test_part49_drop_log_position.py`: every entry carries area, perimeter and
 position; the positions are real mm coordinates with spread rather than a constant; the log
