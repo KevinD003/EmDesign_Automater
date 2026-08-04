@@ -331,37 +331,60 @@ def _coalesce_short(pts, min_dist_px: float, floor_px: float = 0.0):
     return _restore_for_floor(out, dropped, floor_px) if floor_px > 0.0 else out
 
 
+# Above this many regions in one colour, fall back to raster order (v2 Part 48).
+#
+# Nearest-neighbour is O(n^2), and the input is contours BEFORE the speck filter,
+# so a pathological image sets n far higher than any real design. Measured: the
+# reference panel's busiest colour holds 251 contours; a 900x900 random-noise
+# image holds 70,516. The second is not a design anyone will sew, but it is a
+# request the API must survive — this exact case turned the fuzz suite's
+# `test_random_noise_palette_stress` from a pass into a hang when the ordering
+# first went in, which is a denial-of-service shape, not a slow test.
+#
+# 2000 is 8x above the real worst case and 35x below the noise one, and the
+# fallback is simply the order that shipped before this part.
+NN_MAX_REGIONS = 2000
+
+
 def _nearest_neighbour_order(points, start=None):
     """Greedy nearest-neighbour visiting order over 2D points (v2 Part 48).
 
-    Returns indices into ``points``. Objects inside one colour stop can be sewn in
+    Returns indices into ``points``. Regions inside one colour stop can be sewn in
     any order without adding a colour change, so ordering them by proximity is
     free machine time — and the pipeline was not doing it: contours came out in
     `findContours` raster order, which walks the design top to bottom and jumps
-    back and forth across it.
+    back and forth across it. Measured on the reference panel, this takes the
+    inter-object travel from 36.20 m to 18.26 m.
 
-    Greedy, not an exact TSP. Measured on the reference panel, greedy takes the
-    inter-object travel from 29.36 m to 13.65 m (-53.5%) and the median gap from
-    30.03 mm to 9.45 mm. An optimal tour would beat that by a few percent at best
-    and costs a solver plus non-determinism; a 771-object design is not where an
-    exact TSP earns its keep.
+    Greedy, not an exact TSP: an optimal tour would beat it by a few percent at
+    best and costs a solver plus non-determinism. Vectorised with NumPy because
+    the pure-Python version was measurably slow at a few thousand points.
 
-    Deterministic: ties are broken by index, so the same input always gives the
-    same order and the stream stays reproducible.
+    Deterministic — ties break toward the lower index, so the same input always
+    gives the same order and the stitch stream stays reproducible.
     """
-    import math
+    import numpy as np
 
     n = len(points)
     if n <= 2:
         return list(range(n))
-    remaining = set(range(n))
-    here = 0 if start is None else min(
-        remaining, key=lambda i: (math.dist(points[i], start), i))
+    if n > NN_MAX_REGIONS:
+        return list(range(n))
+
+    pts = np.asarray(points, dtype=np.float64)
+    remaining = np.ones(n, dtype=bool)
+    idx = np.arange(n)
+
+    def _closest(to):
+        d = np.einsum("ij,ij->i", pts - to, pts - to)  # squared distance, no sqrt
+        d[~remaining] = np.inf
+        return int(idx[np.argmin(d)])  # argmin already breaks ties to lower index
+
+    here = 0 if start is None else _closest(np.asarray(start, dtype=np.float64))
+    remaining[here] = False
     order = [here]
-    remaining.discard(here)
-    while remaining:
-        cur = points[here]
-        here = min(remaining, key=lambda i: (math.dist(points[i], cur), i))
+    while remaining.any():
+        here = _closest(pts[here])
+        remaining[here] = False
         order.append(here)
-        remaining.discard(here)
     return order

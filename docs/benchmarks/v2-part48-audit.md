@@ -104,6 +104,30 @@ work, which is exactly where trims cost real money.
 behaviour change, not a refactor, so byte-identity was never the goal — the gates that
 matter here are coverage and the visual baselines, and both held.
 
+## 4a. A denial-of-service I introduced and had to bound
+
+The ordering shipped without a size limit, and the full suite then **hung** on
+`test_swarm_qa_fuzz_large.py::test_random_noise_palette_stress`. Nearest-neighbour is
+O(n²) and its input is contours **before** the speck filter, so a pathological image sets
+n far above anything a design reaches:
+
+| input | contours in the busiest colour |
+|---|---:|
+| reference panel | **251** |
+| 900×900 random noise | **70,516** |
+
+70,516² in Python is hours. That is not a slow test — it is a request the public API accepts
+and never returns from, and the fuzz suite exists to catch exactly this shape.
+
+Bounded at `NN_MAX_REGIONS = 2000`, which is 8× above the real worst case and 35× below the
+noise one, with a raster-order fallback above it — that being the order that shipped before
+this part, so nothing gets worse than the status quo. The inner loop is also vectorised;
+2000 points order in 0.09 s. Four tests pin the bound, the fallback, and the cost.
+
+Worth recording plainly: the targeted tests, the stream locks, the visual baselines, the
+100-design corpus and the frontend all passed before this surfaced. The full suite is what
+caught it, and it caught it only because a fuzz test already existed for the case.
+
 ## 5. On the cited economics
 
 At 2.5 s per trim, 181 fewer trims is about **7.5 minutes** of machine time per run of that
@@ -111,7 +135,7 @@ panel, not the 35 minutes the brief attributed to the whole 844 — that figure 
 of *all* trims, most of which are still needed because the regions are genuinely apart.
 The travel saving is on top: 17.9 m less needle movement.
 
-## 6. Tests — `tests/test_part48_trim_routing.py` (11)
+## 6. Tests — `tests/test_part48_trim_routing.py` (15)
 
 - `_nearest_neighbour_order`: near-before-far, honours a start point, deterministic under
   ties, returns a permutation, handles empty/1/2-point inputs;
@@ -119,7 +143,20 @@ The travel saving is on top: 17.9 m less needle movement.
 - no trim is ever emitted across a gap under the gate;
 - **the regions themselves are untouched** — object count, colour stops and stitch count
   hold against a raster-order control;
-- the gate stays in the conservative band, with the reason recorded.
+- the gate stays in the conservative band, with the reason recorded;
+- the ordering falls back past `NN_MAX_REGIONS`, still orders at it, leaves real
+  designs well inside it, and costs under 3 s at a full cap.
+
+## 6a. Verification
+
+| Gate | Before | After |
+|---|---|---|
+| Backend suite | 834 passed, 2 xfailed | **849 passed, 2 xfailed** |
+| Frontend tests | 131 passed | **131 passed** |
+| `ruff check app` | 12 | **12** |
+| Visual baselines | 10/10 | **10/10**, worst SSIM 0.998768 |
+| Stitch stream locks | 4 pass | **4 pass**, three re-pinned deliberately |
+| Corpus (100 designs) | 0 errors | **0 errors**, interior median 98.60 -> 98.70 |
 
 ## 7. What was not done
 

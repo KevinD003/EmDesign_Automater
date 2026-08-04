@@ -35,6 +35,7 @@ from app.services.digitizer import (
     _nearest_neighbour_order,
     digitize_image,
 )
+from app.services.digitizer.routing import NN_MAX_REGIONS
 
 RNG_SEED = 20260728
 
@@ -160,3 +161,37 @@ def test_the_gate_is_conservative_on_purpose():
     none. Tuning the default to hit a target number would be the wrong reason.
     """
     assert 3.0 <= TRIM_MIN_GAP_MM <= 8.0
+
+
+class TestTheOrderingIsBounded:
+    """Nearest-neighbour is O(n^2), and its input is contours BEFORE the speck filter.
+
+    When the ordering first went in it had no bound, and the fuzz suite's
+    `test_random_noise_palette_stress` went from a pass to a hang: a 900x900
+    random-noise image puts 70,516 contours in one colour, against 251 in the
+    reference panel's busiest. That is a denial-of-service shape reachable from
+    the public API, not a slow test, and it is exactly what a fuzz suite is for.
+    """
+
+    def test_it_falls_back_to_raster_order_past_the_cap(self):
+        pts = [(float(i % 97), float(i // 97)) for i in range(NN_MAX_REGIONS + 1)]
+        assert _nearest_neighbour_order(pts) == list(range(len(pts)))
+
+    def test_it_still_orders_at_the_cap(self):
+        pts = [(float(i % 97), float(i // 97)) for i in range(NN_MAX_REGIONS)]
+        order = _nearest_neighbour_order(pts)
+        assert sorted(order) == list(range(NN_MAX_REGIONS))
+        assert order != list(range(NN_MAX_REGIONS)), "raster order at the cap, not ordered"
+
+    def test_the_cap_leaves_real_designs_untouched(self):
+        """251 is the busiest colour measured on the reference panel."""
+        assert NN_MAX_REGIONS >= 251 * 4
+
+    def test_ordering_a_full_cap_of_points_is_fast(self):
+        """The bound only helps if the work under it is cheap. Measured ~0.09s."""
+        import time
+
+        pts = [(float(i % 97), float(i // 97)) for i in range(NN_MAX_REGIONS)]
+        t = time.perf_counter()
+        _nearest_neighbour_order(pts)
+        assert time.perf_counter() - t < 3.0
