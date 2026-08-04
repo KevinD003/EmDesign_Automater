@@ -151,6 +151,7 @@ asserts that shape directly rather than a wall-clock number alone.
 
 | Gate | Result |
 |---|---|
+| Backend suite | ✅ **868 passed, 2 xfailed** (854 + 14) |
 | Self-tests on stripes **and** a nontrivial field | ✅ 1.71–1.88° on radial and rings |
 | Ranks ≥2 candidates on the same artwork | ✅ three candidates, 9/10 fixtures to solved |
 | Qualified-subset reporting preserved | ✅ plus `committed_share` |

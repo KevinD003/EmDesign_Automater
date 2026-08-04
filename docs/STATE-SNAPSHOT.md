@@ -1,6 +1,6 @@
 # STITCHIQ — current state, for the reviewer
 
-**Generated at commit `df07d49`+, STATUS v88, latest part 50.** Paste this alongside any
+**Generated at commit `78cf6a4`, STATUS v88, latest part 50.** Paste this alongside any
 audit. It exists because four of the last five review briefs were built on state that had
 moved: the fix proposed was already shipped, or the number quoted came from an old run.
 
@@ -38,7 +38,7 @@ Checked by running the code, not by reading it. Each was proposed as missing:
 
 | | value | measured at |
 |---|---|---|
-| Backend tests | **854 passed, 2 xfailed** | Part 49 |
+| Backend tests | **868 passed, 2 xfailed** | Part 50 |
 | Frontend tests | 131 passed, `tsc` clean | Part 48 |
 | `ruff check app` | 12 (the standing baseline) | Part 49 |
 | Stitch-stream locks | **4** fixtures, sha256 of the whole stream | — |
