@@ -1,6 +1,6 @@
 # STITCHIQ — current state, for the reviewer
 
-**Generated at commit `340bf48`+, STATUS v87, latest part 49.** Paste this alongside any
+**Generated at commit `8bcf218`, STATUS v87, latest part 49.** Paste this alongside any
 audit. It exists because four of the last five review briefs were built on state that had
 moved: the fix proposed was already shipped, or the number quoted came from an old run.
 
@@ -69,6 +69,20 @@ behind 9 real behaviours).
    Part 46 showed it will **not** move the direction number.
 4. Cross-colour trim ordering, payments, batch digitizing, i18n, collaboration — see
    `EVALUATION-50-problems-verified.md` for the full open list.
+
+## A standing hazard, twice hit
+
+Part 48's brief said: *"do not introduce a routing-time blowup like Part 48's unbounded
+nearest-neighbour pass; bound any grouping algorithm on pathological inputs."* Fair warning,
+and Part 49 hit the same class anyway in a different form — a per-region full-image
+operation rather than an unbounded loop.
+
+The shape, now written down: **the contour loop runs once per region *before* the speck
+filter**, so anything added inside it is multiplied by the *noise* count, not the design
+count. The reference panel puts 251 contours in its busiest colour; a 900x900 random-noise
+image puts 70,516. Both regressions were invisible to the targeted tests, the stream locks,
+the visual baselines and ruff, and both were caught only by the fuzz suite — the second one
+28 minutes into a full run. Cost tests now sit in the fast files.
 
 ## What would make a brief most useful
 
