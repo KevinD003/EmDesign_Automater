@@ -210,6 +210,15 @@ from app.services.digitizer.skeleton import (
     _thin_terms,
     _zhang_suen_thin,
 )
+from app.services.digitizer.staging import (
+    ClusterPlan,
+    DigitizePlan,
+    FieldArtifact,
+    RegionPlan,
+    add_to_seed,
+    last_field_artifact,
+    remember,
+)
 from app.services.digitizer.underlay import (
     _axis_underlay,
     _center_walk,
@@ -335,6 +344,10 @@ __all__ = [
     "_MIN_WORK_PX",
     "_STAGGER_END_GUARD",
     "_UPSCALE_MIN_SRC_PX",
+    "ClusterPlan",
+    "DigitizePlan",
+    "FieldArtifact",
+    "RegionPlan",
     "_absorb_specks",
     "_arc_at",
     "_assign_boundary",
@@ -422,8 +435,11 @@ __all__ = [
     "_with_underlay",
     "_zhang_suen_thin",
     "_zigzag_underlay",
+    "add_to_seed",
     "digitize_image",
     "last_classification_log",
+    "last_field_artifact",
     "rebuild_design",
+    "remember",
     "set_penetration_floor",
 ]

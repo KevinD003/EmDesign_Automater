@@ -22,8 +22,8 @@ from app.models.design import (
     StitchType,
     UnderlayType,
 )
-from app.services import segmentation
-from app.services.digitizer import constants
+from app.services import direction_field, segmentation
+from app.services.digitizer import constants, staging
 from app.services.digitizer.constants import (
     _CLASSIFICATION_LOG,
     _DROP_LOG,
@@ -340,6 +340,18 @@ def digitize_image(
                     deferred_items[-1][2][:] |= comp
     work = [("main", ci_, c_, None) for _, ci_, c_ in clusters]
     work += [("detail", ci_, c_, comp) for ci_, c_, comp in deferred_items]
+
+    # ── PASS A — collect every region before sewing any of them (v2 Part 52) ──
+    # This loop decides WHICH regions exist; the loop after it decides how each
+    # one is sewn. The split is not tidiness: the union of the design's object
+    # contours is the seed that scored 32.34 deg in Part 51 against 38.84 for the
+    # foreground silhouette, and in a single loop that union does not exist until
+    # every object has already been sewn — so no generator could ever be handed
+    # it. Nothing here emits a stitch, opens a colour stop or writes to either
+    # diagnostic log; all of that stays in pass B, in its original order, so the
+    # streams and the logs are byte-identical to before the split.
+    plan = staging.DigitizePlan()
+    seed_mask = np.zeros((ih, iw), np.uint8)
     for phase, cluster_idx, center, comp_mask in work:
         if phase == "main":
             mask = ((labels == cluster_idx) & ~deferred_mask).astype(np.uint8) * 255
@@ -445,27 +457,20 @@ def digitize_image(
         # (letter counters, donuts). RETR_EXTERNAL would fill an 'o' solid.
         contours, hierarchy = cv2.findContours(mask, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
         hier = hierarchy[0] if hierarchy is not None else []
-        b, g, r = (int(v) for v in center)
-        hexcol = f"#{r:02x}{g:02x}{b:02x}"
 
-        this_stop = None  # opened lazily when this cluster's first real object appears
-        stop_start = 0
-        # Sew this colour's regions in proximity order, not raster order (v2 Part
-        # 48). `findContours` returns them bottom-up in scan order, so the needle
-        # crossed the design between neighbours: measured on the panel, 29.36 m of
-        # inter-object travel and a 30.03 mm median gap. Objects inside one colour
-        # stop can be sewn in any order without adding a colour change, so this
-        # costs nothing and is the only lever that matters — only 2.6% of trims
-        # spanned under 3 mm, so converting short jumps would have touched 22 of
-        # 844. Geometry is untouched; only the order and the joins between change.
+        # Raster order here, on purpose. The proximity ordering that actually
+        # drives sewing needs to know where the previous object's last stitch
+        # landed, which is generation state — so it stays in pass B and this pass
+        # only establishes WHICH regions exist, never in what order they are sewn.
         tops = [i for i in range(len(contours)) if not (len(hier) and hier[i][3] != -1)]
         _cents = []
         for i in tops:
             m_ = cv2.moments(contours[i])
             _cents.append((m_["m10"] / m_["m00"], m_["m01"] / m_["m00"]) if m_["m00"] > 0
                           else tuple(contours[i][0][0].astype(float)))
-        _from = (stitches[-1].x / mm_per_px, stitches[-1].y / mm_per_px) if stitches else None
-        tops = [tops[k] for k in _nearest_neighbour_order(_cents, _from)]
+
+        cplan = staging.ClusterPlan(phase=phase, cluster_idx=cluster_idx, center=center,
+                                    mask=mask, tops=tops, centroids=_cents, regions=[])
         for ci in tops:
             contour = contours[ci]
             hole_contours = []
@@ -489,6 +494,69 @@ def digitize_image(
                 cv2.drawContours(probe, hole_contours, -1, 0, thickness=cv2.FILLED)
             net_area = float(cv2.countNonZero(probe))
             if net_area < min_area_px:
+                # Recorded, not logged. The drop log is written in pass B so its
+                # entries keep their original order and the `seq` they are
+                # numbered against; a speck decided here would otherwise land in
+                # the log before any object had been sewn.
+                cplan.regions.append(staging.RegionPlan(
+                    top_index=ci, net_area_px=net_area, raw_contour=contour, dropped=True))
+                continue
+            cv2.drawContours(emitted_mask, [contour], -1, 255, thickness=cv2.FILLED)
+            # Smooth the pixel staircase before it becomes stitches. Done here so
+            # the stored contour (which drives rebuild) is smooth too, not just
+            # this run's fill.
+            smoothed = _smooth_contour(contour, mm_per_px)
+            smoothed_holes = [_smooth_contour(h, mm_per_px) for h in hole_contours]
+            # The seed, built from the region's own outline — the 32.34 deg seed
+            # class, not the 38.84 deg foreground silhouette. Bounding-box work;
+            # see `staging.add_to_seed` for why it must not be full-frame.
+            staging.add_to_seed(seed_mask, smoothed, smoothed_holes)
+            cplan.regions.append(staging.RegionPlan(
+                top_index=ci, net_area_px=net_area, raw_contour=contour, dropped=False,
+                contour=smoothed, holes=smoothed_holes))
+        plan.clusters.append(cplan)
+
+    # The field, solved ONCE for the design from the union of every object's own
+    # outline. Part 51 measured the alternatives on the same panel: per colour
+    # cluster 35.31 deg, foreground silhouette 38.84, this seed 32.34. Solving is
+    # bounded by resolution rather than by contour count (Part 50 §6), so a
+    # pathological input costs the same as a real one.
+    plan.seed_mask = seed_mask
+    plan.substrate_px = substrate_px
+    plan.field = direction_field.solve(seed_mask) if cv2.countNonZero(seed_mask) else None
+    staging.remember(plan)
+
+    # ── PASS B — sew what pass A decided ─────────────────────────────────────
+    # Nothing consumes `plan.field` yet, deliberately: Part 51 showed a straight
+    # fill row can only take the field's regional mean and loses 45% of its value
+    # doing so, and whether tatami or satin should consume it first is a
+    # measurement, not a guess. This part makes the right field available; it does
+    # not spend it. Stitch output is therefore unchanged.
+    for cplan in plan.clusters:
+        phase, cluster_idx, center = cplan.phase, cplan.cluster_idx, cplan.center
+        mask = cplan.mask
+        b, g, r = (int(v) for v in center)
+        hexcol = f"#{r:02x}{g:02x}{b:02x}"
+        this_stop = None  # opened lazily when this cluster's first real object appears
+        stop_start = 0
+        by_top = {rp.top_index: rp for rp in cplan.regions}
+        # Sew this colour's regions in proximity order, not raster order (v2 Part
+        # 48). `findContours` returns them bottom-up in scan order, so the needle
+        # crossed the design between neighbours: measured on the panel, 29.36 m of
+        # inter-object travel and a 30.03 mm median gap. Objects inside one colour
+        # stop can be sewn in any order without adding a colour change, so this
+        # costs nothing and is the only lever that matters — only 2.6% of trims
+        # spanned under 3 mm, so converting short jumps would have touched 22 of
+        # 844. Geometry is untouched; only the order and the joins between change.
+        #
+        # This stays in pass B because `_from` is where the LAST STITCH landed,
+        # which does not exist until sewing has started.
+        _from = (stitches[-1].x / mm_per_px, stitches[-1].y / mm_per_px) if stitches else None
+        for ci in (cplan.tops[k] for k in _nearest_neighbour_order(cplan.centroids, _from)):
+            rp = by_top.get(ci)
+            if rp is None:
+                continue
+            if rp.dropped:
                 dropped_speck_count += 1
                 # Area, perimeter, and WHERE (v2 Part 49). The centroid was not
                 # recorded before, so the only questions the log could answer were
@@ -498,32 +566,28 @@ def digitize_image(
                 # equivalent: the morphological open above removes single-pixel
                 # noise, so a naive re-derivation on the raw cluster mask counts
                 # 25,822 regions where the pipeline drops 768.
-                # From the CONTOUR, not the filled probe. The first version took
-                # moments over `probe`, which is a full-size image, once per
-                # dropped region — fine on a design with a few hundred specks and
-                # catastrophic on noise, where one colour holds tens of thousands.
-                # The fuzz suite caught it: a 1500x1500 noise post went from ~16 s
-                # to over ten minutes. Contour moments are O(points on the
-                # outline), which for a speck is a handful.
-                _dm = cv2.moments(contour)
+                # From the CONTOUR, not a filled probe. The first version took
+                # moments over a full-size image once per dropped region — fine on
+                # a design with a few hundred specks and catastrophic on noise,
+                # where one colour holds tens of thousands. The fuzz suite caught
+                # it: a 1500x1500 noise post went from ~16 s to over ten minutes.
+                # Contour moments are O(points on the outline).
+                _dm = cv2.moments(rp.raw_contour)
                 if _dm["m00"]:
                     _dcx = _dm["m10"] / _dm["m00"] * mm_per_px
                     _dcy = _dm["m01"] / _dm["m00"] * mm_per_px
                 else:
                     # Degenerate outline (collinear points) has zero area moment.
-                    _pts = contour.reshape(-1, 2)
+                    _pts = rp.raw_contour.reshape(-1, 2)
                     _dcx = float(_pts[:, 0].mean()) * mm_per_px
                     _dcy = float(_pts[:, 1].mean()) * mm_per_px
-                _DROP_LOG.append((float(net_area * mm_per_px * mm_per_px),
-                                  float(cv2.arcLength(contour, True) * mm_per_px),
+                _DROP_LOG.append((float(rp.net_area_px * mm_per_px * mm_per_px),
+                                  float(cv2.arcLength(rp.raw_contour, True) * mm_per_px),
                                   float(_dcx), float(_dcy)))
                 continue
-            cv2.drawContours(emitted_mask, [contour], -1, 255, thickness=cv2.FILLED)
-            # Smooth the pixel staircase before it becomes stitches. Done here so
-            # the stored contour (which drives rebuild) is smooth too, not just
-            # this run's fill.
-            contour = _smooth_contour(contour, mm_per_px)
-            hole_contours = [_smooth_contour(h, mm_per_px) for h in hole_contours]
+            net_area = rp.net_area_px
+            contour = rp.contour
+            hole_contours = list(rp.holes)
             region = np.zeros_like(mask)
             cv2.drawContours(region, [contour], -1, 255, thickness=cv2.FILLED)
             for h in hole_contours:

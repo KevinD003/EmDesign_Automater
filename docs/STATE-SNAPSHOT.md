@@ -1,6 +1,6 @@
 # STITCHIQ — current state, for the reviewer
 
-**Generated at STATUS v89, latest part 51.** Paste this alongside any
+**Generated at STATUS v90, latest part 52.** Paste this alongside any
 audit. It exists because four of the last five review briefs were built on state that had
 moved: the fix proposed was already shipped, or the number quoted came from an old run.
 
@@ -14,7 +14,7 @@ moved: the fix proposed was already shipped, or the number quoted came from an o
 | R002 | Phantom `StitchType` members | **Done, Part 43** — 23 members → **10**, catch-all `else` removed |
 | R003 | Visual-regression harness | **Done, Part 44** — SSIM 0.995 gate, 10 committed baselines, in `pytest` |
 | R011 | Fixture 02 wordmark lost in Part 41 | **Done, Part 45** |
-| R004 | Stitch direction (49.9°) | **Part 46 investigation; D0+D1 Part 50; D2 measured and REVERTED Part 51.** A straight fill row cannot consume a field — see below. **D3 (satin) next, after a two-pass restructure** |
+| R004 | Stitch direction (49.9°) | **Part 46 investigation; D0+D1 Part 50; D2 reverted Part 51; two-pass prerequisite DONE Part 52.** The validated seed is now available to any generator. **But the headroom is smaller than Part 51 said — measure before building a consumer** |
 | R007 | Zero-stitch corpus designs | **Done, Part 47** — premise was wrong; the real fix was 422-instead-of-200 |
 | R006 | Trim count | **Done, Part 48** — corpus-wide 33,969 → 27,927 |
 | R005 | Fragmentation | Open. **Part 46 proved it will not fix the direction number** |
@@ -38,9 +38,9 @@ Checked by running the code, not by reading it. Each was proposed as missing:
 
 | | value | measured at |
 |---|---|---|
-| Backend tests | **874 passed, 2 xfailed** | Part 51 |
+| Backend tests | **883 passed, 2 xfailed** | Part 52 |
 | Frontend tests | 131 passed, `tsc` clean | Part 48 |
-| `ruff check app` | 12 (the standing baseline) | Part 51 |
+| `ruff check app` | 12 (the standing baseline) | Part 52 |
 | Stitch-stream locks | **4** fixtures, sha256 of the whole stream | — |
 | Visual baselines | 10, gate SSIM ≥ 0.995 | Part 44 |
 | Corpus | 100 designs, **0 errors**, **7** zero-stitch, interior median **98.70** | Part 48 |
@@ -61,32 +61,54 @@ behind 9 real behaviours).
 
    Three findings decide what happens next, all measured on the panel:
 
-   - **A straight row cannot use a field.** On tatami territory the field is worth
-     **7.75°** per pixel (40.09 → 32.34). Collapsing it to the one angle a scanline fill
-     accepts captures **4.26°**, or **55%**. The rest is unreachable by any threshold —
-     over a ring the field runs all the way round and its doubled-angle mean cancels to
-     zero, so no single angle is even approximately right.
-   - **The seed mask is most of the field's quality.** Solved on the union of object
-     contours: **32.34**. On each colour cluster: **35.31**. On the segmentation
-     foreground silhouette: **38.84**. My first D2 used the last one and produced a change
-     that a **constant 90° beat** (37.05 vs 38.32). That was my defect, not the field's.
+   - **A straight row cannot use a field.** Collapsing the field to the one angle a
+     scanline fill accepts captures only about **55%** of what it is worth per pixel;
+     the rest is unreachable by any threshold, because over a ring the field runs all
+     the way round and its doubled-angle mean cancels to zero, so no single angle is
+     even approximately right. *(The 7.75° figure Part 51 gave for the size of that
+     prize came from the mixed-frame comparison — see the corrected table below.)*
+   - **The seed mask decides much of the field's quality**, though less than Part 51
+     said. Under one registration (Part 52): union of object contours **36.49**, per
+     colour cluster **37.67**, foreground silhouette **38.84** — a **2.35°** spread, not
+     the 6.50° Part 51 reported from mixed frames. My first D2 used the silhouette and
+     produced a change that a **constant 90° beat** (37.05 vs 38.32). That was my defect,
+     not the field's. *(Part 51's 32.34 / 35.31 / 38.84 are superseded; only the
+     silhouette figure came from the pipeline's frame and it is unchanged.)*
    - **The bar cannot resolve a tatami-only change.** Tatami is **9.3%** of the panel's
      area. Field, constant and random all land within **0.7°** on the whole-panel number.
      Please do not gate a tatami change on the panel headline again — I did, and it passed.
 
-   **The blocker is architectural, not a threshold.** The winning seed does not exist at
-   any point where a fill is generated: object contours are produced inside the cluster
-   loop, after the field would have to be solved. The seed that *is* available (per
-   cluster) measures worse collapsed (38.94) than the one it would replace. Consuming the
-   validated field needs `digitize_image` split into two passes — build all region masks,
-   solve, then generate. That is the next thing to build and it is a prerequisite.
+   **The architectural blocker is gone (Part 52).** `digitize_image` is now two
+   passes — collect every region, solve the field once from the union of their
+   outlines, then sew — with stitch output byte-identical (4 stream locks, 10
+   visual baselines, 56,505 panel stitches before and after). A real run confirms
+   the pipeline hands downstream the best of the three seeds.
 
-   **D3 is satin, and the reason is stronger than area.** Satin is **93.7%** of the panel
-   against tatami's 9.3%, carries the same headroom (37.90 → **33.49** per pixel), and a
-   satin column already varies its angle along its length — so it consumes a field with no
-   regional collapse. Curved tatami rows are the other half and need their own scoping.
+   **Part 52 also corrected a number of mine that was wrong.** Part 51 reported a
+   6.50° spread between seed classes. It had compared seeds across two coordinate
+   frames — one rasterised by stretching the design's mm extents to fill the
+   source frame, the other taken from the pipeline's working frame — and the
+   design's bbox fills only 98.9%×99.2%, so ~17% of boundary pixels moved. Under
+   **one** registration the spread is **2.35°**. The ranking and Part 51's revert
+   of D2 both stand; the magnitude did not.
 
-   Reproduce any of it: `scripts/measure_field_consumption.py`.
+   **Which makes the next step measurement, not construction.** Corrected
+   per-pixel headroom against the angles assigned today:
+
+   | territory | today | union-seed field | headroom |
+   |---|---:|---:|---:|
+   | tatami (9.3% of area) | 40.09 | 36.49 | 3.60° |
+   | satin (93.7% of area) | 37.90 | 37.75 | **0.15°** |
+
+   Satin was the obvious next consumer on Part 51's uncorrected table and is no
+   longer obviously worth anything. **Do not commission a satin or tatami
+   consumer on this evidence.** Two things could still change it and neither needs
+   a generator written: the ceiling was computed from a field diffused at 384 px,
+   and satin columns already vary their angle along their length, so an aggregate
+   may be hiding where the gain actually sits. Ask for that measurement.
+
+   Reproduce any of it: `scripts/measure_field_consumption.py` and
+   `scripts/measure_two_pass_seed.py`.
 2. **R008 — bead-chain ornament.** Still real content loss, but **re-scoped by Part 49**.
    Grouping the dropped specks does not work: coverage rises smoothly 3.5% → 67% as the
    rules loosen, with no knee, and the longest run found is 10 beads. The cause is that

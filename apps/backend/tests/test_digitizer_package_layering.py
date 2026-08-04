@@ -34,6 +34,7 @@ LAYERS = [
     "underlay",
     "routing",
     "planning",
+    "staging",
     "pipeline",
 ]
 RANK = {name: i for i, name in enumerate(LAYERS)}
