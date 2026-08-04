@@ -490,8 +490,20 @@ def digitize_image(
             net_area = float(cv2.countNonZero(probe))
             if net_area < min_area_px:
                 dropped_speck_count += 1
+                # Area, perimeter, and WHERE (v2 Part 49). The centroid was not
+                # recorded before, so the only questions the log could answer were
+                # "how much was dropped" and "how big" — never "was it structured".
+                # Recovering an ornament that is filtered one bead at a time needs
+                # the positions, and re-deriving them outside the pipeline is not
+                # equivalent: the morphological open above removes single-pixel
+                # noise, so a naive re-derivation on the raw cluster mask counts
+                # 25,822 regions where the pipeline drops 768.
+                _dm = cv2.moments(probe, binaryImage=True)
+                _dcx = (_dm["m10"] / _dm["m00"] * mm_per_px) if _dm["m00"] else 0.0
+                _dcy = (_dm["m01"] / _dm["m00"] * mm_per_px) if _dm["m00"] else 0.0
                 _DROP_LOG.append((float(net_area * mm_per_px * mm_per_px),
-                                  float(cv2.arcLength(contour, True) * mm_per_px)))
+                                  float(cv2.arcLength(contour, True) * mm_per_px),
+                                  float(_dcx), float(_dcy)))
                 continue
             cv2.drawContours(emitted_mask, [contour], -1, 255, thickness=cv2.FILLED)
             # Smooth the pixel staircase before it becomes stitches. Done here so

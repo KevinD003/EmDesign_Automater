@@ -1,6 +1,6 @@
 # STITCHIQ — current state, for the reviewer
 
-**Generated at commit `56e0c0d`, STATUS v86, latest part 48.** Paste this alongside any
+**Generated at commit `340bf48`+, STATUS v87, latest part 49.** Paste this alongside any
 audit. It exists because four of the last five review briefs were built on state that had
 moved: the fix proposed was already shipped, or the number quoted came from an old run.
 
@@ -18,7 +18,7 @@ moved: the fix proposed was already shipped, or the number quoted came from an o
 | R007 | Zero-stitch corpus designs | **Done, Part 47** — premise was wrong; the real fix was 422-instead-of-200 |
 | R006 | Trim count | **Done, Part 48** — corpus-wide 33,969 → 27,927 |
 | R005 | Fragmentation | Open. **Part 46 proved it will not fix the direction number** |
-| R008 | Bead-chain ornament | Open, measured not started. The only open content-loss item |
+| R008 | Bead-chain ornament | **Re-scoped, Part 49.** Measured and stopped: the dropped specks do not separate from noise (no knee in the sweep, longest run 10 beads). Needs motif-along-a-path detection at the mask stage — comparable in size to the direction field |
 
 ## Things already built that briefs have proposed building
 
@@ -38,9 +38,9 @@ Checked by running the code, not by reading it. Each was proposed as missing:
 
 | | value | measured at |
 |---|---|---|
-| Backend tests | 849 passed, 2 xfailed | Part 48 |
+| Backend tests | 849 passed, 2 xfailed (Part 48); Part 49 adds 4, full run pending | Part 48 |
 | Frontend tests | 131 passed, `tsc` clean | Part 48 |
-| `ruff check app` | 12 (the standing baseline) | Part 48 |
+| `ruff check app` | 12 (the standing baseline) | Part 49 |
 | Stitch-stream locks | **4** fixtures, sha256 of the whole stream | — |
 | Visual baselines | 10, gate SSIM ≥ 0.995 | Part 44 |
 | Corpus | 100 designs, **0 errors**, **7** zero-stitch, interior median **98.70** | Part 48 |
@@ -58,10 +58,13 @@ behind 9 real behaviours).
    Part 46 ruled out four explanations for the 49.9° (convention bug, fragmentation,
    satin-specific, misregistration) and showed per-region PCA is at its ceiling. Scope is
    in `docs/PROMPT-direction-field.md`. Multi-part.
-2. **R008 — bead-chain ornament.** Content loss. 768 specks dropped on the panel, median
-   0.896 mm² against a 2.0 mm² floor, 766 of 768 round. Not a floor-tuning fix: Part 36
-   measured that lowering the floor to 1.0 adds objects without recovering detail. Needs a
-   generator that recognises a repeating *row*.
+2. **R008 — bead-chain ornament.** Still real content loss, but **re-scoped by Part 49**.
+   Grouping the dropped specks does not work: coverage rises smoothly 3.5% → 67% as the
+   rules loosen, with no knee, and the longest run found is 10 beads. The cause is that
+   529 of 771 objects are already ≤8 mm², so "small round region" describes flower centres
+   and leaf dots too — and beads under ~4 px never reach the drop log at all. Recovery needs
+   motif-along-a-path detection at the mask stage, before colour clustering cuts regions
+   apart. Comparable in size to the direction field.
 3. **R005 — fragmentation**, median 19 stitches/object. Worth doing on its own merits;
    Part 46 showed it will **not** move the direction number.
 4. Cross-colour trim ordering, payments, batch digitizing, i18n, collaboration — see
