@@ -1,6 +1,6 @@
 # STITCHIQ — current state, for the reviewer
 
-**Generated at STATUS v90, latest part 52.** Paste this alongside any
+**Generated at STATUS v91, latest part 53.** Paste this alongside any
 audit. It exists because four of the last five review briefs were built on state that had
 moved: the fix proposed was already shipped, or the number quoted came from an old run.
 
@@ -14,7 +14,7 @@ moved: the fix proposed was already shipped, or the number quoted came from an o
 | R002 | Phantom `StitchType` members | **Done, Part 43** — 23 members → **10**, catch-all `else` removed |
 | R003 | Visual-regression harness | **Done, Part 44** — SSIM 0.995 gate, 10 committed baselines, in `pytest` |
 | R011 | Fixture 02 wordmark lost in Part 41 | **Done, Part 45** |
-| R004 | Stitch direction (49.9°) | **Part 46 investigation; D0+D1 Part 50; D2 reverted Part 51; two-pass prerequisite DONE Part 52.** The validated seed is now available to any generator. **But the headroom is smaller than Part 51 said — measure before building a consumer** |
+| R004 | Stitch direction | **BLOCKED ON THE REFERENCE, Part 53.** Architecture done (Part 52). But the sew-out photo cannot resolve thread on structures under ~2 mm, which is 77% of the design, so it scores correct satin as wrong and rewards contour-parallel answers. **Needs a macro sew-out at ~0.05 mm/px before any consumer work** |
 | R007 | Zero-stitch corpus designs | **Done, Part 47** — premise was wrong; the real fix was 422-instead-of-200 |
 | R006 | Trim count | **Done, Part 48** — corpus-wide 33,969 → 27,927 |
 | R005 | Fragmentation | Open. **Part 46 proved it will not fix the direction number** |
@@ -38,14 +38,14 @@ Checked by running the code, not by reading it. Each was proposed as missing:
 
 | | value | measured at |
 |---|---|---|
-| Backend tests | **883 passed, 2 xfailed** | Part 52 |
+| Backend tests | **888 passed, 2 xfailed** | Part 53 |
 | Frontend tests | 131 passed, `tsc` clean | Part 48 |
-| `ruff check app` | 12 (the standing baseline) | Part 52 |
+| `ruff check app` | 12 (the standing baseline) | Part 53 |
 | Stitch-stream locks | **4** fixtures, sha256 of the whole stream | — |
 | Visual baselines | 10, gate SSIM ≥ 0.995 | Part 44 |
 | Corpus | 100 designs, **0 errors**, **7** zero-stitch, interior median **98.70** | Part 48 |
 | Reference panel | 663 trims, 18.26 m jump travel | Part 48 |
-| Direction error | **49.9°** mean vs a real sew-out (45° = coin flip) | Part 46, unchanged |
+| Direction error | **49.9°** — but see Part 53: partly an instrument artifact | Part 46 |
 | `digitize_image` | 822 lines inside `pipeline.py` (1,131) | Part 42 |
 
 Two figures that circulated and are **wrong**: "9 zero-stitch designs" (it is 7, and one of
@@ -54,61 +54,53 @@ behind 9 real behaviours).
 
 ## What is genuinely open
 
-1. **R004 — the direction field. D2 was built, measured and reverted (Part 51).**
-   Part 46 ruled out four explanations for the 49.9°. Part 50 built the instrument and a
-   contour-parallel field scoring **33.91°** against the current **38.27°** on the
-   photographed sew-out. **Part 51 wired it into tatami fills and took it back out.**
+1. **R004 — the direction field. BLOCKED ON THE REFERENCE (Part 53).**
 
-   Three findings decide what happens next, all measured on the panel:
+   **Read this before commissioning anything on R004.** The photographed sew-out
+   every number since Part 38 is scored against **cannot see thread on a structure
+   narrower than its own window**. On such a column the strongest gradients are the
+   column's two edges, so the structure tensor reports the **column's axis** —
+   perpendicular to the thread actually there. A correctly sewn satin column is
+   scored ~90° wrong, and a contour-parallel field is scored right by construction.
 
-   - **A straight row cannot use a field.** Collapsing the field to the one angle a
-     scanline fill accepts captures only about **55%** of what it is worth per pixel;
-     the rest is unreachable by any threshold, because over a ring the field runs all
-     the way round and its doubled-angle mean cancels to zero, so no single angle is
-     even approximately right. *(The 7.75° figure Part 51 gave for the size of that
-     prize came from the mixed-frame comparison — see the corrected table below.)*
-   - **The seed mask decides much of the field's quality**, though less than Part 51
-     said. Under one registration (Part 52): union of object contours **36.49**, per
-     colour cluster **37.67**, foreground silhouette **38.84** — a **2.35°** spread, not
-     the 6.50° Part 51 reported from mixed frames. My first D2 used the silhouette and
-     produced a change that a **constant 90° beat** (37.05 vs 38.32). That was my defect,
-     not the field's. *(Part 51's 32.34 / 35.31 / 38.84 are superseded; only the
-     silhouette figure came from the pipeline's frame and it is unchanged.)*
-   - **The bar cannot resolve a tatami-only change.** Tatami is **9.3%** of the panel's
-     area. Field, constant and random all land within **0.7°** on the whole-panel number.
-     Please do not gate a tatami change on the panel headline again — I did, and it passed.
+   Measured, not inferred. Which does the reference agree with?
 
-   **The architectural blocker is gone (Part 52).** `digitize_image` is now two
-   passes — collect every region, solve the field once from the union of their
-   outlines, then sew — with stitch output byte-identical (4 stream locks, 10
-   visual baselines, 56,505 panel stitches before and after). A real run confirms
-   the pipeline hands downstream the best of the three seeds.
+   | satin column width | px | vs SEWN | vs AXIS | it reads |
+   |---|---:|---:|---:|---|
+   | 0–1 mm | 2.7 | 47.36 | **42.64** | edges |
+   | 1–2 mm | 8.1 | 50.18 | **39.82** | edges |
+   | 2–3 mm | 13.4 | **42.40** | 47.60 | thread |
+   | 3–4 mm | 18.8 | **41.76** | 48.24 | thread |
 
-   **Part 52 also corrected a number of mine that was wrong.** Part 51 reported a
-   6.50° spread between seed classes. It had compared seeds across two coordinate
-   frames — one rasterised by stretching the design's mm extents to fill the
-   source frame, the other taken from the pipeline's working frame — and the
-   design's bbox fills only 98.9%×99.2%, so ~17% of boundary pixels moved. Under
-   **one** registration the spread is **2.35°**. The ranking and Part 51's revert
-   of D2 both stand; the magnitude did not.
+   The crossover holds at windows 5, 9, 15 and 21, so it is width, not tuning. At
+   **0.186 mm/px** a 1.5 mm column is 8 px and satin's thread pitch is 2.1 px — at
+   the sampling limit. **77% of satin segments sit below the threshold.**
 
-   **Which makes the next step measurement, not construction.** Corrected
-   per-pixel headroom against the angles assigned today:
+   **Consequences.** A field consumer measured on this panel scores well by
+   agreeing with outlines. Part 53 built the segment-level instrument, got a
+   **+16.98°** apparent satin win, and traced it to exactly this. On the 23% the
+   reference resolves, the field is **2.20° worse** than what we already sew.
+   Tatami has nothing left either: the 384 px field (26.27) is already past the
+   one-angle-per-region **oracle** (26.54), and finer solving lowers committed
+   share (0.663 → 0.625) while costing 13× on noise.
 
-   | territory | today | union-seed field | headroom |
-   |---|---:|---:|---:|
-   | tatami (9.3% of area) | 40.09 | 36.49 | 3.60° |
-   | satin (93.7% of area) | 37.90 | 37.75 | **0.15°** |
+   **Decision recorded: neither satin nor tatami is worth wiring.** Not "not yet
+   worth it" — not measurable.
 
-   Satin was the obvious next consumer on Part 51's uncorrected table and is no
-   longer obviously worth anything. **Do not commission a satin or tatami
-   consumer on this evidence.** Two things could still change it and neither needs
-   a generator written: the ceiling was computed from a field diffused at 384 px,
-   and satin columns already vary their angle along their length, so an aggregate
-   may be hiding where the gain actually sits. Ask for that measurement.
+   **The unblocking step is not code.** A macro sew-out photograph at roughly
+   **0.05 mm/px** (3–4× the linear resolution, or a close-up of one region rather
+   than the whole panel) would put ~8 px on every thread. That is the cheapest
+   thing in the entire R004 line and it needs a camera, not an engineer.
 
-   Reproduce any of it: `scripts/measure_field_consumption.py` and
-   `scripts/measure_two_pass_seed.py`.
+   **What still stands.** The field, the instrument, the two-pass architecture and
+   Part 52's seed ranking are all unaffected — that ranking used one registration
+   and one territory definition throughout. What does not stand is any absolute
+   direction number measured on thin artwork, including the **49.9°** headline: on
+   resolvable columns our sewn error is **42.3°**.
+
+   Reproduce: `scripts/measure_field_headroom.py` (`--validity`, `--resolution`,
+   `--cost`), `scripts/measure_two_pass_seed.py`, `scripts/measure_field_consumption.py`.
+
 2. **R008 — bead-chain ornament.** Still real content loss, but **re-scoped by Part 49**.
    Grouping the dropped specks does not work: coverage rises smoothly 3.5% → 67% as the
    rules loosen, with no knee, and the longest run found is 10 beads. The cause is that
@@ -144,6 +136,9 @@ the visual baselines and ruff, and both were caught only by the fuzz suite — t
   ">0.7 correlation" were all proposed before measurement and all turned out wrong or
   reachable only by making the output worse.
 - **Assume this file is stale next time too.** Ask for a fresh one.
+- **Ask what the instrument can resolve before asking what it says.** Part 53's
+  biggest result was that three parts of scoring had been done against a reference
+  that cannot measure the thing being optimised on most of the design.
 - **Ask for the control, not just the score.** Part 51's D2 beat its target and was still
   wrong: a constant angle beat it on the same territory. A brief that says "and show me
   what a trivial baseline scores" would have caught it in one line.
