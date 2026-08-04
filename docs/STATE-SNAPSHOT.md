@@ -1,6 +1,6 @@
 # STITCHIQ — current state, for the reviewer
 
-**Generated at commit `8bcf218`, STATUS v87, latest part 49.** Paste this alongside any
+**Generated at commit `df07d49`+, STATUS v88, latest part 50.** Paste this alongside any
 audit. It exists because four of the last five review briefs were built on state that had
 moved: the fix proposed was already shipped, or the number quoted came from an old run.
 
@@ -14,7 +14,7 @@ moved: the fix proposed was already shipped, or the number quoted came from an o
 | R002 | Phantom `StitchType` members | **Done, Part 43** — 23 members → **10**, catch-all `else` removed |
 | R003 | Visual-regression harness | **Done, Part 44** — SSIM 0.995 gate, 10 committed baselines, in `pytest` |
 | R011 | Fixture 02 wordmark lost in Part 41 | **Done, Part 45** |
-| R004 | Stitch direction (49.9°) | **Investigation done, Part 46.** Implementation not started — see `PROMPT-direction-field.md` |
+| R004 | Stitch direction (49.9°) | **Investigation Part 46; D0+D1 done Part 50** — instrument built, field solved and visualised, consumed by nothing. Panel: 33.91° vs 38.27° per-object. **D2 next** |
 | R007 | Zero-stitch corpus designs | **Done, Part 47** — premise was wrong; the real fix was 422-instead-of-200 |
 | R006 | Trim count | **Done, Part 48** — corpus-wide 33,969 → 27,927 |
 | R005 | Fragmentation | Open. **Part 46 proved it will not fix the direction number** |
