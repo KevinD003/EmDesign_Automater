@@ -66,6 +66,7 @@ from app.services.digitizer.constants import (
     TEXTURE_MS_SPATIAL,
     TEXTURE_SMOOTH_MIN,
     TRAVEL_STEP_MM,
+    TRIM_MIN_GAP_MM,
     UNDERLAY_EDGE_MIN_MM,
     UNDERLAY_STEP_MM,
     UNDERLAY_ZIGZAG_INSET_MM,
@@ -104,6 +105,7 @@ from app.services.digitizer.routing import (
     _coalesce_short,
     _lock_stream,
     _merge_adjacent_same_hex,
+    _nearest_neighbour_order,
     _route_travel,
 )
 from app.services.digitizer.satin import (
@@ -133,6 +135,8 @@ def digitize_image(
     text_mode: bool = False,
 ) -> Design:
     """Convert an image into a stitch Design (classical CV baseline)."""
+    import math
+
     import cv2
     import numpy as np
 
@@ -446,9 +450,24 @@ def digitize_image(
 
         this_stop = None  # opened lazily when this cluster's first real object appears
         stop_start = 0
-        for ci, contour in enumerate(contours):
-            if len(hier) and hier[ci][3] != -1:
-                continue  # a hole — handled with its parent
+        # Sew this colour's regions in proximity order, not raster order (v2 Part
+        # 48). `findContours` returns them bottom-up in scan order, so the needle
+        # crossed the design between neighbours: measured on the panel, 29.36 m of
+        # inter-object travel and a 30.03 mm median gap. Objects inside one colour
+        # stop can be sewn in any order without adding a colour change, so this
+        # costs nothing and is the only lever that matters — only 2.6% of trims
+        # spanned under 3 mm, so converting short jumps would have touched 22 of
+        # 844. Geometry is untouched; only the order and the joins between change.
+        tops = [i for i in range(len(contours)) if not (len(hier) and hier[i][3] != -1)]
+        _cents = []
+        for i in tops:
+            m_ = cv2.moments(contours[i])
+            _cents.append((m_["m10"] / m_["m00"], m_["m01"] / m_["m00"]) if m_["m00"] > 0
+                          else tuple(contours[i][0][0].astype(float)))
+        _from = (stitches[-1].x / mm_per_px, stitches[-1].y / mm_per_px) if stitches else None
+        tops = [tops[k] for k in _nearest_neighbour_order(_cents, _from)]
+        for ci in tops:
+            contour = contours[ci]
             hole_contours = []
             if len(hier):
                 child = hier[ci][2]
@@ -753,7 +772,15 @@ def digitize_image(
                 stop_start = len(stitches)
             obj_start = len(stitches)
             if stitches and stitches[-1].command != "COLOR_CHANGE":
-                stitches.append(Stitch(x=stitches[-1].x, y=stitches[-1].y, command="TRIM"))
+                # Trim only when the connecting thread would be long enough to
+                # matter (v2 Part 48). A trim costs roughly 2.5 s of machine time;
+                # below TRIM_MIN_GAP_MM the machine carries a short thread to the
+                # next region, which is what commercial digitizers do and what
+                # every jump under this length already amounts to.
+                gap = math.hypot(pts[0][0] * mm_per_px - stitches[-1].x,
+                                 pts[0][1] * mm_per_px - stitches[-1].y)
+                if gap >= TRIM_MIN_GAP_MM:
+                    stitches.append(Stitch(x=stitches[-1].x, y=stitches[-1].y, command="TRIM"))
                 stitches.append(Stitch(x=pts[0][0] * mm_per_px, y=pts[0][1] * mm_per_px, command="JUMP"))
             for (x, y, jump) in pts:
                 stitches.append(

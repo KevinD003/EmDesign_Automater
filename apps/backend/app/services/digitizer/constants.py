@@ -780,3 +780,16 @@ def set_penetration_floor(mm: float | None) -> None:
     """Enable (or disable, with ``None``) the same-side penetration floor."""
     global _PENETRATION_FLOOR_MM
     _PENETRATION_FLOOR_MM = mm
+
+
+# Below this gap between two regions of the SAME colour, the machine carries the
+# thread across instead of trimming (v2 Part 48). A trim plus the re-thread costs
+# roughly 2.5 s; at 844 trims on the reference panel that is about 35 minutes of
+# machine time per run, which is a real production cost.
+#
+# 6.0mm is the conservative end of the range commercial machines auto-trim at
+# (5-10mm). It is chosen against the measured gap distribution rather than in the
+# abstract: after nearest-neighbour ordering, 28.6% of inter-object gaps on the
+# panel fall under 6mm against 9.2% before, so the ordering is what makes this
+# threshold worth having at all.
+TRIM_MIN_GAP_MM = 6.0

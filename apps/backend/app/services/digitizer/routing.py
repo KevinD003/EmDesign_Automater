@@ -329,3 +329,39 @@ def _coalesce_short(pts, min_dist_px: float, floor_px: float = 0.0):
         out.append(pts[-1])
         dropped.append([])
     return _restore_for_floor(out, dropped, floor_px) if floor_px > 0.0 else out
+
+
+def _nearest_neighbour_order(points, start=None):
+    """Greedy nearest-neighbour visiting order over 2D points (v2 Part 48).
+
+    Returns indices into ``points``. Objects inside one colour stop can be sewn in
+    any order without adding a colour change, so ordering them by proximity is
+    free machine time — and the pipeline was not doing it: contours came out in
+    `findContours` raster order, which walks the design top to bottom and jumps
+    back and forth across it.
+
+    Greedy, not an exact TSP. Measured on the reference panel, greedy takes the
+    inter-object travel from 29.36 m to 13.65 m (-53.5%) and the median gap from
+    30.03 mm to 9.45 mm. An optimal tour would beat that by a few percent at best
+    and costs a solver plus non-determinism; a 771-object design is not where an
+    exact TSP earns its keep.
+
+    Deterministic: ties are broken by index, so the same input always gives the
+    same order and the stream stays reproducible.
+    """
+    import math
+
+    n = len(points)
+    if n <= 2:
+        return list(range(n))
+    remaining = set(range(n))
+    here = 0 if start is None else min(
+        remaining, key=lambda i: (math.dist(points[i], start), i))
+    order = [here]
+    remaining.discard(here)
+    while remaining:
+        cur = points[here]
+        here = min(remaining, key=lambda i: (math.dist(points[i], cur), i))
+        order.append(here)
+        remaining.discard(here)
+    return order

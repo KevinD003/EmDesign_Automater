@@ -107,4 +107,4 @@ are already built**, so that phase starts two items in. The ranked plan is uncha
 2. ~~R002 phantom stitch types~~ — **done, Part 43**
 3. ~~R003 commit the visual-regression harness~~ — **done, Part 44**; it immediately found a light-mode bug and a Part 41 content-loss regression
 4. R004 stitch direction (49.9°) — the real #1
-5. R005 fragmentation · 6. R006 trims (837) · 7. ~~R007 zero-stitch designs~~ — **done, Part 47**: 8 not 9, one is a blank fixture, the rest are correct sub-thread refusals; the real defect was 200-with-empty-design, now 422 · 8. R008 bead-chain · ~~**R011: the Part 41 substrate rule deletes white type on a white page**~~ — **done, Part 45**
+5. R005 fragmentation · 6. ~~R006 trims (837)~~ — **done, Part 48**: 844 → 663 on the panel, corpus-wide 33,969 → 27,927 (−17.8%) · 7. ~~R007 zero-stitch designs~~ — **done, Part 47**: 8 not 9, one is a blank fixture, the rest are correct sub-thread refusals; the real defect was 200-with-empty-design, now 422 · 8. R008 bead-chain · ~~**R011: the Part 41 substrate rule deletes white type on a white page**~~ — **done, Part 45**
