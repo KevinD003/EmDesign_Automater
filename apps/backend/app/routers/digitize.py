@@ -41,6 +41,26 @@ def digitize(
         raise HTTPException(status_code=503, detail=f"Digitizer dependency missing: {exc.name}") from exc
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Digitizing failed: {exc}") from exc
+    if design.stitch_count == 0:
+        # An empty design is a failure, and it used to be returned as a success
+        # (v2 Part 47). The caller got HTTP 200, a valid-looking Design and an
+        # export that sews nothing — the warnings explaining why were easy to
+        # miss and impossible to act on from a 200.
+        #
+        # This is NOT the filtering being wrong. Measured on the seven corpus
+        # designs that hit it, every one is artwork whose strokes are thinner
+        # than the 0.4mm thread at the requested hoop — the engine logs
+        # `sub_thread_feature` at a median region width of 0.23mm and refuses,
+        # correctly. Every one of them sews at a larger hoop (C14 0 -> 36,133,
+        # C28 0 -> 18,250, C30 0 -> 4,618 going from 130x180 to 200x300), which
+        # is exactly what the message tells the user to do.
+        detail = "; ".join(design.warnings) if design.warnings else (
+            "no stitchable regions were found in this image"
+        )
+        raise HTTPException(
+            status_code=422,
+            detail=f"Nothing could be sewn at hoop {hoop_size}: {detail}",
+        )
     if file.filename:
         design.name = file.filename.rsplit(".", 1)[0]
     return design

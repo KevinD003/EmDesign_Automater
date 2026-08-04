@@ -52,7 +52,26 @@ PALETTES = [
 ]
 
 
+def _ink_share(img) -> float:
+    """Fraction of pixels that differ visibly from the canvas colour."""
+    bg = np.array(img[2, 2], np.float32)
+    return float((np.linalg.norm(img.astype(np.float32) - bg, axis=2) > 10).mean())
+
+
 def _write(name: str, img, tier: str, cls: str, meta: list) -> None:
+    # A stress corpus must not contain a blank. C01_hairline_linework was one for
+    # the whole life of this corpus: `hairline_linework` draws in `pal[3]`, and
+    # PALETTES[1][3] is (250, 250, 250) on a (255, 255, 255) canvas, so the design
+    # was invisible. It then digitized to zero stitches and was counted as a
+    # pipeline failure in every audit since — the engine was right and the
+    # fixture was wrong. Refuse to write one rather than trust the palettes.
+    share = _ink_share(img)
+    if share < 0.002:
+        raise SystemExit(
+            f"{name}: only {share * 100:.3f}% of the canvas differs from the "
+            f"background — this fixture would be blank. Check the palette/canvas "
+            f"contrast for class {cls!r}."
+        )
     OUT.mkdir(parents=True, exist_ok=True)
     cv2.imwrite(str(OUT / f"{name}.png"), img)
     meta.append({"name": name, "tier": tier, "class": cls})
@@ -146,10 +165,22 @@ def tier_c(meta: list, count: int) -> None:
         i += 1
 
 
+def _contrasting(pal, bg):
+    """The palette, reordered so the lowest-contrast entry against `bg` is last.
+
+    Several classes draw their only ink in `pal[3]`, which silently produced a
+    blank design whenever that entry matched the canvas.
+    """
+    bg_v = np.array(bg, np.float32)
+    return sorted(pal, key=lambda c: -float(np.linalg.norm(np.array(c, np.float32) - bg_v)))
+
+
 def _generate(i: int, pal):
     kind = i % 13
     dark = (kind % 3 == 2)
-    img = _canvas(bg=(12, 12, 12) if dark else (255, 255, 255))
+    bg = (12, 12, 12) if dark else (255, 255, 255)
+    img = _canvas(bg=bg)
+    pal = _contrasting(pal, bg)
     h, w = img.shape[:2]
 
     if kind == 0:  # dense floral spray (the neckline class)
