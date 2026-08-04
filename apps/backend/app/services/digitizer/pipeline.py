@@ -60,6 +60,8 @@ from app.services.digitizer.constants import (
     SKETCH_MAX_RETRIES,
     SKETCH_MIN_COVERAGE,
     SUBSTRATE_DELTA,
+    SUBSTRATE_ENCLOSED_MAX_MM2,
+    SUBSTRATE_ENCLOSED_MAX_SHARE,
     TEXTURE_MS_COLOR,
     TEXTURE_MS_SPATIAL,
     TEXTURE_SMOOTH_MIN,
@@ -377,9 +379,64 @@ def digitize_image(
             # for embroidery: you do not stitch the background colour, you let
             # the cloth show. SVG input still keeps its declared elements — a
             # white shape on a white page is artwork the file states outright.
-            substrate_px += int(cv2.countNonZero(mask))
-            substrate_owned[mask > 0] = 255
-            continue
+            if is_textured:
+                substrate_px += int(cv2.countNonZero(mask))
+                substrate_owned[mask > 0] = 255
+                continue
+            # ...but Part 41 applied that to FLAT ARTWORK too, and there the
+            # substrate is the page, not a garment (v2 Part 45). On fixture 02 the
+            # white wordmark sits inside a green card on a white page, so it
+            # matched the substrate and the whole wordmark was deleted — 31
+            # stitches and a colour stop, silently, with every metric improving
+            # because coverage is scored against the objects that survive.
+            #
+            # Two signals were measured first and BOTH failed to separate the two
+            # cases, which is why the rule keys on the input class instead:
+            #
+            #   feature                 fixture 02 (keep)   neckline panel (drop)
+            #   enclosed by foreground        99.9%                92.8%
+            #   blob half-width >= 0.3mm      85.9% of area        88.5% of area
+            #
+            # Texture does separate them, with room to spare: flat artwork scores
+            # 0.00-4.10 on `_interior_texture` and a photograph of cloth 8.4-10.9,
+            # against a 6.0 threshold. A photograph of a garment is cloth; a flat
+            # export is a page, and a page-coloured island enclosed by artwork is
+            # knocked-out design — type, counters, catchlights.
+            #
+            # So on flat art a substrate-coloured component is page when it is
+            # CONTIGUOUS with the page, or when it is a large enclosed expanse.
+            #
+            # The size half of that test is not belt-and-braces; without it this
+            # fix was measured filling fixture 04's ring with white thread — the
+            # interior of an outline ring is enclosed by the ring and is still the
+            # page. Measured share of the foreground per enclosed component:
+            #
+            #   fixture 02 wordmark   max  0.33%   -> keep (knocked-out type)
+            #   fixture 06 script      one 7.36%   -> drop (counter of the script)
+            #   fixture 04 ring       32.5%, 54.7% -> drop (the page inside a ring)
+            #
+            # 5% sits between them with 15x margin below and 6.5x above. It is the
+            # threshold the pre-Part-41 rule used, restored — that rule was right
+            # about flat artwork and wrong to be applied to photographs of cloth.
+            outside = (fg_mask == 0).astype(np.uint8)
+            reach = cv2.dilate(outside, np.ones((3, 3), np.uint8))
+            fg_px = max(int(cv2.countNonZero(fg_mask)), 1)
+            n_cc, cc_lab = cv2.connectedComponents(mask, connectivity=8)
+            page = np.zeros_like(mask)
+            for cc_i in range(1, n_cc):
+                comp = cc_lab == cc_i
+                comp_px = int(comp.sum())
+                if (reach[comp].any()
+                        or comp_px >= SUBSTRATE_ENCLOSED_MAX_SHARE * fg_px
+                        or comp_px * mm_per_px * mm_per_px >= SUBSTRATE_ENCLOSED_MAX_MM2):
+                    page[comp] = 255
+            page_px = int(cv2.countNonZero(page))
+            if page_px:
+                substrate_px += page_px
+                substrate_owned[page > 0] = 255
+                mask = cv2.bitwise_and(mask, cv2.bitwise_not(page))
+            if not cv2.countNonZero(mask):
+                continue
         # RETR_CCOMP: 2-level hierarchy — top-level outlines + their interior holes
         # (letter counters, donuts). RETR_EXTERNAL would fill an 'o' solid.
         contours, hierarchy = cv2.findContours(mask, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)

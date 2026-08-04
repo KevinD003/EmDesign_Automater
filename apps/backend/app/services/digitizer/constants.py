@@ -189,6 +189,28 @@ PALETTE_UNIFORM_TOL = 6  # max deviation from the local median to count as core
 # A cluster within this distance of the substrate (border) colour is the garment
 # showing through, not ink. Deliberately much tighter than v1's global 40.0 —
 # at 40 the cream muzzle of fixture 08 (Δ 34.8) was deleted as "background".
+# A substrate-coloured region on FLAT artwork is the page when it is a large
+# enclosed expanse — the inside of an outline ring, the counter of a script
+# letter — and knocked-out artwork when it is small: type on a card, a
+# catchlight, a letter counter. Share of the foreground, so it is scale-free.
+#
+# 0.05 is restored from the pre-Part-41 rule, which was right about flat art and
+# wrong only in that Part 41 applied its removal to photographs of cloth as well.
+# Measured share per enclosed component: fixture 02's wordmark tops out at 0.33%,
+# fixture 06's script counter is 7.36%, fixture 04's ring interior 32.5%/54.7%.
+SUBSTRATE_ENCLOSED_MAX_SHARE = 0.05
+# ...and an absolute cap, because share alone keeps fixture 04's hub: the small
+# circle at the centre of the ring is only 2.1% of the foreground and is still
+# page, and stitching it laid 176 white stitches on white fabric.
+#
+# This is a HEURISTIC over a genuine ambiguity, and the pre-Part-41 code said so
+# too: knocked-out type and a glyph counter are the same shape, separable only by
+# scale. Measured on the cases that matter — fixture 02's wordmark glyphs top out
+# at 17.6mm2, fixture 04's hub is 97.6mm2 — so 40mm2 sits between them with 2.3x
+# margin below and 2.4x above. The old rule's 8.0mm2 is deliberately NOT reused:
+# it was calibrated for catchlights (a mascot's is ~4mm2) and would have kept only
+# the smaller half of the wordmark's letters, which is worse than dropping it.
+SUBSTRATE_ENCLOSED_MAX_MM2 = 40.0
 SUBSTRATE_DELTA = 12.0
 
 

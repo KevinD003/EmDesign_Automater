@@ -92,13 +92,6 @@ def test_the_fixture_table_is_the_bench_table() -> None:
     assert VR.FIXTURES is FIXTURE_PARAMS
 
 
-@pytest.mark.xfail(
-    reason="v2 Part 41 regression, found by this harness on its first run — see "
-           "docs/benchmarks/v2-part44-audit.md §4. The baseline PNG for this "
-           "fixture records the broken output; this test exists so that baseline "
-           "is not mistaken for approval.",
-    strict=True,
-)
 def test_fixture_02_still_stitches_its_wordmark() -> None:
     """The white type on the green card must survive digitizing.
 
@@ -113,12 +106,10 @@ def test_fixture_02_still_stitches_its_wordmark() -> None:
     The entire wordmark is gone, and no metric noticed because coverage is scored
     against the objects that WERE emitted.
 
-    Not fixed here on purpose. The obvious discriminator — keep a substrate-
-    coloured region that is enclosed by other foreground rather than contiguous
-    with the background — has to be measured against the black neckline panel
-    too, where those enclosed regions really are bare cloth and must stay
-    unstitched. Changing the rule while only able to measure one side is how the
-    original defect got in.
+    Fixed in Part 45: the substrate rule now keys on whether the input is a
+    photograph of cloth or flat artwork on a page, and on flat art only drops
+    substrate-coloured regions that reach the page or are too large to be
+    knocked-out detail. See docs/benchmarks/v2-part45-audit.md.
     """
     _actual, design = VR.render_fixture("02_logo_fine_text_3color")
     hexes = {s.hex.lower() for s in design.color_stops}
