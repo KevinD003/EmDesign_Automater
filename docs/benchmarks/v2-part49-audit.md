@@ -106,22 +106,46 @@ and was wrong by 34×; the numbers above are from the instrumented pipeline.
   means "I accepted this much noise", and it would have been found later as false beads
   scattered over the flowers.
 
-## 5. Verification
+## 5. A performance regression I shipped, and the fuzz suite caught — again
+
+The first version of the centroid took `cv2.moments` over `probe`, the **full-size** filled
+image, once per dropped region. On a design with a few hundred specks that is invisible.
+On random noise, where one colour holds tens of thousands of them, it took the fuzz suite's
+1500×1500 post from a measured **~16 s to over ten minutes**.
+
+`test_random_noise_palette_stress_never_5xx` failed — 28 minutes into a full run, because
+the suite runs under `-x` and everything before it passed. Nothing else caught it: the
+targeted tests, the locks, the visual baselines and ruff were all green, exactly as in
+Part 48.
+
+Fixed by taking moments over the **contour** rather than the filled image, which is
+O(points on the outline) — a handful for a speck — with a mean-of-points fallback for a
+degenerate outline whose area moment is zero. Fuzz suite back to 7 passed in 4m39s.
+
+**This is the second performance regression in this same loop in two parts.** Part 48's was
+an unbounded O(n²) ordering over pre-filter contours; this one is a per-region full-image
+operation in the same place. The pattern is that the contour loop runs once per region
+*before* filtering, so anything added to it is multiplied by the noise count, not the design
+count. A cost test now sits in the fast file rather than only in a 28-minute run.
+
+## 6. Verification
 
 No pipeline behaviour changed — the drop log is diagnostic and nothing reads it in the
 stitch path.
 
 | Gate | Before | After |
 |---|---|---|
+| Fuzz suite | 7 passed | **7 passed** (regressed to a >10 min hang, then fixed) |
 | Tests over the changed code | — | **45 passed** (drop log, locks, layering, routing, empty-success) |
 | `ruff check app` | 12 | **12** |
 | Stitch stream locks | 4 pass | **4 pass, unchanged** |
 | Visual baselines | 10/10 | **10/10, unchanged** |
 
-The full suite was still running when this was committed and is reported in the next
-STATUS entry rather than quoted here from an assumption — the previous baseline was 849
-passed / 2 xfailed and this part adds 4 tests. Quoting "853" before seeing it is exactly
-the habit this series keeps catching in the briefs it reviews.
+An earlier draft of this section quoted "853 passed" from arithmetic — 849 plus the four
+new tests — before the run finished. It was removed before committing, and it would have
+been wrong: the run came back **1 failed, 769 passed**, stopping at the fuzz test above.
+Quoting a count you have not seen is the habit this series keeps catching in the briefs it
+reviews, and it was one command away from appearing here.
 
 Tests in `tests/test_part49_drop_log_position.py`: every entry carries area, perimeter and
 position; the positions are real mm coordinates with spread rather than a constant; the log
@@ -132,7 +156,7 @@ centroids lie inside the design's stitched extents. A dropped region is by defin
 somewhere nothing was sewn, so on the fixture the dots sit outside the surviving rectangle
 entirely. The assertion, not the code, was wrong.
 
-## 6. Next
+## 7. Next
 
 R008 as scoped is not the next move; it needs re-scoping around motif-along-a-path
 detection at the mask stage, and that is comparable in size to the direction field.

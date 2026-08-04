@@ -91,3 +91,36 @@ def test_the_positions_are_deterministic():
     a = list(K._DROP_LOG)
     _digitize()
     assert list(K._DROP_LOG) == a
+
+
+def test_recording_positions_is_cheap_on_a_speck_heavy_image():
+    """The cost characteristic, not just the correctness.
+
+    The first version took `cv2.moments` over the full-size filled probe once per
+    dropped region. On a design with a few hundred specks that is invisible; on
+    random noise, where one colour holds tens of thousands, it took a 1500x1500
+    digitize from ~16 s to over ten minutes, and the fuzz suite caught it — 28
+    minutes into a full run.
+
+    That is the second performance regression in this loop in two parts, so the
+    signal belongs somewhere fast. This image is deliberately speck-heavy: a few
+    hundred dots that all fall under the floor, digitized small.
+    """
+    import time
+
+    img = np.full((700, 700, 3), 255, np.uint8)
+    for k in range(400):
+        cv2.circle(img, (20 + (k % 20) * 34, 20 + (k // 20) * 34), 5, (40, 40, 190), -1)
+    ok, buf = cv2.imencode(".png", img)
+    assert ok
+
+    cv2.setRNGSeed(RNG_SEED)
+    start = time.perf_counter()
+    digitize_image(buf.tobytes(), "cotton", "40x40", max_colors=2)
+    elapsed = time.perf_counter() - start
+
+    assert K._DROP_LOG, "this fixture must drop specks or it measures nothing"
+    assert elapsed < 20.0, (
+        f"{len(K._DROP_LOG)} dropped regions took {elapsed:.1f}s. The centroid must "
+        f"come from the contour, not from moments over a full-size image."
+    )

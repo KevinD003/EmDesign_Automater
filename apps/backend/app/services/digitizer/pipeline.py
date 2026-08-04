@@ -498,9 +498,22 @@ def digitize_image(
                 # equivalent: the morphological open above removes single-pixel
                 # noise, so a naive re-derivation on the raw cluster mask counts
                 # 25,822 regions where the pipeline drops 768.
-                _dm = cv2.moments(probe, binaryImage=True)
-                _dcx = (_dm["m10"] / _dm["m00"] * mm_per_px) if _dm["m00"] else 0.0
-                _dcy = (_dm["m01"] / _dm["m00"] * mm_per_px) if _dm["m00"] else 0.0
+                # From the CONTOUR, not the filled probe. The first version took
+                # moments over `probe`, which is a full-size image, once per
+                # dropped region — fine on a design with a few hundred specks and
+                # catastrophic on noise, where one colour holds tens of thousands.
+                # The fuzz suite caught it: a 1500x1500 noise post went from ~16 s
+                # to over ten minutes. Contour moments are O(points on the
+                # outline), which for a speck is a handful.
+                _dm = cv2.moments(contour)
+                if _dm["m00"]:
+                    _dcx = _dm["m10"] / _dm["m00"] * mm_per_px
+                    _dcy = _dm["m01"] / _dm["m00"] * mm_per_px
+                else:
+                    # Degenerate outline (collinear points) has zero area moment.
+                    _pts = contour.reshape(-1, 2)
+                    _dcx = float(_pts[:, 0].mean()) * mm_per_px
+                    _dcy = float(_pts[:, 1].mean()) * mm_per_px
                 _DROP_LOG.append((float(net_area * mm_per_px * mm_per_px),
                                   float(cv2.arcLength(contour, True) * mm_per_px),
                                   float(_dcx), float(_dcy)))
