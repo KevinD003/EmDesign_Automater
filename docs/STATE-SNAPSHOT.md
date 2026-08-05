@@ -1,6 +1,6 @@
 # STITCHIQ — current state, for the reviewer
 
-**Generated at STATUS v92, latest part 54.** Paste this alongside any
+**Generated at STATUS v93, latest part 55.** Paste this alongside any
 audit. It exists because four of the last five review briefs were built on state that had
 moved: the fix proposed was already shipped, or the number quoted came from an old run.
 
@@ -17,8 +17,8 @@ moved: the fix proposed was already shipped, or the number quoted came from an o
 | R004 | Stitch direction | **BLOCKED ON THE REFERENCE. Parts 53–54.** The sew-out photo cannot resolve thread below ~2 mm (77% of satin), so it rewards contour-parallel answers. Capture spec now **measured**: **0.074 mm/px**, and **0.120 mm/px already takes satin 23% → 84% usable**. See `docs/REFERENCE-CAPTURE-PROTOCOL.md`. **Stop numeric optimisation until a photo arrives** |
 | R007 | Zero-stitch corpus designs | **Done, Part 47** — premise was wrong; the real fix was 422-instead-of-200 |
 | R006 | Trim count | **Done, Part 48** — corpus-wide 33,969 → 27,927 |
-| R005 | Fragmentation | Open. **Part 46 proved it will not fix the direction number** |
-| R008 | Bead-chain ornament | **Re-scoped, Part 49.** Measured and stopped: the dropped specks do not separate from noise (no knee in the sweep, longest run 10 beads). Needs motif-along-a-path detection at the mask stage — comparable in size to the direction field |
+| R005 | Fragmentation | **NEXT BUILD TARGET, scoped Part 55.** Real and general on photos (336–834 objects, 46–64% ≤25 stitches) but **invisible on the bench** (~9 objects/fixture). Merging neighbours is knee-less (2–4%); `_absorb_specks` already exists. Lever is upstream colour quantisation. Seven gates + stop condition in the Part 55 audit |
+| R008 | Bead-chain ornament | **Declined as next target, Part 55** — no measurable gate exists; needs hand-labelled ground truth first. **Re-scoped, Part 49.** Measured and stopped: the dropped specks do not separate from noise (no knee in the sweep, longest run 10 beads). Needs motif-along-a-path detection at the mask stage — comparable in size to the direction field |
 
 ## Things already built that briefs have proposed building
 
@@ -38,9 +38,9 @@ Checked by running the code, not by reading it. Each was proposed as missing:
 
 | | value | measured at |
 |---|---|---|
-| Backend tests | **894 passed, 2 xfailed** | Part 54 |
+| Backend tests | **900 passed, 2 xfailed** | Part 55 |
 | Frontend tests | 131 passed, `tsc` clean | Part 48 |
-| `ruff check app` | 12 (the standing baseline) | Part 54 |
+| `ruff check app` | 12 (the standing baseline) | Part 55 |
 | Stitch-stream locks | **4** fixtures, sha256 of the whole stream | — |
 | Visual baselines | 10, gate SSIM ≥ 0.995 | Part 44 |
 | Corpus | 100 designs, **0 errors**, **7** zero-stitch, interior median **98.70** | Part 48 |
