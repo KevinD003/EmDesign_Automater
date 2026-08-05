@@ -44,10 +44,11 @@ CASES = (("A01_real_peacock_patch_photo", "360x350"),
 RNG_SEED = 20260728
 
 
-def run_one(name: str, hoop: str) -> dict:
+def run_one(name: str, hoop: str, max_colors: int = 12) -> dict:
     cv2.setRNGSeed(RNG_SEED)
     t0 = time.perf_counter()
-    design = digitize_image((CORPUS / f"{name}.png").read_bytes(), "cotton", hoop, 12)
+    design = digitize_image((CORPUS / f"{name}.png").read_bytes(), "cotton", hoop,
+                            max_colors)
     seconds = time.perf_counter() - t0
     objs = [o for o in design.objects if o.contour]
     counts = [o.stitch_count for o in objs] or [0]
@@ -67,15 +68,23 @@ def run_one(name: str, hoop: str) -> dict:
 
 
 def main() -> int:
+    import argparse
+
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--colors", type=int, nargs="+", default=[12],
+                    help="max_colors settings to sweep (Part 57)")
+    args = ap.parse_args()
     out = {}
-    print(f"{'design':32s} {'obj':>6s} {'med':>5s} {'tiny':>6s} {'stitch':>7s} "
+    print(f"{'design':30s} {'k':>3s} {'obj':>6s} {'med':>5s} {'tiny%':>6s} {'stitch':>7s} "
           f"{'trim':>5s} {'interior':>9s} {'edge':>6s} {'s':>6s}")
     for name, hoop in CASES:
-        r = run_one(name, hoop)
-        out[name] = r
-        print(f"{name:32s} {r['objects']:6d} {r['median_stitches']:5.0f} {r['tiny']:6d} "
-              f"{r['stitches']:7d} {r['trims']:5d} {r['interior']:9.2f} "
-              f"{r['edge_band']:6.2f} {r['seconds']:6.1f}", flush=True)
+        for k in args.colors:
+            r = run_one(name, hoop, k)
+            out[f"{name}@{k}"] = dict(r, design=name, colors=k)
+            pct = 100.0 * r["tiny"] / max(r["objects"], 1)
+            print(f"{name:30s} {k:3d} {r['objects']:6d} {r['median_stitches']:5.0f} "
+                  f"{pct:5.0f}% {r['stitches']:7d} {r['trims']:5d} {r['interior']:9.2f} "
+                  f"{r['edge_band']:6.2f} {r['seconds']:6.1f}", flush=True)
     print("\n" + json.dumps(out))
     print("\nGates 1-4 need a baseline to compare against; gates 5-7 (flat-art "
           "baselines,\ncorpus health, noise runtime) are separate runs. Part 55 "
