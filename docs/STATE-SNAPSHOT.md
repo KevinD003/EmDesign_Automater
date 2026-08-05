@@ -1,6 +1,6 @@
 # STITCHIQ — current state, for the reviewer
 
-**Generated at STATUS v91, latest part 53.** Paste this alongside any
+**Generated at STATUS v92, latest part 54.** Paste this alongside any
 audit. It exists because four of the last five review briefs were built on state that had
 moved: the fix proposed was already shipped, or the number quoted came from an old run.
 
@@ -14,7 +14,7 @@ moved: the fix proposed was already shipped, or the number quoted came from an o
 | R002 | Phantom `StitchType` members | **Done, Part 43** — 23 members → **10**, catch-all `else` removed |
 | R003 | Visual-regression harness | **Done, Part 44** — SSIM 0.995 gate, 10 committed baselines, in `pytest` |
 | R011 | Fixture 02 wordmark lost in Part 41 | **Done, Part 45** |
-| R004 | Stitch direction | **BLOCKED ON THE REFERENCE, Part 53.** Architecture done (Part 52). But the sew-out photo cannot resolve thread on structures under ~2 mm, which is 77% of the design, so it scores correct satin as wrong and rewards contour-parallel answers. **Needs a macro sew-out at ~0.05 mm/px before any consumer work** |
+| R004 | Stitch direction | **BLOCKED ON THE REFERENCE. Parts 53–54.** The sew-out photo cannot resolve thread below ~2 mm (77% of satin), so it rewards contour-parallel answers. Capture spec now **measured**: **0.074 mm/px**, and **0.120 mm/px already takes satin 23% → 84% usable**. See `docs/REFERENCE-CAPTURE-PROTOCOL.md`. **Stop numeric optimisation until a photo arrives** |
 | R007 | Zero-stitch corpus designs | **Done, Part 47** — premise was wrong; the real fix was 422-instead-of-200 |
 | R006 | Trim count | **Done, Part 48** — corpus-wide 33,969 → 27,927 |
 | R005 | Fragmentation | Open. **Part 46 proved it will not fix the direction number** |
@@ -38,9 +38,9 @@ Checked by running the code, not by reading it. Each was proposed as missing:
 
 | | value | measured at |
 |---|---|---|
-| Backend tests | **888 passed, 2 xfailed** | Part 53 |
+| Backend tests | **894 passed, 2 xfailed** | Part 54 |
 | Frontend tests | 131 passed, `tsc` clean | Part 48 |
-| `ruff check app` | 12 (the standing baseline) | Part 53 |
+| `ruff check app` | 12 (the standing baseline) | Part 54 |
 | Stitch-stream locks | **4** fixtures, sha256 of the whole stream | — |
 | Visual baselines | 10, gate SSIM ≥ 0.995 | Part 44 |
 | Corpus | 100 designs, **0 errors**, **7** zero-stitch, interior median **98.70** | Part 48 |
@@ -87,10 +87,25 @@ behind 9 real behaviours).
    **Decision recorded: neither satin nor tatami is worth wiring.** Not "not yet
    worth it" — not measurable.
 
-   **The unblocking step is not code.** A macro sew-out photograph at roughly
-   **0.05 mm/px** (3–4× the linear resolution, or a close-up of one region rather
-   than the whole panel) would put ~8 px on every thread. That is the cheapest
-   thing in the entire R004 line and it needs a camera, not an engineer.
+   **The unblocking step is not code, and the spec is now measured (Part 54).**
+   Part 53 guessed "roughly 0.05 mm/px"; downsampling the real panel and
+   re-measuring where the reading flips gives **0.074 mm/px** — and, more useful,
+   **0.120 mm/px is enough to take satin from 23% to 84% usable**, which is 1.5x
+   the current resolution and well within an ordinary camera on a close crop.
+
+   | capture | crossover | satin usable | tatami usable |
+   |---:|---:|---:|---:|
+   | 0.186 mm/px (today) | 2.0 mm | 23% | 32% |
+   | 0.120 mm/px | 1.3 mm | 84% | 77% |
+   | 0.074 mm/px | 0.8 mm | 95% | 86% |
+
+   `docs/REFERENCE-CAPTURE-PROTOCOL.md` has the shooting protocol; close crops
+   register against the full panel to ~0.5 px via `reference_protocol.register_crop`.
+
+   **If no photograph arrives**, the fallback is paired visual comparison using
+   Part 44's renderer and Part 50's quiver panels, with the call recorded. Weaker
+   than a number, and the only axis that does not reward agreeing with outlines.
+   Meanwhile R005 and R008 are both measurable with instruments already trusted.
 
    **What still stands.** The field, the instrument, the two-pass architecture and
    Part 52's seed ranking are all unaffected — that ranking used one registration
