@@ -13,6 +13,7 @@ from app.services import embroidery_io
 from app.services import package as package_svc
 from app.services.optimizer import parse_hoop
 from app.services.plans import require_feature
+from app.services.trim_profiles import DEFAULT_PROFILE, apply_trim_profile
 
 router = APIRouter(tags=["export"])
 
@@ -39,9 +40,22 @@ def formats() -> dict[str, object]:
 
 
 @router.post("/export/package", dependencies=[Depends(require_feature("package_export"))])
-def export_package(design: Design, format: str = Query("dst")) -> StreamingResponse:
+def export_package(
+    design: Design,
+    format: str = Query("dst"),
+    trim_profile: str = Query(DEFAULT_PROFILE, description=(
+        "Trim policy for the target machine. 'conservative' (default): the file "
+        "as generated, safe on any machine. 'aggressive': for machines with an "
+        "auto-trimmer — trims whose carried thread is under 10 mm are dropped "
+        "(Part 48's measured tradeoff); stitching is identical."
+    )),
+) -> StreamingResponse:
     """Bundle the full production package (machine file + master + worksheet + color card
     + preview + summary) as a ZIP (spec §4.8)."""
+    try:
+        design = apply_trim_profile(design, trim_profile)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     fmt = format.lower().lstrip(".")  # normalize once: 'DST' / '.dst' → 'dst'
     try:
         data = package_svc.build_package(design, fmt)
@@ -69,8 +83,21 @@ def _cmd(stitch) -> str:
 
 
 @router.post("/export")
-def export_design(design: Design, format: str = Query("dst")) -> StreamingResponse:
+def export_design(
+    design: Design,
+    format: str = Query("dst"),
+    trim_profile: str = Query(DEFAULT_PROFILE, description=(
+        "Trim policy for the target machine. 'conservative' (default): the file "
+        "as generated, safe on any machine. 'aggressive': for machines with an "
+        "auto-trimmer — trims whose carried thread is under 10 mm are dropped "
+        "(Part 48's measured tradeoff); stitching is identical."
+    )),
+) -> StreamingResponse:
     """Encode a Design to a machine file and stream it back."""
+    try:
+        design = apply_trim_profile(design, trim_profile)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     fmt = format.lower().lstrip(".")  # normalize once: 'DST' / '.dst' → 'dst'
     try:
         data = embroidery_io.write_embroidery(design, fmt)

@@ -53,6 +53,7 @@ from app.services.digitizer.constants import (
     MIN_REGION_MM2,
     MIN_STITCH_MM,
     OUTLINE_RUN_MM,
+    PLAN_MAX_COLORS,
     SATIN_MAX_UNCOVERED,
     SATIN_MAX_W_MM,
     SATIN_PREGATE_SLACK,
@@ -254,7 +255,7 @@ def digitize_image(
             mm_per_px=mm_per_px,
         )
 
-    k_plan = min(int(max_colors), 8)  # the former hard cap; retries may exceed it
+    k_plan = min(int(max_colors), PLAN_MAX_COLORS)  # retries may exceed the cap
     labels, centers, n_shade_splits = _plan(k_plan)
     sketch = _sketch_from_labels(labels, fg_mask)
     sketch_cov, _sketch_prec = _verify_sketch(sketch, img, fg_mask)
@@ -1069,6 +1070,16 @@ def digitize_image(
             f"The image is {max(src_iw, src_ih)}px across but the design is only "
             f"{design_w_mm:.0f}mm wide — fine detail (small text, thin lines) may "
             "not survive at this size. Try a larger hoop, or simplify the artwork."
+        )
+    # A request past the planner's cap has been silently discarded since the
+    # planner landed; Part 57 measured it inert (k=12 and k=8 byte-identical)
+    # and Part 58 decided: keep the cap, say so. `k_plan` rather than the bare
+    # cap in the message, because an outline-check retry can raise the plan.
+    if int(max_colors) > PLAN_MAX_COLORS:
+        user_warnings.append(
+            f"Colour limit: {int(max_colors)} colours were requested, but colour "
+            f"planning uses at most {PLAN_MAX_COLORS} — this design was planned "
+            f"with {k_plan}. Values above {PLAN_MAX_COLORS} do not change the result."
         )
     distinct_hexes = len({s.hex for s in color_stops})
     if len(color_stops) > max_colors:

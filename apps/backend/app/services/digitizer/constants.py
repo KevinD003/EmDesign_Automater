@@ -213,6 +213,17 @@ SUBSTRATE_ENCLOSED_MAX_SHARE = 0.05
 SUBSTRATE_ENCLOSED_MAX_MM2 = 40.0
 SUBSTRATE_DELTA = 12.0
 
+# The colour planner's seed cap (v2 Part 59, making a long-standing literal
+# explicit). Planning has used min(max_colors, 8) since the k-means planner
+# landed; Part 57 measured that requests above it are inert — max_colors=12 and
+# =8 produce byte-identical designs on every tier-A photograph — and no
+# measurement has ever shown a quality gain from a larger palette. The cap is
+# therefore kept, and the pipeline now SAYS so in Design.warnings instead of
+# silently discarding the parameter (the Part 58 decision). Retries may still
+# plan more than this when the outline check fails; the cap binds the request,
+# not the recovery.
+PLAN_MAX_COLORS = 8
+
 
 # ...and an absolute cap, which is the discriminator that actually works: a
 # highlight/catchlight is a few mm², a glyph counter at legible text sizes is
