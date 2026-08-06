@@ -1,6 +1,6 @@
 # STITCHIQ — current state, for the reviewer
 
-**Generated at STATUS v95, latest part 57.** Paste this alongside any
+**Generated at STATUS v96, latest part 58.** Paste this alongside any
 audit. It exists because four of the last five review briefs were built on state that had
 moved: the fix proposed was already shipped, or the number quoted came from an old run.
 
@@ -16,7 +16,7 @@ moved: the fix proposed was already shipped, or the number quoted came from an o
 | R011 | Fixture 02 wordmark lost in Part 41 | **Done, Part 45** |
 | R004 | Stitch direction | **BLOCKED ON THE REFERENCE. Parts 53–54.** The sew-out photo cannot resolve thread below ~2 mm (77% of satin), so it rewards contour-parallel answers. Capture spec now **measured**: **0.074 mm/px**, and **0.120 mm/px already takes satin 23% → 84% usable**. See `docs/REFERENCE-CAPTURE-PROTOCOL.md`. **Stop numeric optimisation until a photo arrives** |
 | R007 | Zero-stitch corpus designs | **Done, Part 47** — premise was wrong; the real fix was 422-instead-of-200 |
-| R006 | Trim count | **Done, Part 48** — corpus-wide 33,969 → 27,927 |
+| R006 | Trim count | **Done, Part 48** — corpus-wide 33,969 → 27,927. **Part 58: cross-colour ordering declined** (0.9% of travel, zero trims). The remaining lever is the trim gate — 10 mm gives 485 vs 663 trims (−27%) but assumes an auto-trimmer; a per-machine export setting is the open product question |
 | R005 | Fragmentation | **CLOSED as working-as-intended, Part 57.** Three levers measured, all refuted: merging (Part 55, 2–4%), label-map smoothing (Part 56, fails on coverage), colour count (Part 57, **no effect** — objects flat or rising; A02 gives *more* objects at k=6 than k=8). Not removable without removing content. Residual value is a **cost** problem — trims — i.e. Part 48 territory |
 | R008 | Bead-chain ornament | **Declined as next target, Part 55** — no measurable gate exists; needs hand-labelled ground truth first. **Re-scoped, Part 49.** Measured and stopped: the dropped specks do not separate from noise (no knee in the sweep, longest run 10 beads). Needs motif-along-a-path detection at the mask stage — comparable in size to the direction field |
 
@@ -34,10 +34,12 @@ Checked by running the code, not by reading it. Each was proposed as missing:
 - **ML segmentation** — U2-Net matte with a plausibility gate and a classical fallback.
 - **Export breadth** — 47 read / 19 write formats.
 
-**A live defect found in Part 57 and not yet fixed:** `max_colors` above 8 is inert.
-`pipeline.py:257` caps the planner at `min(max_colors, 8)`, so k=12 and k=8 produce
-byte-identical designs. The API accepts 12 and silently plans 8. Worth its own decision:
-honour the request, or state the effective cap.
+**A live defect found in Part 57, decided in Part 58, not yet fixed:** `max_colors` above 8
+is inert — `pipeline.py:257` caps the planner at `min(max_colors, 8)`, so k=12 and k=8
+produce byte-identical designs. **Decision: clamp and warn, do not raise the cap.** No
+measurement has shown a quality gain from a larger palette. `user_warnings` already carries
+the opposite case and `Design.warnings` names this exact example in its docstring. ~4 lines;
+wants its own small part so the warning text is reviewed.
 
 ## Numbers that are current
 
