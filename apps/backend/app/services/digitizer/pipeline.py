@@ -65,6 +65,9 @@ from app.services.digitizer.constants import (
     SUBSTRATE_ENCLOSED_MAX_SHARE,
     TEXTURE_MS_COLOR,
     TEXTURE_MS_SPATIAL,
+    TEXTURE_RETRY_MIN_CHUNK_MM2,
+    TEXTURE_RETRY_MIN_GAIN,
+    TEXTURE_RETRY_UNCOVERED,
     TEXTURE_SMOOTH_MIN,
     TRAVEL_STEP_MM,
     TRIM_MIN_GAP_MM,
@@ -130,6 +133,34 @@ from app.services.digitizer.underlay import (
     _zigzag_underlay,
 )
 
+# Set by every digitize_image call: the PIXEL share of owned foreground that
+# no emitted object covers. The element-level lost_share below deliberately
+# ignores partial coverage (edge shaving is not loss), which is exactly why it
+# cannot gate the Part 65 photographic rescue: a thread-textured photo webs
+# the whole subject into ONE element that a single surviving fragment
+# "covers" (the angelfish measured 0.9% by elements while most of its body
+# was unsewn). The rescue reads this pixel share back after its recursive
+# retry to decide whether the smoothed pass actually recovered artwork.
+_LAST_UNCOVERED_PX: float = 0.0
+
+
+def _uncovered_chunk_mm2(art_base, emitted_mask, mm_per_px: float) -> float:
+    """Largest connected unsewn piece of foreground, in mm² (v2 Part 65).
+
+    The rescue's shape test: a webbed photo leaves body-sized chunks unsewn;
+    a speck-noise image leaves thousands of dots; a correctly-empty design
+    leaves nothing. Only computed once the share gate has already tripped, so
+    it costs one connected-components pass on the bounded work canvas.
+    """
+    import cv2
+    import numpy as np
+
+    unsewn = cv2.bitwise_and(art_base, (emitted_mask == 0).astype(np.uint8))
+    n, _lab, stats, _c = cv2.connectedComponentsWithStats(unsewn, connectivity=8)
+    if n <= 1:
+        return 0.0
+    return float(stats[1:, cv2.CC_STAT_AREA].max()) * mm_per_px * mm_per_px
+
 
 def digitize_image(
     data: bytes,
@@ -138,8 +169,14 @@ def digitize_image(
     max_colors: int = DEFAULT_MAX_COLORS,
     min_region_mm2: float = MIN_REGION_MM2,
     text_mode: bool = False,
+    _texture_smooth: bool | None = None,
 ) -> Design:
-    """Convert an image into a stitch Design (classical CV baseline)."""
+    """Convert an image into a stitch Design (classical CV baseline).
+
+    ``_texture_smooth`` is internal: None means the Part 27 variance gate
+    decides whether the photographic mean-shift runs; True forces it — used
+    only by the Part 65 outcome-gated retry below, never by callers.
+    """
     import math
 
     import cv2
@@ -160,7 +197,10 @@ def digitize_image(
     # Texture is judged at SOURCE resolution: the granularity upscale's cubic
     # interpolation smooths it (measured on the peacock photo: 7.43 at source,
     # 5.86 after 2x — under the gate, so the smoothing silently never fired).
-    is_textured = svg_mask is None and _interior_texture(img) >= TEXTURE_SMOOTH_MIN
+    is_textured = svg_mask is None and (
+        _texture_smooth if _texture_smooth is not None
+        else _interior_texture(img) >= TEXTURE_SMOOTH_MIN
+    )
     mm_per_px = min(hoop_w / iw, hoop_h / ih) * 0.9  # 90% of hoop
     design_w_mm = iw * mm_per_px                     # physical width at this hoop
     # Work at a bounded resolution for speed; keep mm scale consistent.
@@ -1056,6 +1096,52 @@ def digitize_image(
         if own_stats[k, cv2.CC_STAT_AREA] >= min_area_px and covered[k] == 0:
             lost_px += int(own_stats[k, cv2.CC_STAT_AREA])
     lost_share = lost_px / max(1, cv2.countNonZero(owned))
+    # Photographic rescue (v2 Part 65). A low-resolution photo of a sew-out
+    # can sit UNDER the Part 27 variance gate while its thread texture still
+    # shatters colour areas into sub-thread webs at quantization — the
+    # competitor angelfish photo lost most of its body this way while
+    # measuring 1.86 against the 6.0 gate. No input-side metric separates
+    # that photo from the flat-art corpus (which reaches 4.10), so the rescue
+    # is gated on the OUTCOME — and on the PIXEL share of owned foreground no
+    # object covers, not on the element-level lost_share above, which a webbed
+    # photo defeats (one giant connected element, "covered" by any surviving
+    # fragment). When the plain path leaves the gate's share of the artwork
+    # unsewn, digitize once more with the mean-shift forced, and keep that
+    # result only if it demonstrably recovers artwork.
+    global _LAST_UNCOVERED_PX
+    # Base: segmentation foreground minus deliberate substrate — NOT `owned`,
+    # because the web damage this rescue exists to catch happens before
+    # ownership (halo suppression leaves the shattered pixels at label -1, so
+    # an owned-base ratio never sees them).
+    art_base = ((fg_mask > 0) & (substrate_owned == 0)).astype(np.uint8)
+    uncovered_px = 1.0 - cv2.countNonZero(
+        cv2.bitwise_and(art_base, (emitted_mask > 0).astype(np.uint8))
+    ) / max(1, cv2.countNonZero(art_base))
+    _LAST_UNCOVERED_PX = uncovered_px
+    if (svg_mask is None and not is_textured and _texture_smooth is None
+            and uncovered_px >= TEXTURE_RETRY_UNCOVERED
+            and _uncovered_chunk_mm2(art_base, emitted_mask, mm_per_px)
+                >= TEXTURE_RETRY_MIN_CHUNK_MM2):
+        # The recursive run clears and rewrites the module drop/classification
+        # logs; snapshot them so a REJECTED retry leaves the caller's logs
+        # describing the design actually returned (a kept retry's logs are the
+        # child's own, which is correct for the design it returns).
+        drop_snapshot = list(_DROP_LOG)
+        cls_snapshot = list(_CLASSIFICATION_LOG)
+        retry = digitize_image(data, fabric_type, hoop_size, max_colors,
+                               min_region_mm2, text_mode, _texture_smooth=True)
+        retry_unc = _LAST_UNCOVERED_PX  # set by the recursive call
+        _LAST_UNCOVERED_PX = uncovered_px
+        if retry_unc <= uncovered_px - TEXTURE_RETRY_MIN_GAIN:
+            note = (
+                f"Photographic texture: {uncovered_px:.0%} of the artwork could "
+                "not be traced directly, so the photo was smoothed and "
+                f"re-traced (now {retry_unc:.0%} untraced). For best results "
+                "digitize from the original flat artwork rather than a photo."
+            )
+            return retry.model_copy(update={"warnings": [note, *retry.warnings]})
+        _DROP_LOG[:] = drop_snapshot
+        _CLASSIFICATION_LOG[:] = cls_snapshot
     if lost_share >= DROPPED_SHARE_WARN:
         user_warnings.append(
             f"About {lost_share:.0%} of the artwork is too small or too "

@@ -1,6 +1,6 @@
 # STITCHIQ — current state, for the reviewer
 
-**Generated at STATUS v102, latest part 64.** Paste this alongside any
+**Generated at STATUS v103, latest part 65.** Paste this alongside any
 audit. It exists because four of the last five review briefs were built on state that had
 moved: the fix proposed was already shipped, or the number quoted came from an old run.
 
@@ -81,13 +81,25 @@ training toward competitor-grade decisions** — needs native competitor design 
 human labelling pass first. Competitor-sourced inputs live in gitignored
 `apps/backend/data/competitor/`.
 
+**Part 64's top gap FIXED in Part 65** (`docs/benchmarks/v2-part65-audit.md`): photographic
+region recovery. The engine now carries an outcome-gated rescue in `digitize_image`: when
+the plain path leaves ≥19% of the segmentation foreground unsewn, it re-digitizes once with
+Part 27's mean-shift forced and keeps the result only on a ≥10-point recovery. The
+angelfish went from a mostly-bare 30-object all-satin result to a complete 100-object
+design (0.228 → 0.102 uncovered) that also recovered the competitor's decorative swirls as
+running stitch. Flat art cannot reach the retry (worst fixture 0.148 vs the 0.19 gate) and
+cannot pass the improvement gate even if forced — locks and baselines untouched. Remaining
+fish-case gaps, in order: object fragmentation (100 objects where a competitor uses few),
+small-text/watermark noise, palette assignment of recovered linework (swirls sew black,
+competitor's are coloured).
+
 ## Numbers that are current
 
 | | value | measured at |
 |---|---|---|
-| Backend tests | **943 passed, 2 xfailed** | Part 64 |
+| Backend tests | **947 passed, 2 xfailed** | Part 65 |
 | Frontend tests | **165 passed** | Part 63 |
-| `ruff check app` | 12 (the standing baseline) | Part 64 |
+| `ruff check app` | 12 (the standing baseline) | Part 65 |
 | Stitch-stream locks | **4** fixtures, sha256 of the whole stream | — |
 | Visual baselines | 10, gate SSIM ≥ 0.995 | Part 44 |
 | Corpus | 100 designs, **0 errors**, **7** zero-stitch, interior median **98.70** | Part 48 |

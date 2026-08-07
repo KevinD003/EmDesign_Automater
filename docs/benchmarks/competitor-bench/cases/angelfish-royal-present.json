@@ -3,22 +3,24 @@
  "kind": "render_only",
  "stitchiq": {
   "provenance": "stitchiq_generated",
-  "stitch_count": 5957,
-  "trim_count": 36,
-  "jump_count": 126,
-  "jump_travel_mm": 1105.2,
-  "color_stop_count": 4,
-  "width_mm": 64.3,
-  "height_mm": 69.4,
-  "object_count": 30,
+  "stitch_count": 6504,
+  "trim_count": 108,
+  "jump_count": 189,
+  "jump_travel_mm": 1776.5,
+  "color_stop_count": 8,
+  "width_mm": 79.0,
+  "height_mm": 84.0,
+  "object_count": 100,
   "stitch_type_distribution": {
-   "SATIN": 30
+   "RUNNING_SINGLE": 55,
+   "SATIN": 39,
+   "TATAMI": 6
   },
-  "objects_with_holes": 16,
-  "hole_count": 633,
-  "small_objects_lt_8mm2": 1,
-  "distinct_angles": 28,
-  "median_stitches_per_object": 106
+  "objects_with_holes": 0,
+  "hole_count": 0,
+  "small_objects_lt_8mm2": 36,
+  "distinct_angles": 41,
+  "median_stitches_per_object": 11
  },
  "competitor": {
   "provenance": "render_only",

@@ -432,6 +432,40 @@ TEXTURE_MS_SPATIAL = 14
 TEXTURE_MS_COLOR = 52
 
 
+# Photographic rescue (v2 Part 65). The TEXTURE_SMOOTH_MIN gate measures
+# local variance, and a low-resolution photo of a sew-out can sit UNDER it
+# while still shattering into sub-thread webs at quantization: the 550px
+# angelfish competitor photo measures 1.86 (gate 6.0) yet loses most of its
+# body — 37 of 67 planned regions skipped as sub_thread_feature. Since no
+# input-side metric separates that photo from the flat-art corpus (which
+# measures up to 4.10), the rescue is OUTCOME-gated on the pixel share of
+# segmentation foreground no emitted object covers: measured, the fish plain
+# path leaves 0.228 uncovered while the worst fixture (06's hairline script,
+# inflated by legitimate edge shaving) reads 0.148 — the gate sits at 0.19,
+# between them. The retry is kept only if the smoothed pass recovers at
+# least MIN_GAIN (fish: 0.228 -> 0.102, a 0.126 gain); flat artwork cannot
+# pass that second gate even if it ever crossed the first, because
+# mean-shift recovers nothing on art that was already traced. Locked
+# fixtures never reach the retry (max 0.148 < 0.19) and stay byte-identical.
+TEXTURE_RETRY_UNCOVERED = 0.19
+
+
+TEXTURE_RETRY_MIN_GAIN = 0.10
+
+
+# The rescue exists for ONE failure shape: a sizeable piece of artwork left
+# unsewn. Requiring the largest connected uncovered region to be at least this
+# many mm² keeps the retry away from the two degenerate inputs the share
+# ratio alone cannot distinguish (both found by the suite, not foresight):
+# a faint image whose plain path correctly emitted an empty design (uncovered
+# reads 1.0 — rescuing it turns an honest empty into sewn noise and breaks
+# Part 47's empty->422 contract), and a speck-noise image whose uncovered
+# area is thousands of sub-8mm² dots (retrying doubles the cost of exactly
+# the pathological input Parts 48/49 warn about). 50mm² is ~6x Part 49's
+# speck boundary and far under the fish body's unsewn chunks.
+TEXTURE_RETRY_MIN_CHUNK_MM2 = 50.0
+
+
 # Fill stagger cycle, in rows (v2 Part 28). Without stagger, every row's
 # interior penetrations land at the SAME positions along the row — measured on
 # a 40x20mm rectangle: 588 of 588 interior penetrations vertically aligned with

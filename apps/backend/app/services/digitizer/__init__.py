@@ -172,6 +172,7 @@ from app.services.digitizer.geometry import (
     last_classification_log,
 )
 from app.services.digitizer.pipeline import (
+    _uncovered_chunk_mm2,
     digitize_image,
     rebuild_design,
 )
@@ -441,6 +442,7 @@ __all__ = [
     "_thin_step_ok",
     "_thin_terms",
     "_tie_triangle",
+    "_uncovered_chunk_mm2",
     "_uncovered_mask",
     "_verify_sketch",
     "_warp_fit",

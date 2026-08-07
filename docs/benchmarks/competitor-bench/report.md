@@ -15,7 +15,7 @@ inferred/unavailable — nothing in between.
 | 08-small-detail | fixture | 15 | 4775 | 21 | — | — |
 | sample-dst | machine_file | — | — | — | 26 | 14 |
 | sample-pes | machine_file | — | — | — | 26 | 2 |
-| angelfish-royal-present | render_only | 30 | 5957 | 36 | — | — |
+| angelfish-royal-present | render_only | 100 | 6504 | 108 | — | — |
 
 ## Comparison framing
 
@@ -155,15 +155,15 @@ Visual: `benchmarks/competitor-bench/visual/sample-pes.png`
 
 | metric | STITCHIQ | competitor |
 |---|---|---|
-| object count | 30 | unavailable (render only) |
-| stitch count | 5957 | unavailable (render only) |
-| trim count | 36 | unavailable (render only) |
-| jump travel mm | 1105.2 | unavailable (render only) |
-| color stops | 4 | unavailable (render only) |
-| stitch types | SATIN 30 | unavailable (render only) |
-| objects with holes | 16 | — |
-| small objects <8mm2 | 1 | — |
-| distinct angles | 28 | — |
+| object count | 100 | unavailable (render only) |
+| stitch count | 6504 | unavailable (render only) |
+| trim count | 108 | unavailable (render only) |
+| jump travel mm | 1776.5 | unavailable (render only) |
+| color stops | 8 | unavailable (render only) |
+| stitch types | RUNNING_SINGLE 55, SATIN 39, TATAMI 6 | unavailable (render only) |
+| objects with holes | 0 | — |
+| small objects <8mm2 | 36 | — |
+| distinct angles | 41 | — |
 
 > Competitor render (royal-present.ru marketing photo, watermarked). No stitch file: numeric competitor columns are unavailable.
 
