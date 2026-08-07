@@ -5,9 +5,10 @@ import { reorderColorStop } from '../lib/stitches';
 const HISTORY_LIMIT = 50;
 
 /** Manual digitizing tool. 'select' = normal edit/pan; others = draw mode. */
-export type Tool = 'select' | 'run' | 'satin' | 'fill' | 'flow';
-/** The manual DRAW tools. 'flow' is not one: it captures two clicks for a
- *  selected object's Stitch Flow line and never creates an object. */
+export type Tool = 'select' | 'run' | 'satin' | 'fill' | 'flow' | 'divide';
+/** The manual DRAW tools. 'flow' and 'divide' are not ones: each captures two
+ *  clicks for the selected object's Stitch Flow metadata and never creates an
+ *  object ('flow' = a direction line, 'divide' = the Part 63 divide line). */
 export const MANUAL_TOOLS = ['run', 'satin', 'fill'] as const;
 
 interface DesignState {

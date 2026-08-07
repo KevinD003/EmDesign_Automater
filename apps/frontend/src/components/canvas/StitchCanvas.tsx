@@ -4,6 +4,7 @@ import type { KonvaEventObject } from 'konva/lib/Node';
 import type { Group as KonvaGroup } from 'konva/lib/Group';
 import type { ColorStop, Stitch } from '../../types/design';
 import { buildRuns, computeBounds } from '../../lib/stitches';
+import { flowLineSlot } from '../../lib/flow';
 import { useDesignStore } from '../../store/designStore';
 import { formatZoomPct, wheelZoom, zoomIn, zoomOut } from './zoom';
 
@@ -130,18 +131,25 @@ export function StitchCanvas({
     if (drawing) {
       const p = groupRef.current?.getRelativePointerPosition();
       if (!p) return;
-      // Stitch Flow capture (v2 Part 62): exactly two clicks, then the line is
-      // committed to the selected object and the tool drops back to select —
-      // no Finish step, because a direction needs exactly two points.
-      if (activeTool === 'flow') {
-        if (selectedObject == null) {
+      // Stitch Flow capture (v2 Part 62/63): exactly two clicks, then the
+      // segment is committed to the selected object and the tool drops back to
+      // select — no Finish step, because a line needs exactly two points.
+      // 'flow' commits a direction line into the slot for the side it was
+      // drawn on (flowLineSlot); 'divide' commits the Part 63 divide line.
+      if (activeTool === 'flow' || activeTool === 'divide') {
+        if (selectedObject == null || !flowObject) {
           setTool('select');
           return;
         }
         if (draft.length === 0) {
           addDraftPoint({ x: p.x, y: p.y });
         } else {
-          updateObject(selectedObject, { flowLine: [draft[0], { x: p.x, y: p.y }] });
+          const seg = [draft[0], { x: p.x, y: p.y }];
+          if (activeTool === 'divide') {
+            updateObject(selectedObject, { flowDivide: seg });
+          } else {
+            updateObject(selectedObject, { [flowLineSlot(flowObject, seg)]: seg });
+          }
           setTool('select'); // also clears the draft
         }
         return;
@@ -218,40 +226,53 @@ export function StitchCanvas({
                 />
               );
             })}
-            {/* Stitch Flow line of the selected fill object (v2 Part 62):
+            {/* Stitch Flow overlay of the selected fill object (v2 Part 62/63):
+                the direction line(s) in teal and the divide line in orange,
                 visible whenever the object is selected, endpoints draggable to
-                move the line without redrawing. Children of the fit Group, so
-                drag positions come back in design-mm directly. */}
-            {!drawing && flowObject?.flowLine && flowObject.flowLine.length >= 2 && (
-              <>
-                <Line
-                  points={flowObject.flowLine.flatMap((pt) => [pt.x, pt.y])}
-                  stroke="#00b3a4"
-                  strokeWidth={1.5 / pxPerMm}
-                  dash={[4 / pxPerMm, 3 / pxPerMm]}
-                  lineCap="round"
-                  listening={false}
-                />
-                {flowObject.flowLine.map((pt, i) => (
-                  <Circle
-                    key={`flow-${i}`}
-                    x={pt.x}
-                    y={pt.y}
-                    radius={4 / pxPerMm}
-                    fill="#00b3a4"
-                    stroke="#fff"
-                    strokeWidth={1 / pxPerMm}
-                    draggable
-                    onDragEnd={(e) => {
-                      const line = flowObject.flowLine!.map((q, j) =>
-                        j === i ? { x: e.target.x(), y: e.target.y() } : q,
-                      );
-                      updateObject(flowObject.sequenceOrder, { flowLine: line });
-                    }}
-                  />
-                ))}
-              </>
-            )}
+                move each segment without redrawing. Children of the fit Group,
+                so drag positions come back in design-mm directly. */}
+            {!drawing &&
+              flowObject &&
+              (
+                [
+                  ['flowLine', '#00b3a4'],
+                  ['flowLineB', '#00b3a4'],
+                  ['flowDivide', '#e08a00'],
+                ] as const
+              ).map(([field, color]) => {
+                const seg = flowObject[field];
+                if (!seg || seg.length < 2) return null;
+                return (
+                  <Group key={field}>
+                    <Line
+                      points={seg.flatMap((pt) => [pt.x, pt.y])}
+                      stroke={color}
+                      strokeWidth={1.5 / pxPerMm}
+                      dash={[4 / pxPerMm, 3 / pxPerMm]}
+                      lineCap="round"
+                      listening={false}
+                    />
+                    {seg.map((pt, i) => (
+                      <Circle
+                        key={`${field}-${i}`}
+                        x={pt.x}
+                        y={pt.y}
+                        radius={4 / pxPerMm}
+                        fill={color}
+                        stroke="#fff"
+                        strokeWidth={1 / pxPerMm}
+                        draggable
+                        onDragEnd={(e) => {
+                          const moved = seg.map((q, j) =>
+                            j === i ? { x: e.target.x(), y: e.target.y() } : q,
+                          );
+                          updateObject(flowObject.sequenceOrder, { [field]: moved });
+                        }}
+                      />
+                    ))}
+                  </Group>
+                );
+              })}
             {/* Live draft path + vertices */}
             {draft.length > 0 && (
               <>
@@ -279,7 +300,9 @@ export function StitchCanvas({
         {drawing
           ? activeTool === 'flow'
             ? `Stitch flow — click the start and end of the direction line (${draft.length}/2). Esc cancels.`
-            : `Drawing ${activeTool} — click to add points (${draft.length}), then Finish. Esc cancels.`
+            : activeTool === 'divide'
+              ? `Divide — click the start and end of the divide line (${draft.length}/2). Esc cancels.`
+              : `Drawing ${activeTool} — click to add points (${draft.length}), then Finish. Esc cancels.`
           : `${stitches.length.toLocaleString()} stitches · ${(bounds.maxX - bounds.minX).toFixed(0)}×${(bounds.maxY - bounds.minY).toFixed(0)} mm · click a color · scroll zoom · drag pan`}
       </div>
     </div>

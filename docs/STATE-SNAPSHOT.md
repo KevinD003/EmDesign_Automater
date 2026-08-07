@@ -1,6 +1,6 @@
 # STITCHIQ — current state, for the reviewer
 
-**Generated at STATUS v100, latest part 62.** Paste this alongside any
+**Generated at STATUS v101, latest part 63.** Paste this alongside any
 audit. It exists because four of the last five review briefs were built on state that had
 moved: the fix proposed was already shipped, or the number quoted came from an old run.
 
@@ -50,25 +50,31 @@ decide up to 39% of machine-format trims differently) and the profile even repai
 encoding-inflated schedules (2,435 → 583 vs native 559). **Safe to advertise generally**;
 one caveat: on travel-free encodings (VP3) the carry is the machine's direct move.
 
-**Stitch Flow shipped in Part 62** (`docs/benchmarks/v2-part62-audit.md`): a `TATAMI`
-object can carry a persisted two-point `flow_line` (JSON `flowLine`, design mm) that
-rebuild lays the rows along; the override never overwrites `stitch_angle`, so removing the
-line restores the exact original stream and pre-Part-62 designs rebuild byte-identically —
-all pinned. Full editing UI (draw two clicks / drag endpoints / remove, undoable) with live
-end-to-end proof. **This is user intent, not R004**: no direction field is consumed, and
-nothing touches the blocked reference work. Tatami-only by scope; curved fills would need
-their own consumption story. A finding worth its own brief: the first Apply on a freshly
-digitized design changes stitch counts with or without a line (demo design 4,820 → 2,298
-lineless) — rebuild regenerates plain fills from contours and always has; the pre-existing
-digitize-vs-rebuild gap has never been measured on its own.
+**Stitch Flow shipped in Part 62, divided flow in Part 63**
+(`docs/benchmarks/v2-part62-audit.md`, `v2-part63-audit.md`): a `TATAMI` object can carry
+a persisted two-point `flow_line` (JSON `flowLine`, design mm) that rebuild lays the rows
+along, and since Part 63 an optional **divide line** (`flowDivide`) splitting it into two
+half-plane flow regions with a second line (`flowLineB`) — each side sews at the angle of
+the line whose midpoint lies on it, unclaimed sides stay automatic. No override ever
+writes `stitch_angle`, so removing the metadata restores the exact original stream, and
+pre-Part-62/63 designs rebuild byte-identically — pinned four ways. Full editing UI
+(two-click capture, draggable endpoints, per-side line routing, remove) with live
+end-to-end proof; the two half-plane masks partition the region exactly and coverage is
+preserved at 1.000 on the demo shapes. **This is user intent, not R004**: no direction
+field is consumed. Honest limit: two regions cannot serve a full ring (its ideal direction
+turns continuously) — multi-segment flow is the natural next slice if wanted. A finding
+worth its own brief: the first Apply on a freshly digitized design changes stitch counts
+with or without any flow metadata (demo design 4,820 → 2,298 lineless) — rebuild
+regenerates plain fills from contours and always has; the pre-existing digitize-vs-rebuild
+gap has never been measured on its own.
 
 ## Numbers that are current
 
 | | value | measured at |
 |---|---|---|
-| Backend tests | **919 passed, 2 xfailed** | Part 62 |
-| Frontend tests | **155 passed** | Part 62 |
-| `ruff check app` | 12 (the standing baseline) | Part 62 |
+| Backend tests | **933 passed, 2 xfailed** | Part 63 |
+| Frontend tests | **165 passed** | Part 63 |
+| `ruff check app` | 12 (the standing baseline) | Part 63 |
 | Stitch-stream locks | **4** fixtures, sha256 of the whole stream | — |
 | Visual baselines | 10, gate SSIM ≥ 0.995 | Part 44 |
 | Corpus | 100 designs, **0 errors**, **7** zero-stitch, interior median **98.70** | Part 48 |

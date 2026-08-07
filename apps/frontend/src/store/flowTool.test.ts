@@ -91,9 +91,39 @@ describe('stitch flow line edits', () => {
   });
 });
 
+describe('divided flow edits (v2 Part 63)', () => {
+  const DIVIDE = [{ x: 5, y: -1 }, { x: 5, y: 11 }];
+
+  it('setting a divide is an undoable edit on the target object only', () => {
+    useDesignStore.getState().setDesign(makeDesign());
+    useDesignStore.getState().updateObject(0, { flowDivide: DIVIDE });
+    const s = useDesignStore.getState();
+    expect(s.design?.objects[0].flowDivide).toEqual(DIVIDE);
+    expect(s.design?.objects[1].flowDivide).toBeUndefined();
+    expect(s.past).toHaveLength(1);
+    useDesignStore.getState().undo();
+    expect(useDesignStore.getState().design?.objects[0].flowDivide).toBeUndefined();
+  });
+
+  it('removing the divide clears the second line with it in one step', () => {
+    useDesignStore.getState().setDesign(makeDesign());
+    useDesignStore.getState().updateObject(0, { flowDivide: DIVIDE, flowLine: LINE });
+    useDesignStore.getState().updateObject(0, { flowLineB: [{ x: 7, y: 1 }, { x: 9, y: 9 }] });
+    // the panel's Remove divide patch: divide and side line go together
+    useDesignStore.getState().updateObject(0, { flowDivide: null, flowLineB: null });
+    const o = useDesignStore.getState().design?.objects[0];
+    expect(o?.flowDivide).toBeNull();
+    expect(o?.flowLineB).toBeNull();
+    expect(o?.flowLine).toEqual(LINE); // the first line survives
+    useDesignStore.getState().undo();
+    expect(useDesignStore.getState().design?.objects[0].flowDivide).toEqual(DIVIDE);
+  });
+});
+
 describe('the flow tool mode', () => {
   it("'flow' is not a manual draw tool — it never creates an object", () => {
     expect(MANUAL_TOOLS).not.toContain('flow');
+    expect(MANUAL_TOOLS).not.toContain('divide');
   });
 
   it('entering flow mode clears any draft; leaving it clears the capture click', () => {
@@ -106,9 +136,12 @@ describe('the flow tool mode', () => {
     expect(useDesignStore.getState().draft).toEqual([]);
   });
 
-  it('loading a new design drops a stale flow mode', () => {
+  it('loading a new design drops a stale flow or divide mode', () => {
     useDesignStore.getState().setDesign(makeDesign());
     useDesignStore.getState().setTool('flow');
+    useDesignStore.getState().setDesign(makeDesign());
+    expect(useDesignStore.getState().activeTool).toBe('select');
+    useDesignStore.getState().setTool('divide');
     useDesignStore.getState().setDesign(makeDesign());
     expect(useDesignStore.getState().activeTool).toBe('select');
   });

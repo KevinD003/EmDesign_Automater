@@ -170,6 +170,15 @@ class DesignObject(CamelModel):
     # is untouched. Removing the line returns the object to its automatic angle,
     # which is why the override never overwrites `stitch_angle`.
     flow_line: list[Point] | None = None
+    # Divided flow (v2 Part 63): an optional divide line, in design mm, that
+    # splits a TATAMI object into two flow regions. Each side sews at the angle
+    # of the direction line whose MIDPOINT lies on that side (`flow_line` and
+    # `flow_line_b` are both candidates; first claim wins), falling back to the
+    # automatic angle for a side no line claims. Without a divide, `flow_line_b`
+    # is ignored and behaviour is exactly Part 62's. Both default to None, so
+    # every earlier design loads and rebuilds untouched.
+    flow_divide: list[Point] | None = None
+    flow_line_b: list[Point] | None = None
 
     @field_validator("stitch_type", mode="before")
     @classmethod

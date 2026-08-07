@@ -578,3 +578,72 @@ def _flow_line_angle(flow_line, fallback_deg: float) -> float:
     if abs(dx) < 1e-9 and abs(dy) < 1e-9:
         return fallback_deg
     return math.degrees(math.atan2(dy, dx)) % 180.0
+
+
+def _flow_divide_valid(flow_divide) -> bool:
+    """A divide line is usable when its endpoints are two distinct points.
+
+    Same degeneracy rule as `_flow_line_angle`: a missing, single-point or
+    zero-length divide means "no divide", never a guessed one (v2 Part 63).
+    """
+    if not flow_divide or len(flow_divide) < 2:
+        return False
+    a, b = flow_divide[0], flow_divide[-1]
+    return abs(float(b.x) - float(a.x)) > 1e-9 or abs(float(b.y) - float(a.y)) > 1e-9
+
+
+def _flow_side(flow_divide, x: float, y: float) -> float:
+    """Signed side of (x, y) relative to the divide line's endpoints.
+
+    Sign of the cross product (b-a) x (p-a). The mm->px transform used at
+    rebuild is a positive uniform scale plus translation, so this sign matches
+    the pixel-space half-plane split in `_split_mask_by_line` (v2 Part 63).
+    """
+    a, b = flow_divide[0], flow_divide[-1]
+    return (float(b.x) - float(a.x)) * (y - float(a.y)) - (
+        float(b.y) - float(a.y)
+    ) * (x - float(a.x))
+
+
+def _flow_side_angles(flow_divide, flow_line, flow_line_b, fallback_deg: float):
+    """Per-side fill angles (positive side, negative side) of a valid divide.
+
+    Each candidate direction line claims the side its MIDPOINT lies on; first
+    claim wins (`flow_line` is considered before `flow_line_b`), and a side no
+    line claims sews at the fallback — the object's automatic angle. A line
+    whose midpoint sits exactly on the divide claims nothing: that placement is
+    ambiguous and silence beats a coin flip (v2 Part 63).
+    """
+    angles = [fallback_deg, fallback_deg]
+    claimed = [False, False]
+    for line in (flow_line, flow_line_b):
+        if not line or len(line) < 2:
+            continue
+        a, b = line[0], line[-1]
+        mx = (float(a.x) + float(b.x)) / 2.0
+        my = (float(a.y) + float(b.y)) / 2.0
+        s = _flow_side(flow_divide, mx, my)
+        if s == 0.0:
+            continue
+        i = 0 if s > 0 else 1
+        if not claimed[i]:
+            angles[i] = _flow_line_angle(line, fallback_deg)
+            claimed[i] = True
+    return angles[0], angles[1]
+
+
+def _split_mask_by_line(mask, a_px, b_px):
+    """Split a region mask into the two half-planes of a divide line.
+
+    Pixels exactly on the line land on the positive side, so the two returned
+    masks partition the region — no gap, no overlap (v2 Part 63).
+    """
+    import numpy as np
+
+    h, w = mask.shape
+    ys, xs = np.ogrid[0:h, 0:w]
+    cross = (b_px[0] - a_px[0]) * (ys - a_px[1]) - (b_px[1] - a_px[1]) * (xs - a_px[0])
+    inside = mask > 0
+    pos = (inside & (cross >= 0)).astype(np.uint8) * 255
+    neg = (inside & (cross < 0)).astype(np.uint8) * 255
+    return pos, neg

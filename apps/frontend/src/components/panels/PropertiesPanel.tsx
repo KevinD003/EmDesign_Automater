@@ -3,7 +3,7 @@ import type { ChangeEvent } from 'react';
 import { useDesignStore } from '../../store/designStore';
 import { api } from '../../api/client';
 import { toastError } from '../feedback/toastStore';
-import { flowAngleDeg } from '../../lib/flow';
+import { flowAngleDeg, flowDivideValid, flowSideAngles } from '../../lib/flow';
 
 /** Coerce arbitrary hex to the #rrggbb form that <input type="color"> requires. */
 function normalizeHex(h: string): string {
@@ -139,27 +139,36 @@ export function PropertiesPanel() {
               step="5"
               value={angle}
               onChange={(e) => setAngle(e.target.value)}
-              disabled={obj.stitchType === 'SATIN' || !!obj.flowLine}
+              disabled={obj.stitchType === 'SATIN' || !!obj.flowLine || !!obj.flowLineB}
               title={
                 obj.stitchType === 'SATIN'
                   ? 'Satin columns follow the shape axis'
-                  : obj.flowLine
+                  : obj.flowLine || obj.flowLineB
                     ? 'Overridden by the Stitch Flow line — remove the line to edit'
                     : ''
               }
             />
           </label>
-          {/* Stitch Flow (v2 Part 62): a drawn direction line that overrides the
-              angle at rebuild. Offered only where rebuild actually consumes it
-              (tatami with a stored contour) — no dead controls. */}
+          {/* Stitch Flow (v2 Part 62/63): a drawn direction line overrides the
+              angle at rebuild; a divide line (Part 63) splits the object into
+              two flow regions, each following its own line. Offered only where
+              rebuild actually consumes it (tatami with a stored contour) — no
+              dead controls. */}
           {obj.stitchType === 'TATAMI' && obj.contour && (
             <>
               <div className="prop-row">
                 <span>Stitch Flow</span>
                 <span className="muted">
-                  {obj.flowLine
-                    ? `line at ${flowAngleDeg(obj.flowLine)?.toFixed(0)}°`
-                    : `automatic (${Number(obj.stitchAngle).toFixed(0)}°)`}
+                  {(() => {
+                    if (flowDivideValid(obj.flowDivide)) {
+                      const { pos, neg } = flowSideAngles(obj.flowDivide!, obj.flowLine, obj.flowLineB);
+                      const fmt = (a: number | null) => (a === null ? 'auto' : `${a.toFixed(0)}°`);
+                      return `divided: ${fmt(pos)} / ${fmt(neg)}`;
+                    }
+                    return obj.flowLine
+                      ? `line at ${flowAngleDeg(obj.flowLine)?.toFixed(0)}°`
+                      : `automatic (${Number(obj.stitchAngle).toFixed(0)}°)`;
+                  })()}
                 </span>
               </div>
               <div className="prop-row">
@@ -169,19 +178,65 @@ export function PropertiesPanel() {
                     type="button"
                     onClick={() => setTool(activeTool === 'flow' ? 'select' : 'flow')}
                   >
-                    {activeTool === 'flow' ? 'Cancel drawing' : obj.flowLine ? 'Redraw line' : 'Draw line'}
+                    {activeTool === 'flow'
+                      ? 'Cancel drawing'
+                      : flowDivideValid(obj.flowDivide)
+                        ? 'Draw side line'
+                        : obj.flowLine
+                          ? 'Redraw line'
+                          : 'Draw line'}
                   </button>
-                  {obj.flowLine && (
-                    <button type="button" onClick={() => updateObject(obj.sequenceOrder, { flowLine: null })}>
-                      Remove line
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => setTool(activeTool === 'divide' ? 'select' : 'divide')}
+                  >
+                    {activeTool === 'divide'
+                      ? 'Cancel divide'
+                      : obj.flowDivide
+                        ? 'Redraw divide'
+                        : 'Divide'}
+                  </button>
                 </span>
               </div>
+              {(obj.flowLine || obj.flowLineB || obj.flowDivide) && (
+                <div className="prop-row">
+                  <span />
+                  <span className="move-btns">
+                    {(obj.flowLine || obj.flowLineB) && (
+                      <button
+                        type="button"
+                        onClick={() => updateObject(obj.sequenceOrder, { flowLine: null, flowLineB: null })}
+                      >
+                        Remove {obj.flowLine && obj.flowLineB ? 'lines' : 'line'}
+                      </button>
+                    )}
+                    {obj.flowDivide && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          // a side line is meaningless without its divide, so
+                          // removing the divide also clears the second line
+                          updateObject(obj.sequenceOrder, { flowDivide: null, flowLineB: null })
+                        }
+                      >
+                        Remove divide
+                      </button>
+                    )}
+                  </span>
+                </div>
+              )}
               {activeTool === 'flow' && (
                 <p className="muted small">Click the start and end of the direction line on the canvas.</p>
               )}
-              {obj.flowLine && (
+              {activeTool === 'divide' && (
+                <p className="muted small">Click the start and end of the divide line on the canvas.</p>
+              )}
+              {activeTool !== 'flow' && activeTool !== 'divide' && flowDivideValid(obj.flowDivide) && (
+                <p className="muted small">
+                  Each side follows its own line after Apply — draw one line per side; drag endpoints on the canvas to adjust.
+                </p>
+              )}
+              {activeTool !== 'flow' && activeTool !== 'divide' && !flowDivideValid(obj.flowDivide) && obj.flowLine && (
                 <p className="muted small">Rows follow the line after Apply. Drag its endpoints on the canvas to adjust.</p>
               )}
             </>

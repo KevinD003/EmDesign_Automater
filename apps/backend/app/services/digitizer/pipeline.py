@@ -88,12 +88,15 @@ from app.services.digitizer.geometry import (
     _dilate_pull,
     _drop_floor_reversals,
     _fabric_profile,
+    _flow_divide_valid,
     _flow_line_angle,
+    _flow_side_angles,
     _hole_covered_later,
     _open_preserving_detail,
     _parse_hoop,
     _resample_open,
     _smooth_contour,
+    _split_mask_by_line,
 )
 from app.services.digitizer.planning import (
     _band_ratio,
@@ -1248,10 +1251,30 @@ def rebuild_design(design: Design) -> Design:
             elif st == "TATAMI":
                 # Stitch Flow (v2 Part 62): a stored direction line beats the
                 # stored angle; no line means exactly the old behaviour.
-                pts = _scanline_angled(
-                    top, _flow_line_angle(o.flow_line, float(o.stitch_angle)),
-                    spacing_px, max_step_px, connect_px,
-                )
+                # Divided flow (v2 Part 63): a valid divide line splits the
+                # region into two half-planes, each sewing at its own angle
+                # (side assignment documented on _flow_side_angles). Each
+                # side's scanline opens with a jump point, so concatenation is
+                # safe, and _route_travel below routes the crossing in-mask.
+                if _flow_divide_valid(o.flow_divide):
+                    d0, d1 = o.flow_divide[0], o.flow_divide[-1]
+                    a_px = ((d0.x - minx) * px_per_mm + pad, (d0.y - miny) * px_per_mm + pad)
+                    b_px = ((d1.x - minx) * px_per_mm + pad, (d1.y - miny) * px_per_mm + pad)
+                    ang_pos, ang_neg = _flow_side_angles(
+                        o.flow_divide, o.flow_line, o.flow_line_b, float(o.stitch_angle),
+                    )
+                    pts = []
+                    for side_mask, ang in zip(_split_mask_by_line(top, a_px, b_px),
+                                              (ang_pos, ang_neg)):
+                        if cv2.countNonZero(side_mask):
+                            pts += _scanline_angled(
+                                side_mask, ang, spacing_px, max_step_px, connect_px,
+                            )
+                else:
+                    pts = _scanline_angled(
+                        top, _flow_line_angle(o.flow_line, float(o.stitch_angle)),
+                        spacing_px, max_step_px, connect_px,
+                    )
                 if ut and ut != "NONE":  # any non-NONE underlay → edge-walk for fills
                     inset_px = max(1, round(EDGE_INSET_MM / mm_per_px))
                     under = _edge_walk(

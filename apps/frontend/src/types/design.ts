@@ -126,6 +126,14 @@ export interface DesignObject {
    * automatic angle. Fill/tatami objects only.
    */
   flowLine?: Point[] | null;
+  /**
+   * Divided flow (v2 Part 63): an optional divide line that splits a tatami
+   * object into two flow regions. Each side sews at the angle of the direction
+   * line (flowLine / flowLineB) whose midpoint lies on it; an unclaimed side
+   * uses the automatic angle. Without a divide, flowLineB is ignored.
+   */
+  flowDivide?: Point[] | null;
+  flowLineB?: Point[] | null;
 }
 
 export type DesignStatus = 'draft' | 'digitized' | 'approved' | 'exported';
