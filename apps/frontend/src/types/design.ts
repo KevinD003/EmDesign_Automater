@@ -120,6 +120,12 @@ export interface DesignObject {
   contour?: Point[];
   /** Interior holes (e.g. letter counters like 'o'); carved out of the fill. */
   holes?: Point[][];
+  /**
+   * Stitch Flow (v2 Part 62): a user-drawn direction line [start, end] in design
+   * mm. Rebuild lays this object's tatami rows along it; absent means the
+   * automatic angle. Fill/tatami objects only.
+   */
+  flowLine?: Point[] | null;
 }
 
 export type DesignStatus = 'draft' | 'digitized' | 'approved' | 'exported';

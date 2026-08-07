@@ -88,6 +88,7 @@ from app.services.digitizer.geometry import (
     _dilate_pull,
     _drop_floor_reversals,
     _fabric_profile,
+    _flow_line_angle,
     _hole_covered_later,
     _open_preserving_detail,
     _parse_hoop,
@@ -1245,7 +1246,12 @@ def rebuild_design(design: Design) -> Design:
                 passes = {"RUNNING_DOUBLE": 2, "RUNNING_TRIPLE": 3}.get(st, 1)
                 pts = _manual_run(poly, max_step_px, passes)
             elif st == "TATAMI":
-                pts = _scanline_angled(top, float(o.stitch_angle), spacing_px, max_step_px, connect_px)
+                # Stitch Flow (v2 Part 62): a stored direction line beats the
+                # stored angle; no line means exactly the old behaviour.
+                pts = _scanline_angled(
+                    top, _flow_line_angle(o.flow_line, float(o.stitch_angle)),
+                    spacing_px, max_step_px, connect_px,
+                )
                 if ut and ut != "NONE":  # any non-NONE underlay → edge-walk for fills
                     inset_px = max(1, round(EDGE_INSET_MM / mm_per_px))
                     under = _edge_walk(

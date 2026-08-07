@@ -3,6 +3,7 @@ import type { ChangeEvent } from 'react';
 import { useDesignStore } from '../../store/designStore';
 import { api } from '../../api/client';
 import { toastError } from '../feedback/toastStore';
+import { flowAngleDeg } from '../../lib/flow';
 
 /** Coerce arbitrary hex to the #rrggbb form that <input type="color"> requires. */
 function normalizeHex(h: string): string {
@@ -22,6 +23,9 @@ export function PropertiesPanel() {
   const updateColorStop = useDesignStore((s) => s.updateColorStop);
   const reorderStop = useDesignStore((s) => s.reorderStop);
   const replaceDesign = useDesignStore((s) => s.replaceDesign);
+  const updateObject = useDesignStore((s) => s.updateObject);
+  const setTool = useDesignStore((s) => s.setTool);
+  const activeTool = useDesignStore((s) => s.activeTool);
 
   const stops = design?.colorStops ?? [];
   const stopIdx = stops.findIndex((cs) => cs.stopNumber === selectedStop);
@@ -135,10 +139,53 @@ export function PropertiesPanel() {
               step="5"
               value={angle}
               onChange={(e) => setAngle(e.target.value)}
-              disabled={obj.stitchType === 'SATIN'}
-              title={obj.stitchType === 'SATIN' ? 'Satin columns follow the shape axis' : ''}
+              disabled={obj.stitchType === 'SATIN' || !!obj.flowLine}
+              title={
+                obj.stitchType === 'SATIN'
+                  ? 'Satin columns follow the shape axis'
+                  : obj.flowLine
+                    ? 'Overridden by the Stitch Flow line — remove the line to edit'
+                    : ''
+              }
             />
           </label>
+          {/* Stitch Flow (v2 Part 62): a drawn direction line that overrides the
+              angle at rebuild. Offered only where rebuild actually consumes it
+              (tatami with a stored contour) — no dead controls. */}
+          {obj.stitchType === 'TATAMI' && obj.contour && (
+            <>
+              <div className="prop-row">
+                <span>Stitch Flow</span>
+                <span className="muted">
+                  {obj.flowLine
+                    ? `line at ${flowAngleDeg(obj.flowLine)?.toFixed(0)}°`
+                    : `automatic (${Number(obj.stitchAngle).toFixed(0)}°)`}
+                </span>
+              </div>
+              <div className="prop-row">
+                <span />
+                <span className="move-btns">
+                  <button
+                    type="button"
+                    onClick={() => setTool(activeTool === 'flow' ? 'select' : 'flow')}
+                  >
+                    {activeTool === 'flow' ? 'Cancel drawing' : obj.flowLine ? 'Redraw line' : 'Draw line'}
+                  </button>
+                  {obj.flowLine && (
+                    <button type="button" onClick={() => updateObject(obj.sequenceOrder, { flowLine: null })}>
+                      Remove line
+                    </button>
+                  )}
+                </span>
+              </div>
+              {activeTool === 'flow' && (
+                <p className="muted small">Click the start and end of the direction line on the canvas.</p>
+              )}
+              {obj.flowLine && (
+                <p className="muted small">Rows follow the line after Apply. Drag its endpoints on the canvas to adjust.</p>
+              )}
+            </>
+          )}
           <label className="prop-row">
             <span>Underlay</span>
             {/* Every type the generator can PRODUCE is listed for both families

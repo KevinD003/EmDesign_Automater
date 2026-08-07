@@ -74,6 +74,12 @@ export function StitchCanvas({
   const activeTool = useDesignStore((s) => s.activeTool);
   const draft = useDesignStore((s) => s.draft);
   const addDraftPoint = useDesignStore((s) => s.addDraftPoint);
+  const setTool = useDesignStore((s) => s.setTool);
+  const updateObject = useDesignStore((s) => s.updateObject);
+  const selectedObject = useDesignStore((s) => s.selectedObject);
+  const flowObject = useDesignStore((s) =>
+    s.design?.objects.find((o) => o.sequenceOrder === s.selectedObject) ?? null,
+  );
   const drawing = activeTool !== 'select';
   const closed = activeTool === 'fill' || activeTool === 'satin';
 
@@ -123,7 +129,24 @@ export function StitchCanvas({
   const onStageClick = (e: KonvaEventObject<MouseEvent>) => {
     if (drawing) {
       const p = groupRef.current?.getRelativePointerPosition();
-      if (p) addDraftPoint({ x: p.x, y: p.y });
+      if (!p) return;
+      // Stitch Flow capture (v2 Part 62): exactly two clicks, then the line is
+      // committed to the selected object and the tool drops back to select —
+      // no Finish step, because a direction needs exactly two points.
+      if (activeTool === 'flow') {
+        if (selectedObject == null) {
+          setTool('select');
+          return;
+        }
+        if (draft.length === 0) {
+          addDraftPoint({ x: p.x, y: p.y });
+        } else {
+          updateObject(selectedObject, { flowLine: [draft[0], { x: p.x, y: p.y }] });
+          setTool('select'); // also clears the draft
+        }
+        return;
+      }
+      addDraftPoint({ x: p.x, y: p.y });
       return;
     }
     if (e.target === e.target.getStage()) onSelectStop?.(null);
@@ -195,6 +218,40 @@ export function StitchCanvas({
                 />
               );
             })}
+            {/* Stitch Flow line of the selected fill object (v2 Part 62):
+                visible whenever the object is selected, endpoints draggable to
+                move the line without redrawing. Children of the fit Group, so
+                drag positions come back in design-mm directly. */}
+            {!drawing && flowObject?.flowLine && flowObject.flowLine.length >= 2 && (
+              <>
+                <Line
+                  points={flowObject.flowLine.flatMap((pt) => [pt.x, pt.y])}
+                  stroke="#00b3a4"
+                  strokeWidth={1.5 / pxPerMm}
+                  dash={[4 / pxPerMm, 3 / pxPerMm]}
+                  lineCap="round"
+                  listening={false}
+                />
+                {flowObject.flowLine.map((pt, i) => (
+                  <Circle
+                    key={`flow-${i}`}
+                    x={pt.x}
+                    y={pt.y}
+                    radius={4 / pxPerMm}
+                    fill="#00b3a4"
+                    stroke="#fff"
+                    strokeWidth={1 / pxPerMm}
+                    draggable
+                    onDragEnd={(e) => {
+                      const line = flowObject.flowLine!.map((q, j) =>
+                        j === i ? { x: e.target.x(), y: e.target.y() } : q,
+                      );
+                      updateObject(flowObject.sequenceOrder, { flowLine: line });
+                    }}
+                  />
+                ))}
+              </>
+            )}
             {/* Live draft path + vertices */}
             {draft.length > 0 && (
               <>
@@ -220,7 +277,9 @@ export function StitchCanvas({
       <ZoomControls scale={scale} onChange={setScale} onFit={onFit} />
       <div className="canvas-badge">
         {drawing
-          ? `Drawing ${activeTool} — click to add points (${draft.length}), then Finish. Esc cancels.`
+          ? activeTool === 'flow'
+            ? `Stitch flow — click the start and end of the direction line (${draft.length}/2). Esc cancels.`
+            : `Drawing ${activeTool} — click to add points (${draft.length}), then Finish. Esc cancels.`
           : `${stitches.length.toLocaleString()} stitches · ${(bounds.maxX - bounds.minX).toFixed(0)}×${(bounds.maxY - bounds.minY).toFixed(0)} mm · click a color · scroll zoom · drag pan`}
       </div>
     </div>

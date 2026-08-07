@@ -559,3 +559,22 @@ def _drop_floor_reversals(pts, floor_px: float, max_px: float):
         if not dropped:
             break
     return out
+
+def _flow_line_angle(flow_line, fallback_deg: float) -> float:
+    """Fill angle from a user's Stitch Flow line, or the fallback (v2 Part 62).
+
+    The line lives in design mm with y down — the same orientation as the image
+    space `_scanline_angled` works in, so degrees(atan2(dy, dx)) needs no flip.
+    Folded to [0, 180): rows have no head or tail. A degenerate line (fewer than
+    two points, or both points coincident) falls back rather than inventing an
+    angle from noise.
+    """
+    import math
+
+    if not flow_line or len(flow_line) < 2:
+        return fallback_deg
+    a, b = flow_line[0], flow_line[-1]
+    dx, dy = float(b.x) - float(a.x), float(b.y) - float(a.y)
+    if abs(dx) < 1e-9 and abs(dy) < 1e-9:
+        return fallback_deg
+    return math.degrees(math.atan2(dy, dx)) % 180.0

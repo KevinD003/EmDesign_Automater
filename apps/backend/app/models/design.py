@@ -163,6 +163,13 @@ class DesignObject(CamelModel):
     contour: list[Point] | None = None
     # Interior holes (e.g. letter counters like 'o'); carved out of the fill.
     holes: list[list[Point]] | None = None
+    # Stitch Flow (v2 Part 62): a user-drawn direction line for FILL objects, in
+    # design mm, [start, end]. When present, rebuild lays this object's tatami
+    # rows along the line instead of the automatic principal axis; when absent
+    # (every design saved before Part 62 — the field defaults to None), rebuild
+    # is untouched. Removing the line returns the object to its automatic angle,
+    # which is why the override never overwrites `stitch_angle`.
+    flow_line: list[Point] | None = None
 
     @field_validator("stitch_type", mode="before")
     @classmethod

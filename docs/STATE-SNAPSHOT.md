@@ -1,6 +1,6 @@
 # STITCHIQ — current state, for the reviewer
 
-**Generated at STATUS v99, latest part 61.** Paste this alongside any
+**Generated at STATUS v100, latest part 62.** Paste this alongside any
 audit. It exists because four of the last five review briefs were built on state that had
 moved: the fix proposed was already shipped, or the number quoted came from an old run.
 
@@ -50,13 +50,25 @@ decide up to 39% of machine-format trims differently) and the profile even repai
 encoding-inflated schedules (2,435 → 583 vs native 559). **Safe to advertise generally**;
 one caveat: on travel-free encodings (VP3) the carry is the machine's direct move.
 
+**Stitch Flow shipped in Part 62** (`docs/benchmarks/v2-part62-audit.md`): a `TATAMI`
+object can carry a persisted two-point `flow_line` (JSON `flowLine`, design mm) that
+rebuild lays the rows along; the override never overwrites `stitch_angle`, so removing the
+line restores the exact original stream and pre-Part-62 designs rebuild byte-identically —
+all pinned. Full editing UI (draw two clicks / drag endpoints / remove, undoable) with live
+end-to-end proof. **This is user intent, not R004**: no direction field is consumed, and
+nothing touches the blocked reference work. Tatami-only by scope; curved fills would need
+their own consumption story. A finding worth its own brief: the first Apply on a freshly
+digitized design changes stitch counts with or without a line (demo design 4,820 → 2,298
+lineless) — rebuild regenerates plain fills from contours and always has; the pre-existing
+digitize-vs-rebuild gap has never been measured on its own.
+
 ## Numbers that are current
 
 | | value | measured at |
 |---|---|---|
-| Backend tests | **912 passed, 2 xfailed** | Part 61 |
-| Frontend tests | **143 passed** | Part 60 |
-| `ruff check app` | 12 (the standing baseline) | Part 61 |
+| Backend tests | **919 passed, 2 xfailed** | Part 62 |
+| Frontend tests | **155 passed** | Part 62 |
+| `ruff check app` | 12 (the standing baseline) | Part 62 |
 | Stitch-stream locks | **4** fixtures, sha256 of the whole stream | — |
 | Visual baselines | 10, gate SSIM ≥ 0.995 | Part 44 |
 | Corpus | 100 designs, **0 errors**, **7** zero-stitch, interior median **98.70** | Part 48 |

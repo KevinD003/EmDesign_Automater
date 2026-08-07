@@ -165,7 +165,8 @@ export function Toolbar() {
     }
     setTool(activeTool === tool ? 'select' : tool);
   };
-  const canFinish = activeTool !== 'select' && draft.length >= minPointsFor(activeTool as ManualTool);
+  const isManualDraw = activeTool === 'run' || activeTool === 'satin' || activeTool === 'fill';
+  const canFinish = isManualDraw && draft.length >= minPointsFor(activeTool as ManualTool);
   const onFinishDraw = () => {
     // Guard again at commit time: even if a draw was begun before an imported file was
     // loaded, never let Finish rebuild (and thus wipe) an imported stitch stream.
@@ -285,7 +286,7 @@ export function Toolbar() {
             {label}
           </button>
         ))}
-        {activeTool !== 'select' && (
+        {isManualDraw && (
           <>
             <button type="button" className="tool-btn primary" onClick={onFinishDraw} disabled={!canFinish || busy}>
               Finish ✓

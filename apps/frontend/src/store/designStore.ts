@@ -5,7 +5,10 @@ import { reorderColorStop } from '../lib/stitches';
 const HISTORY_LIMIT = 50;
 
 /** Manual digitizing tool. 'select' = normal edit/pan; others = draw mode. */
-export type Tool = 'select' | 'run' | 'satin' | 'fill';
+export type Tool = 'select' | 'run' | 'satin' | 'fill' | 'flow';
+/** The manual DRAW tools. 'flow' is not one: it captures two clicks for a
+ *  selected object's Stitch Flow line and never creates an object. */
+export const MANUAL_TOOLS = ['run', 'satin', 'fill'] as const;
 
 interface DesignState {
   design: Design | null;
