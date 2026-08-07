@@ -184,6 +184,69 @@ def test_on_a_real_design_aggressive_removes_exactly_the_6_to_10_band():
         assert carried_thread_mm(d.stitches, i) >= entry_gap - 1e-6
 
 
+# ── imported-stream invariants (v2 Part 61) ──────────────────────────────────
+#
+# Part 61 measured the profile on foreign files and machine-format round-trips.
+# Three stream shapes appeared that our generator never emits, and each gets a
+# pin here so the behaviour cannot regress silently.
+
+
+def test_a_trailing_trim_with_no_following_stitch_is_never_dropped():
+    """Seen in real VP3 round-trips: the stream ends on a trim. Its carry is
+    unmeasurable (+inf), so the safe call is to keep it — and it is kept."""
+    d = _design([_s("STITCH", 0, 0), _s("STITCH", 5, 0), _s("TRIM", 5, 0)])
+    out = apply_trim_profile(d, "aggressive")
+    assert [str(s.command) for s in out.stitches].count("TRIM") == 1
+    assert carried_thread_mm(d.stitches, 2) == float("inf")
+
+
+def test_consecutive_double_trims_decide_together():
+    """Seen 1,435 times in one PES round-trip: TRIM TRIM before one move.
+
+    Both measure the same carried thread (the walk skips the sibling TRIM), so
+    they drop together below the threshold and stay together above it — never
+    one without the other, which would be an incoherent cut schedule.
+    """
+    short = _design([
+        _s("STITCH", 0, 0),
+        _s("TRIM", 0, 0), _s("TRIM", 0, 0),
+        _s("JUMP", 7, 0), _s("STITCH", 7, 0),
+    ])
+    out = apply_trim_profile(short, "aggressive")
+    assert [str(s.command) for s in out.stitches].count("TRIM") == 0
+
+    long = _design([
+        _s("STITCH", 0, 0),
+        _s("TRIM", 0, 0), _s("TRIM", 0, 0),
+        _s("JUMP", 15, 0), _s("STITCH", 15, 0),
+    ])
+    out = apply_trim_profile(long, "aggressive")
+    assert [str(s.command) for s in out.stitches].count("TRIM") == 2
+
+
+def test_the_invariants_hold_on_a_real_machine_format_round_trip():
+    """A DST round-trip splits long moves into jump chains — the stream shape
+    the carried-path rule exists for, on a genuinely machine-encoded file."""
+    from app.services import embroidery_io
+
+    d = _digitize(2)
+    imported = embroidery_io.read_embroidery(embroidery_io.write_embroidery(d, "dst"), "dst")
+    out = apply_trim_profile(imported, "aggressive")
+
+    strip = lambda des: [(str(s.command), round(s.x, 3), round(s.y, 3))
+                         for s in des.stitches if str(s.command) != "TRIM"]
+    assert strip(imported) == strip(out), "diff must be trim-only on imports too"
+
+    threshold = TRIM_PROFILES["aggressive"]
+    kept_expected = 0
+    for i, s in enumerate(imported.stitches):
+        if str(s.command) != "TRIM":
+            continue
+        if carried_thread_mm(imported.stitches, i) >= threshold:
+            kept_expected += 1
+    assert kept_expected == sum(1 for s in out.stitches if str(s.command) == "TRIM")
+
+
 # ── the export endpoints ──────────────────────────────────────────────────────
 
 

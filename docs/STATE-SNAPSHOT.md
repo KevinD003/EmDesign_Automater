@@ -1,6 +1,6 @@
 # STITCHIQ — current state, for the reviewer
 
-**Generated at STATUS v98, latest part 60.** Paste this alongside any
+**Generated at STATUS v99, latest part 61.** Paste this alongside any
 audit. It exists because four of the last five review briefs were built on state that had
 moved: the fix proposed was already shipped, or the number quoted came from an old run.
 
@@ -42,15 +42,21 @@ structural no-op, opt-in `aggressive` drops trims whose *carried thread* (needle
 entry gap) is under Part 48's 10 mm: panel 663 → 559 (−15.7%), tier-A −10.8/−17.0%, stitches
 and travel identical. Note 559 ≠ Part 48's 485: the entry-gap rule and the carried-path rule
 differ by exactly 74 trims that genuinely carry ≥10 mm; the filter is the conservative one.
-**UI shipped in Part 60**: toolbar select in user language, default omitted from the URL (request byte-identical when untouched), warnings banner covered by tests and live screenshots.
+**UI shipped in Part 60**: toolbar select in user language, default omitted from the URL
+(request byte-identical when untouched), warnings banner covered by tests and live screenshots.
+**Imported-stream safety closed in Part 61**: trim-only diff asserted on 2 foreign files + 10
+machine-format round-trips; the carried-path rule is load-bearing (a first-hop rule would
+decide up to 39% of machine-format trims differently) and the profile even repairs PES's
+encoding-inflated schedules (2,435 → 583 vs native 559). **Safe to advertise generally**;
+one caveat: on travel-free encodings (VP3) the carry is the machine's direct move.
 
 ## Numbers that are current
 
 | | value | measured at |
 |---|---|---|
-| Backend tests | **909 passed, 2 xfailed** | Part 59 |
+| Backend tests | **912 passed, 2 xfailed** | Part 61 |
 | Frontend tests | **143 passed** | Part 60 |
-| `ruff check app` | 12 (the standing baseline) | Part 59 |
+| `ruff check app` | 12 (the standing baseline) | Part 61 |
 | Stitch-stream locks | **4** fixtures, sha256 of the whole stream | — |
 | Visual baselines | 10, gate SSIM ≥ 0.995 | Part 44 |
 | Corpus | 100 designs, **0 errors**, **7** zero-stitch, interior median **98.70** | Part 48 |
