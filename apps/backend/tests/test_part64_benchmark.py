@@ -191,9 +191,10 @@ def test_schema_rejects_missing_provenance_and_stray_labels():
 # ── the case runner's honest shape ────────────────────────────────────────────
 
 
-def test_machine_file_case_has_competitor_side_only():
+def test_machine_file_case_has_competitor_side_only(tmp_path):
     r = run_case({"id": "unit-dst", "kind": "machine_file",
-                  "file": BACKEND_ROOT / "tests/fixtures/sample.dst"})
+                  "file": BACKEND_ROOT / "tests/fixtures/sample.dst"},
+                 out_dir=tmp_path)
     assert r["stitchiq"] is None
     assert r["competitor"]["stitch_count"] > 0
     assert r["competitor"]["provenance"] == "machine_file_inference"

@@ -285,7 +285,7 @@ CASES = [
 ]
 
 
-def run_case(case: dict) -> dict:
+def run_case(case: dict, out_dir: Path | None = None) -> dict:
     result = {"id": case["id"], "kind": case["kind"], "stitchiq": None,
               "competitor": None, "notes": []}
     visual_panels: list[tuple[str, np.ndarray]] = []
@@ -327,10 +327,10 @@ def run_case(case: dict) -> dict:
         if "crop" in case:
             vis = np.vstack([vis, np.full((6, vis.shape[1], 3), 255, np.uint8),
                              crops_row(visual_panels, case["crop"])])
-        out = OUT_DIR / "visual" / f"{case['id']}.png"
+        out = (out_dir or OUT_DIR) / "visual" / f"{case['id']}.png"
         out.parent.mkdir(parents=True, exist_ok=True)
         cv2.imwrite(str(out), vis)
-        result["visual"] = str(out.relative_to(OUT_DIR.parents[1]))
+        result["visual"] = str(out.relative_to((out_dir or OUT_DIR).parents[1]))
     return result
 
 
