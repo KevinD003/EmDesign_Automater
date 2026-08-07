@@ -72,6 +72,8 @@ GitHub before any further "verified" claims go into STATUS.md.
 ## 4. Critical defects (correctness) — worst first
 
 Confirmed by direct code reading and/or empirical reproduction this session. File refs at review commit.
+**See also [Appendix A](#appendix-a--deep-code-sweep-verified-additions) — six more verified-confirmed
+high-severity defects (N1–N6) from the follow-up deep sweep, plus 26 triaged-but-unverified findings.**
 
 | # | Severity | Defect | Evidence |
 |---|---|---|---|
@@ -259,6 +261,7 @@ recommended for wheel coverage) and enforce in CI.
 | A12 | Bundle 3-5 OFL fonts in-repo (deterministic output, kills Arial licensing risk); reject unsupported glyphs properly (fixes the failing test) | C10 |
 | A13 | `PUT /designs/{id}` (update + version snapshot); RLS on `users`/`teams`/`team_members` | S4, S3 |
 | A14 | Doc-sync pass: README/STATUS counts, remote, branch, python version; commit this review | §2 |
+| A15 | **Appendix A verified fixes** (all small diffs): remap `object.colorStop` on stop reorder (N1); composite alpha over white / use alpha as background mask (N2); upscale small images to a working resolution (N3); RFC 5987 Content-Disposition on all 3 download endpoints (N4); handle 401s + refresh tokens, clear session on auth failure (N5); stale-response guard (store epoch) + one global busy flag across Apply/Optimize/Open/Load (N6) | Appendix A |
 
 ### Phase B — Make it SELLABLE (the wedge; ~4-8 weeks)
 
@@ -325,11 +328,66 @@ provided the order of operations above is respected: correctness first, then dep
 - **Build sessions (Claude or human):** read §4-§5 before touching `digitizer.py`. Keep the STATUS.md
   discipline (changelog row per change). Never mark a feature 🟢 without an acceptance probe. Do not
   re-litigate the market strategy per-session; it's decided in §6 until the user changes it.
-- **Review cadence:** re-run the multi-agent review after Phase A and after first deploy; the
-  remaining planned deep-dive (5 code-level bug-finder agents: engine math, API contracts, security,
-  frontend state, frontend libs) is pending and will be appended as **Appendix A** when it completes.
+- **Review cadence:** re-run the multi-agent review after Phase A and after first deploy. The
+  code-level deep sweep (5 finder agents: engine math, API contracts, security, frontend state,
+  frontend libs — instructed to hunt beyond §4's known defects) completed and is **Appendix A** below.
 
 *Prepared by the CTO-review session on branch `claude/code-review-competitive-o2qw0o`. Sources for
 all pricing/feature claims in §6: vendor pricing pages and product documentation retrieved
 2026-08-07 (Wilcom, Hatch, Embrilliance, Embird, Brother, Tajima, Ricoma, Ink/Stitch, Embrowser,
 Ember, StitchFast, Stitch AI, EmbroidAI).*
+
+---
+
+## Appendix A — Deep code sweep (verified additions)
+
+*Added 2026-08-07, same session. Method: 5 finder agents (engine math, API contracts, security,
+frontend state, frontend libs), explicitly instructed to hunt **beyond** the §4 known-defect list;
+34 raw findings; the top 7 by severity were each handed to an adversarial verifier told to refute
+them — **all 7 came back CONFIRMED** (two were the same bug found independently → 6 unique).
+Every confirmation below includes an empirical reproduction or a full static trace.*
+
+### A.1 Verified defects (all HIGH; fix in Phase A — see A15)
+
+| # | Defect | Evidence |
+|---|---|---|
+| **N1** | **Reordering color stops corrupts every object's color binding.** `reorderColorStop` swaps and renumbers the stops but never remaps `DesignObject.colorStop`, so after ▲/▼ every object points at the *other* color's stop. Looks fine until the next rebuild/Optimize — then **each region is sewn in the other region's thread color**, and ☁ Save/export persists the corruption. Reproduced: red/blue two-stop design → reorder → rebuild → stop 1 "Blue" sews the red object's geometry. The wrong nesting is visible immediately in the object list. | `apps/frontend/src/lib/stitches.ts:120` (+ `designStore.reorderStop` adds no remap; `digitizer.py:605` groups by the stale ref). **Fix:** build old→new stop-number map, remap `objects[*].colorStop`; defensively make `rebuild_design` raise on binding mismatch |
+| **N2** | **Transparent-background PNGs silently lose all black/dark artwork.** `cv2.imdecode(..., IMREAD_COLOR)` strips alpha; transparent pixels decode as black; the corner-average background heuristic then classifies the *black* cluster as background — deleting black line-art/text. Reproduced: RGBA logo (transparent bg, black ring + red square) → digitize returned **only the red square**; the ring vanished with no warning. Transparent PNGs with black outlines are the single most common real digitizing input. | `apps/backend/app/services/digitizer.py:96`. **Fix:** `IMREAD_UNCHANGED`; composite over white, or better use the alpha plane as the background mask and skip the corner heuristic |
+| **N3** | **Small images are never upscaled — fill density silently halves+.** Geometry is computed on the source-pixel grid; `row_px` clamps at 1px, so a 64px logo in a 100mm hoop stitches **1.4mm row pitch instead of 0.6mm** (measured), with coordinates snapped to a 1.4mm grid (stair-stepped edges) and `MORPH_OPEN` erasing features up to ~3mm. Small web logos (64-200px) are routine uploads. | `apps/backend/app/services/digitizer.py:132` (+104). **Fix:** upscale small inputs to a minimum working resolution (~4-10 px/mm of hoop) |
+| **N4** | **Non-Latin design names break every download with HTTP 500.** `/api/export`, `/api/export/package`, `/api/worksheet/pdf` put the raw design name into `Content-Disposition`; Starlette encodes headers as Latin-1 → `UnicodeEncodeError` before the response streams. Reproduced: name `ロゴ` → 500; `logo😀` → 500. The name is set automatically from the uploaded filename, so a user in Japan cannot export at all. | `apps/backend/app/routers/export.py:77` (+ :40, `worksheet.py:34`). **Fix:** ASCII-sanitized `filename` + RFC 5987 `filename*=UTF-8''…`; strip quotes/CR/LF |
+| **N5** | **Auth tokens are never refreshed and 401s never handled — cloud save silently breaks ~1 hour into every session.** GoTrue access tokens live ~3600s; the stored `refreshToken` is never used, no 401 handler exists, the session is never cleared, and AuthBar keeps showing "signed in". A user who designs >1h, hits ☁ Save, gets a generic error while believing cloud save works — real work-loss risk. | `apps/frontend/src/store/authStore.ts:32`, `lib/auth.ts:10`, `api/client.ts:47`. **Fix:** clear session + prompt re-login on any 401; implement refresh-token flow; validate JWT `exp` on init |
+| **N6** | **An in-flight rebuild/optimize response clobbers a design the user opened meanwhile.** `replaceDesign` unconditionally swaps in whatever arrives; PropertiesPanel/Toolbar have *separate* busy flags and the Saved/cloud "Load" rows are never disabled. Open design B while A's rebuild is in flight (seconds-wide window — backend CPU is sync) → the stale rebuilt A replaces B; the user edits/saves/exports the wrong design. | `apps/frontend/src/components/panels/PropertiesPanel.tsx:81` (same pattern `Toolbar.tsx:125,151`). **Fix:** store epoch captured before request, drop stale responses; one global busy flag |
+
+### A.2 Unverified findings (triage before acting — plausible, not yet adversarially confirmed)
+
+**Likely-real highs (verify first):** `parseMasterDesign` blindly casts hostile `.stiq.json` → un-boundaried
+React tree crash / white screen (`masterFile.ts:34` — add zod validation + an error boundary).
+
+**Engine/API (medium):** rebuild silently deletes objects whose raster yields <2 points and can leave a
+dangling COLOR_CHANGE before END (`digitizer.py:642`); pull-comp dilation clipped asymmetrically by the
+fixed 2px canvas pad above ~0.5mm/side (`digitizer.py:617`); unknown pyembroidery commands (sequin,
+needle-set) silently mapped to STITCH on import (`embroidery_io.py:71`); `render_preview` allocates an
+unbounded raster from stitch-coordinate span → OOM/DoS (`package.py:66`); `cors_origins` typed-list can't
+be set from a plain env string → boot failure on first prod deploy (`config.py:12`); Infinity/NaN coords
+accepted by models, crash export with a leaking 500 while `validate` says `passed=true` (`design.py:88`).
+
+**Frontend (medium):** global Ctrl+Z/Esc fire while typing in inputs/dialogs (`App.tsx:33`); per-keystroke/
+per-drag history snapshots flood the 50-entry undo buffer (`designStore.ts:86`); manual Run objects
+(density 0) can never pass Apply validation — drawn Runs are uneditable (`PropertiesPanel.tsx:53`);
+localStorage quota exceeded at production design sizes + corrupted index orphans all saves
+(`storage.ts:53`); TrueView caps runs at 4000 spline segments → geometrically wrong at scale
+(`TrueView3D.tsx:23`); stitch player restrokes the whole Konva scene per frame — unusable at 100k
+stitches (`StitchCanvas.tsx:65`).
+
+**Low (batch later):** worksheet thread-length column desyncs on leading/consecutive COLOR_CHANGEs
+(`worksheet_pdf.py:52`); compute endpoints echo raw exception strings (`files.py:26`, `digitize.py:31`);
+signup error body enables email enumeration (`auth.py:66`); inconsistent auth-enablement checks brick
+auth on partial config (`deps.py:20`); cloud snapshot captured before `createdAt` assigned
+(`supabase_store.py:128`); client-supplied metadata persisted without recomputation
+(`supabase_store.py:66`); undo restores design but not selection (`designStore.ts:120`); stale
+"✓ Ready to stitch" banner survives design switch (`Toolbar.tsx:90`); undo history retains up to 50
+full design snapshots — hundreds of MB at scale (`designStore.ts:42`); **Export downloads the machine
+file even when validation reports blocking issues** — contradicting the documented "hoop-fit is
+blocking" guarantee (`Toolbar.tsx:160` — check this one early; it's a doc-integrity break).
+
+*Sweep stats: 34 raw → 7 verified (7/7 confirmed, 0 refuted; 1 duplicate) → 6 unique verified + 26 triaged.*
