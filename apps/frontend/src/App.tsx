@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { DesignWarnings } from './components/feedback/DesignWarnings';
 import { Toolbar } from './components/toolbar/Toolbar';
 import { ColorObjectList } from './components/panels/ColorObjectList';
 import { ThreadPalette } from './components/panels/ThreadPalette';
@@ -112,16 +113,10 @@ export default function App() {
                   TrueView 3D
                 </button>
               </div>
-              {design?.warnings?.length ? (
-                // What the digitizer left out or altered (v2 Part 25). Silent
-                // loss was a measured defect: a 40x40mm hoop deleted 81% of the
-                // badge fixture's objects with nothing shown to the user.
-                <div className="design-warnings" role="status">
-                  {design.warnings.map((w) => (
-                    <div key={w}>⚠ {w}</div>
-                  ))}
-                </div>
-              ) : null}
+              {/* What the digitizer left out or altered (v2 Part 25). Silent
+                  loss was a measured defect: a 40x40mm hoop deleted 81% of the
+                  badge fixture's objects with nothing shown to the user. */}
+              <DesignWarnings warnings={design?.warnings} />
               {view === '2d' ? (
                 <StitchCanvas
                   stitches={design?.stitches ?? []}

@@ -15,6 +15,8 @@ import { ImageEditor } from '../dialogs/ImageEditor';
 import type { DigitizeParams } from '../dialogs/DigitizeDialog';
 import { LetteringDialog } from '../dialogs/LetteringDialog';
 import type { LetteringParams } from '../dialogs/LetteringDialog';
+import { DEFAULT_TRIM_PROFILE, type TrimProfile } from '../../lib/exportOptions';
+import { TrimProfileSelect } from './TrimProfileSelect';
 
 // Manual-digitizing tools that are wired to draw mode; the rest are still stubs.
 const DRAW_TOOLS: { label: string; tool: ManualTool }[] = [
@@ -67,6 +69,8 @@ export function Toolbar() {
   const [editingImage, setEditingImage] = useState<File | null>(null);
   const [showLettering, setShowLettering] = useState(false);
   const [exportFormat, setExportFormat] = useState('dst');
+  // Part 59's machine-aware trim setting; conservative == the file as before.
+  const [trimProfile, setTrimProfile] = useState<TrimProfile>(DEFAULT_TRIM_PROFILE);
   const [report, setReport] = useState<ValidationReport | null>(null);
   const [optimizeReport, setOptimizeReport] = useState<OptimizeReport | null>(null);
   const [saved, setSaved] = useState<SavedMeta[]>([]);
@@ -184,13 +188,13 @@ export function Toolbar() {
     design &&
     run(async () => {
       setReport(await api.validate(design)); // advisory — always show the report, never block
-      download(await api.exportDesign(design, exportFormat), `${stem}.${exportFormat}`);
+      download(await api.exportDesign(design, exportFormat, trimProfile), `${stem}.${exportFormat}`);
       toastSuccess(`Exported ${stem}.${exportFormat}`);
     });
   const onPackage = () =>
     design &&
     run(async () => {
-      download(await api.exportPackage(design, exportFormat), `${stem}-package.zip`);
+      download(await api.exportPackage(design, exportFormat, trimProfile), `${stem}-package.zip`);
       toastSuccess(`Downloaded ${stem}-package.zip`);
     });
   const onWorksheet = () =>
@@ -331,6 +335,7 @@ export function Toolbar() {
             </option>
           ))}
         </select>
+        <TrimProfileSelect value={trimProfile} onChange={setTrimProfile} disabled={!design || busy} />
         <button type="button" onClick={onSave} disabled={!design || busy} title="Save to this browser">
           Save
         </button>

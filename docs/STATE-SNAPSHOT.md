@@ -1,6 +1,6 @@
 # STITCHIQ — current state, for the reviewer
 
-**Generated at STATUS v97, latest part 59.** Paste this alongside any
+**Generated at STATUS v98, latest part 60.** Paste this alongside any
 audit. It exists because four of the last five review briefs were built on state that had
 moved: the fix proposed was already shipped, or the number quoted came from an old run.
 
@@ -16,7 +16,7 @@ moved: the fix proposed was already shipped, or the number quoted came from an o
 | R011 | Fixture 02 wordmark lost in Part 41 | **Done, Part 45** |
 | R004 | Stitch direction | **BLOCKED ON THE REFERENCE. Parts 53–54.** The sew-out photo cannot resolve thread below ~2 mm (77% of satin), so it rewards contour-parallel answers. Capture spec now **measured**: **0.074 mm/px**, and **0.120 mm/px already takes satin 23% → 84% usable**. See `docs/REFERENCE-CAPTURE-PROTOCOL.md`. **Stop numeric optimisation until a photo arrives** |
 | R007 | Zero-stitch corpus designs | **Done, Part 47** — premise was wrong; the real fix was 422-instead-of-200 |
-| R006 | Trim count | **Done, Part 48** (33,969 → 27,927); cross-colour ordering declined Part 58 (0.9%). **The per-machine trim setting SHIPPED in Part 59**: opt-in `aggressive` export profile, panel 663 → 559 trims, default untouched. Remaining: a UI control for the profile |
+| R006 | Trim count | **CLOSED.** Part 48 (33,969 → 27,927); cross-colour declined Part 58 (0.9%); per-machine profile Part 59 (panel 663 → 559, opt-in); **UI control Part 60**. Nothing measurable remains |
 | R005 | Fragmentation | **CLOSED as working-as-intended, Part 57.** Three levers measured, all refuted: merging (Part 55, 2–4%), label-map smoothing (Part 56, fails on coverage), colour count (Part 57, **no effect** — objects flat or rising; A02 gives *more* objects at k=6 than k=8). Not removable without removing content. Residual value is a **cost** problem — trims — i.e. Part 48 territory |
 | R008 | Bead-chain ornament | **Declined as next target, Part 55** — no measurable gate exists; needs hand-labelled ground truth first. **Re-scoped, Part 49.** Measured and stopped: the dropped specks do not separate from noise (no knee in the sweep, longest run 10 beads). Needs motif-along-a-path detection at the mask stage — comparable in size to the direction field |
 
@@ -42,14 +42,14 @@ structural no-op, opt-in `aggressive` drops trims whose *carried thread* (needle
 entry gap) is under Part 48's 10 mm: panel 663 → 559 (−15.7%), tier-A −10.8/−17.0%, stitches
 and travel identical. Note 559 ≠ Part 48's 485: the entry-gap rule and the carried-path rule
 differ by exactly 74 trims that genuinely carry ≥10 mm; the filter is the conservative one.
-UI control for the profile is the remaining follow-up.
+**UI shipped in Part 60**: toolbar select in user language, default omitted from the URL (request byte-identical when untouched), warnings banner covered by tests and live screenshots.
 
 ## Numbers that are current
 
 | | value | measured at |
 |---|---|---|
 | Backend tests | **909 passed, 2 xfailed** | Part 59 |
-| Frontend tests | 131 passed, `tsc` clean | Part 48 |
+| Frontend tests | **143 passed** | Part 60 |
 | `ruff check app` | 12 (the standing baseline) | Part 59 |
 | Stitch-stream locks | **4** fixtures, sha256 of the whole stream | — |
 | Visual baselines | 10, gate SSIM ≥ 0.995 | Part 44 |

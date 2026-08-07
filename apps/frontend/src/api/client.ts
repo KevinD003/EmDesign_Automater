@@ -13,6 +13,7 @@ import type {
   Worksheet,
 } from '../types/design';
 import type { Session } from '../lib/auth';
+import { exportQuery, type TrimProfile } from '../lib/exportOptions';
 
 export interface DesignStats {
   designCount: number;
@@ -78,9 +79,11 @@ export const api = {
     return request<Design>('/api/digitize', { method: 'POST', body: form, headers: {} });
   },
 
-  /** Encode a Design to a machine file (.dst/.pes/...) and return the bytes as a Blob for download. */
-  exportDesign: async (design: Design, format = 'dst'): Promise<Blob> => {
-    const res = await fetch(`${API_BASE}/api/export?format=${encodeURIComponent(format)}`, {
+  /** Encode a Design to a machine file (.dst/.pes/...) and return the bytes as a Blob for download.
+   *  `trimProfile` is the Part 59 machine-aware trim setting; the default is
+   *  omitted from the URL so an untouched control sends the request unchanged. */
+  exportDesign: async (design: Design, format = 'dst', trimProfile?: TrimProfile): Promise<Blob> => {
+    const res = await fetch(`${API_BASE}/api/export?${exportQuery(format, trimProfile)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(design),
@@ -90,8 +93,8 @@ export const api = {
   },
 
   /** Build the full production package (ZIP: machine file + master + worksheet + color card + preview + summary). */
-  exportPackage: async (design: Design, format = 'dst'): Promise<Blob> => {
-    const res = await fetch(`${API_BASE}/api/export/package?format=${encodeURIComponent(format)}`, {
+  exportPackage: async (design: Design, format = 'dst', trimProfile?: TrimProfile): Promise<Blob> => {
+    const res = await fetch(`${API_BASE}/api/export/package?${exportQuery(format, trimProfile)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(design),
