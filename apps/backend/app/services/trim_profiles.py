@@ -43,7 +43,7 @@ from __future__ import annotations
 
 import math
 
-from app.models.design import Design
+from app.models.design import Design, enum_str
 
 # threshold in mm below which a trim is dropped, or None for "leave the stream
 # exactly as generated".
@@ -66,8 +66,7 @@ TRIM_SECONDS_EQUIV = 2.5
 
 
 def _cmd(stitch) -> str:
-    c = stitch.command
-    return (c.value if hasattr(c, "value") else str(c)).upper()
+    return enum_str(stitch.command).upper()
 
 
 def carried_thread_mm(stitches, trim_index: int) -> float:

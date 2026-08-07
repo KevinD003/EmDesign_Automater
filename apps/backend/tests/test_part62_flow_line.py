@@ -14,28 +14,12 @@ The contract, in the order the gates state it:
 from __future__ import annotations
 
 import math
-import sys
-from pathlib import Path
 
-import cv2
-
-BACKEND_ROOT = Path(__file__).resolve().parents[1]
-if str(BACKEND_ROOT) not in sys.path:
-    sys.path.insert(0, str(BACKEND_ROOT))
+from helpers import digitized_fixture as _digitized
+from helpers import row_angle, stream_of as _stream
 
 from app.models.design import Design, Point
-from app.services.digitizer import _flow_line_angle, digitize_image, rebuild_design
-
-FIXTURE = BACKEND_ROOT / "tests/fixtures/quality_bench/01_flat_2color_logo.png"
-
-
-def _digitized() -> Design:
-    cv2.setRNGSeed(1234)
-    return digitize_image(FIXTURE.read_bytes(), "cotton", "100x100", 2)
-
-
-def _stream(design: Design):
-    return [(str(s.command), round(s.x, 4), round(s.y, 4)) for s in design.stitches]
+from app.services.digitizer import _flow_line_angle, rebuild_design
 
 
 def _tatami_index(design: Design) -> int:
@@ -53,44 +37,11 @@ def _with_line(design: Design, idx: int, line) -> Design:
 
 
 def _object_row_angle(design: Design, idx: int) -> float:
-    """Dominant orientation of the object's long segments — its fill rows.
-
-    Row segments are the long ones; the short steps between rows are noise for
-    this purpose. Doubled-angle mean so 179 and 1 average to 0, not 90.
-    """
+    """Row orientation inside the object's bbox — helpers.row_angle on it."""
     target = design.objects[idx]
-    seq = target.sequence_order
-    # Objects are rebuilt in stop order; find this object's slice by walking
-    # objects in the same order rebuild emits them and counting stitches.
-    ordered = sorted(design.objects, key=lambda o: (o.color_stop, o.sequence_order))
-    start = 0
-    for o in ordered:
-        if o.sequence_order == seq:
-            break
-        start += o.stitch_count
-    # Stream also contains COLOR_CHANGE/TRIM rows counted in stitch_count slices;
-    # simpler and robust: collect segments near the object's bounding box.
     xs = [p.x for p in target.contour]
     ys = [p.y for p in target.contour]
-    x0, x1, y0, y1 = min(xs), max(xs), min(ys), max(ys)
-    c = s2 = 0.0
-    prev = None
-    for s in design.stitches:
-        cmd = str(s.command)
-        if cmd != "STITCH":
-            prev = None
-            continue
-        if prev is not None:
-            mx, my = (prev[0] + s.x) / 2, (prev[1] + s.y) / 2
-            if x0 <= mx <= x1 and y0 <= my <= y1:
-                dx, dy = s.x - prev[0], s.y - prev[1]
-                length = math.hypot(dx, dy)
-                if length > 1.0:  # rows, not row-steps
-                    th = math.atan2(dy, dx)
-                    c += math.cos(2 * th) * length
-                    s2 += math.sin(2 * th) * length
-        prev = (s.x, s.y)
-    return math.degrees(0.5 * math.atan2(s2, c)) % 180.0
+    return row_angle(design, min(xs), max(xs), min(ys), max(ys))
 
 
 # ── the angle helper ──────────────────────────────────────────────────────────

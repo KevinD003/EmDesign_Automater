@@ -19,10 +19,10 @@ runs the real digitizer output through the legacy path.
 
 from __future__ import annotations
 
-import math
-
 import cv2
 import numpy as np
+from helpers import angle_err as _angle_err
+from helpers import row_angle, stream_of as _stream
 
 from app.models.design import (
     ColorStop,
@@ -75,31 +75,8 @@ def _with(design: Design, idx: int, **fields) -> Design:
     return design.model_copy(update={"objects": objs})
 
 
-def _stream(design: Design):
-    return [(str(s.command), round(s.x, 4), round(s.y, 4)) for s in design.stitches]
-
-
 def _row_angle(design: Design, x0: float, x1: float) -> float:
-    """Length-weighted doubled-angle mean of row segments with midpoint x in [x0, x1]."""
-    c = s2 = 0.0
-    prev = None
-    for s in design.stitches:
-        if str(s.command) != "STITCH":
-            prev = None
-            continue
-        if prev is not None and x0 <= (prev[0] + s.x) / 2 <= x1:
-            dx, dy = s.x - prev[0], s.y - prev[1]
-            length = math.hypot(dx, dy)
-            if length > 1.0:  # rows, not row-steps
-                th = math.atan2(dy, dx)
-                c += math.cos(2 * th) * length
-                s2 += math.sin(2 * th) * length
-        prev = (s.x, s.y)
-    return math.degrees(0.5 * math.atan2(s2, c)) % 180.0
-
-
-def _angle_err(got: float, want: float) -> float:
-    return abs((got - want + 90) % 180 - 90)
+    return row_angle(design, x0, x1)
 
 
 # ── the side-assignment helper ────────────────────────────────────────────────

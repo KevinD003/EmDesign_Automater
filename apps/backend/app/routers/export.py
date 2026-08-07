@@ -8,7 +8,7 @@ import math
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
-from app.models.design import Design, ValidationReport
+from app.models.design import Design, ValidationReport, enum_str
 from app.services import embroidery_io
 from app.services import package as package_svc
 from app.services.optimizer import parse_hoop
@@ -79,7 +79,7 @@ _MAX_STITCH_MM = 12.7  # machine limit (0.5")
 
 def _cmd(stitch) -> str:
     c = stitch.command
-    return c.value if hasattr(c, "value") else c
+    return enum_str(c)
 
 
 @router.post("/export")

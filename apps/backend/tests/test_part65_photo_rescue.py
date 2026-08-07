@@ -26,23 +26,13 @@ shipped one — the chunk gate exists because of them.
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
 import cv2
-
-BACKEND_ROOT = Path(__file__).resolve().parents[1]
-if str(BACKEND_ROOT) not in sys.path:
-    sys.path.insert(0, str(BACKEND_ROOT))
+from helpers import QUALITY_BENCH, stream_of as _stream
 
 from app.services.digitizer import digitize_image, pipeline
 from app.services.digitizer.constants import TEXTURE_RETRY_UNCOVERED
 
-FIXTURE = BACKEND_ROOT / "tests/fixtures/quality_bench/01_flat_2color_logo.png"
-
-
-def _stream(design):
-    return [(str(s.command), round(s.x, 4), round(s.y, 4)) for s in design.stitches]
+FIXTURE = QUALITY_BENCH / "01_flat_2color_logo.png"
 
 
 def _digitize(**kw):

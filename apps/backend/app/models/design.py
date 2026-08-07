@@ -25,6 +25,19 @@ class CamelModel(BaseModel):
     )
 
 
+def enum_str(v) -> str:
+    """Canonical string of an enum-or-string field (v2 Part 66).
+
+    `use_enum_values=True` above means every enum field on a validated model
+    is ALREADY a plain string — but code that also receives raw enum members
+    (hand-built objects, pyembroidery constants) grew eight copies of the
+    `v.value if hasattr(v, "value") else v` dance across services, scripts
+    and the pipeline. This is the one implementation; the per-service
+    normalisers delegate to it.
+    """
+    return v.value if isinstance(v, Enum) else str(v)
+
+
 class StitchCommand(str, Enum):
     STITCH = "STITCH"
     JUMP = "JUMP"

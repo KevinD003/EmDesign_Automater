@@ -16,7 +16,7 @@ import tempfile
 
 import pyembroidery as pe
 
-from app.models.design import ColorStop, Design, Stitch
+from app.models.design import ColorStop, Design, Stitch, enum_str
 
 _TENTHS = 10.0  # pyembroidery unit (1/10 mm) -> mm
 
@@ -335,11 +335,11 @@ def write_embroidery(design: Design, ext: str) -> bytes:
         pattern.add_thread(thread)
 
     for s in design.stitches:
-        cmd_str = s.command.value if hasattr(s.command, "value") else s.command
+        cmd_str = enum_str(s.command)
         pattern.add_stitch_absolute(_STR_TO_CMD.get(cmd_str, pe.STITCH), s.x * _TENTHS, s.y * _TENTHS)
 
     last = design.stitches[-1].command if design.stitches else None
-    last = last.value if hasattr(last, "value") else last
+    last = enum_str(last)
     if last != "END":
         pattern.end()
 

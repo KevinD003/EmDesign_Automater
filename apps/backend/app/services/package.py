@@ -10,7 +10,7 @@ import io
 import re
 import zipfile
 
-from app.models.design import Design
+from app.models.design import Design, enum_str
 from app.services import embroidery_io, worksheet_pdf
 
 # Machine brand → (primary, secondary) format + note (spec §4.8 decision tree).
@@ -36,7 +36,7 @@ _stem = safe_stem  # backwards-compat alias for existing internal/router callers
 
 def _cmd(s) -> str:
     c = s.command
-    return c.value if hasattr(c, "value") else c
+    return enum_str(c)
 
 
 def build_summary(design: Design) -> str:

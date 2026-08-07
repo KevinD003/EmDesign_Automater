@@ -1,4 +1,4 @@
-"""Visual evidence for divided Stitch Flow (v2 Part 63).
+"""Visual evidence for divided Stitch Flow (v2 Part 63; helpers shared Part 66).
 
 Three curved shapes where one straight direction is visibly inadequate —
 a crescent, a bent leaf (chevron band) and a bowl (half annulus) — each
@@ -23,14 +23,17 @@ import cv2
 import numpy as np
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(BACKEND_ROOT))
+for _p in (str(BACKEND_ROOT), str(BACKEND_ROOT / "scripts")):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
+from _viz import ORANGE, crop_to_object, draw_segment, hstack_pad, label_bar, largest_tatami
 
 from app.models.design import Point
 from app.services.digitizer import digitize_image, rebuild_design
-from app.services.stitch_render import MARGIN_PX, PX_PER_MM, render_design
+from app.services.stitch_render import render_design
 
 OUT_DIR = BACKEND_ROOT.parents[1] / "docs" / "benchmarks"
-LABEL_H = 34
 # A mid-tone ink: dark enough to classify as foreground, light enough that the
 # rendered thread rows leave visible texture in every panel.
 INK = (60, 120, 200)
@@ -74,20 +77,6 @@ SHAPES = [
 ]
 
 
-def _largest_tatami(design):
-    best, best_area = None, -1.0
-    for i, o in enumerate(design.objects):
-        st = o.stitch_type.value if hasattr(o.stitch_type, "value") else o.stitch_type
-        if st != "TATAMI" or not o.contour:
-            continue
-        xs = [p.x for p in o.contour]
-        ys = [p.y for p in o.contour]
-        area = (max(xs) - min(xs)) * (max(ys) - min(ys))
-        if area > best_area:
-            best, best_area = i, area
-    return best
-
-
 def _with(design, idx, **fields):
     objs = list(design.objects)
     objs[idx] = objs[idx].model_copy(update=fields)
@@ -118,41 +107,13 @@ def _render(design):
     return render_design(design, thread_width_mm=0.28)
 
 
-def _crop(img, design, obj, pad_mm=2.0):
-    xs = [s.x for s in design.stitches]
-    ys = [s.y for s in design.stitches]
-    ox, oy = min(xs), min(ys)
-    x0, y0, x1, y1 = _bbox(obj)
-    px = lambda v, o: int((v - o) * PX_PER_MM) + MARGIN_PX
-    h, w = img.shape[:2]
-    crop = img[max(0, px(y0 - pad_mm, oy)):min(h, px(y1 + pad_mm, oy)),
-               max(0, px(x0 - pad_mm, ox)):min(w, px(x1 + pad_mm, ox))].copy()
-    return crop, (ox, oy, max(0, px(x0 - pad_mm, ox)), max(0, px(y0 - pad_mm, oy)))
-
-
-def _draw_seg(crop, origin, seg, bgr):
-    ox, oy, bx, by = origin
-    pts = [(int((p.x - ox) * PX_PER_MM) + MARGIN_PX - bx,
-            int((p.y - oy) * PX_PER_MM) + MARGIN_PX - by) for p in seg]
-    cv2.line(crop, pts[0], pts[1], bgr, 3, cv2.LINE_AA)
-    for p in pts:
-        cv2.circle(crop, p, 6, bgr, -1, cv2.LINE_AA)
-
-
-def _label(img, text):
-    bar = np.full((LABEL_H, img.shape[1], 3), 30, np.uint8)
-    cv2.putText(bar, text, (8, 23), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
-                (230, 230, 230), 1, cv2.LINE_AA)
-    return np.vstack([bar, img])
-
-
 def main() -> None:
     for name, maker, divide_frac, line_specs in SHAPES:
         ok, buf = cv2.imencode(".png", maker())
         assert ok
         cv2.setRNGSeed(1234)
         d = digitize_image(buf.tobytes(), "cotton", "100x100", 2)
-        idx = _largest_tatami(d)
+        idx = largest_tatami(d)
         if idx is None:
             print(f"{name}: no tatami object, skipped")
             continue
@@ -163,32 +124,28 @@ def main() -> None:
         line_a = _dir_line(obj, *line_specs[0])
         line_b = _dir_line(obj, *line_specs[1])
 
-        panels = []
         base = rebuild_design(d)
-        crop, origin = _crop(_render(base), base, obj)
+        crop, _origin = crop_to_object(_render(base), base, obj)
         auto_deg = float(obj.stitch_angle) % 180.0
         if auto_deg >= 179.75:  # -0.001 folds to 179.999; show the 0 it means
             auto_deg = 0.0
-        panels.append(_label(crop, f"automatic ({auto_deg:.0f} deg)"))
+        panels = [label_bar(crop, f"automatic ({auto_deg:.0f} deg)")]
 
         single = rebuild_design(_with(d, idx, flow_line=line_a))
-        crop, origin = _crop(_render(single), single, obj)
-        _draw_seg(crop, origin, line_a, (200, 180, 0))
-        panels.append(_label(crop, f"one line ({line_specs[0][1]:.0f} deg)"))
+        crop, origin = crop_to_object(_render(single), single, obj)
+        draw_segment(crop, origin, line_a)
+        panels.append(label_bar(crop, f"one line ({line_specs[0][1]:.0f} deg)"))
 
         divided = rebuild_design(_with(d, idx, flow_divide=divide,
                                        flow_line=line_a, flow_line_b=line_b))
-        crop, origin = _crop(_render(divided), divided, obj)
-        _draw_seg(crop, origin, divide, (0, 138, 224))
-        _draw_seg(crop, origin, line_a, (200, 180, 0))
-        _draw_seg(crop, origin, line_b, (200, 180, 0))
-        panels.append(_label(
+        crop, origin = crop_to_object(_render(divided), divided, obj)
+        draw_segment(crop, origin, divide, ORANGE)
+        draw_segment(crop, origin, line_a)
+        draw_segment(crop, origin, line_b)
+        panels.append(label_bar(
             crop, f"divided ({line_specs[0][1]:.0f} / {line_specs[1][1]:.0f} deg)"))
 
-        hmax = max(p.shape[0] for p in panels)
-        padded = [cv2.copyMakeBorder(p, 0, hmax - p.shape[0], 0, 8, cv2.BORDER_CONSTANT,
-                                     value=(255, 255, 255)) for p in panels]
-        out = np.hstack(padded)
+        out = hstack_pad(panels)
         out_path = OUT_DIR / f"part63-divided-{name}.png"
         cv2.imwrite(str(out_path), out)
         print(f"{name}: object #{idx}, wrote {out_path.name} {out.shape[1]}x{out.shape[0]}")

@@ -19,7 +19,7 @@ class of defect this exists to catch.
 
 from __future__ import annotations
 
-from app.models.design import Design
+from app.models.design import Design, enum_str
 
 # 8 px/mm keeps a 130x180mm hoop under 1500px, which is small enough to commit as
 # a baseline and large enough that a 0.4mm thread is three pixels wide.
@@ -31,7 +31,7 @@ UNKNOWN_THREAD_BGR = (0, 0, 255)  # a stitch we could not colour is a bug, so ma
 
 
 def _cmd(stitch) -> str:
-    return stitch.command.value if hasattr(stitch.command, "value") else str(stitch.command)
+    return enum_str(stitch.command)
 
 
 def _hex_to_bgr(hex_str: str) -> tuple[int, int, int]:

@@ -1,6 +1,6 @@
 # STITCHIQ — current state, for the reviewer
 
-**Generated at STATUS v103, latest part 65.** Paste this alongside any
+**Generated at STATUS v104, latest part 66.** Paste this alongside any
 audit. It exists because four of the last five review briefs were built on state that had
 moved: the fix proposed was already shipped, or the number quoted came from an old run.
 
@@ -93,13 +93,22 @@ fish-case gaps, in order: object fragmentation (100 objects where a competitor u
 small-text/watermark noise, palette assignment of recovered linework (swirls sew black,
 competitor's are coloured).
 
+**Consolidation shipped in Part 66** (`docs/benchmarks/v2-part66-audit.md`): one canonical
+copy of every shared helper — `enum_str` in the model (8 dances deleted; enum fields are
+always plain strings under `use_enum_values=True`, verified), `tests/conftest.py` owns
+sys.path, `tests/helpers.py` owns the stream comparator / row-angle instrument / cached
+fixture digitize, `scripts/_viz.py` owns the visualization helpers. Net −165 lines, four
+newest test files twice as fast, renders pixel-verified unchanged. Recorded non-merges:
+per-part test files (executable spec), measurement scripts (reproduce paths),
+`split_digitizer.py` (provenance).
+
 ## Numbers that are current
 
 | | value | measured at |
 |---|---|---|
-| Backend tests | **947 passed, 2 xfailed** | Part 65 |
+| Backend tests | **947 passed, 2 xfailed** | Part 66 |
 | Frontend tests | **165 passed** | Part 63 |
-| `ruff check app` | 12 (the standing baseline) | Part 65 |
+| `ruff check app` | 12 (the standing baseline) | Part 66 |
 | Stitch-stream locks | **4** fixtures, sha256 of the whole stream | — |
 | Visual baselines | 10, gate SSIM ≥ 0.995 | Part 44 |
 | Corpus | 100 designs, **0 errors**, **7** zero-stitch, interior median **98.70** | Part 48 |

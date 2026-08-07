@@ -37,6 +37,9 @@ import numpy as np
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND_ROOT))
 
+from _viz import fit_width, hstack_pad, label_bar
+
+from app.models.design import enum_str
 from app.services.digitizer import digitize_image
 from app.services.embroidery_io import read_embroidery
 from app.services.stitch_render import render_design
@@ -88,7 +91,7 @@ def object_metrics(design) -> dict | None:
     angles = set()
     per_object = []
     for o in design.objects:
-        st = o.stitch_type.value if hasattr(o.stitch_type, "value") else str(o.stitch_type)
+        st = enum_str(o.stitch_type)
         types[st] = types.get(st, 0) + 1
         if o.holes:
             with_holes += 1
@@ -220,25 +223,9 @@ def block_metrics(design) -> dict:
 # ── visual pack ───────────────────────────────────────────────────────────────
 
 
-def _fit_width(img: np.ndarray, width: int) -> np.ndarray:
-    h, w = img.shape[:2]
-    nh = max(1, round(h * width / w))
-    return cv2.resize(img, (width, nh), interpolation=cv2.INTER_AREA)
-
-
-def _label(img: np.ndarray, text: str) -> np.ndarray:
-    bar = np.full((30, img.shape[1], 3), 28, np.uint8)
-    cv2.putText(bar, text, (8, 21), cv2.FONT_HERSHEY_SIMPLEX, 0.55,
-                (230, 230, 230), 1, cv2.LINE_AA)
-    return np.vstack([bar, img])
-
-
 def side_by_side(panels: list[tuple[str, np.ndarray]], width: int = 420) -> np.ndarray:
-    cols = [_label(_fit_width(img, width), text) for text, img in panels]
-    hmax = max(c.shape[0] for c in cols)
-    cols = [cv2.copyMakeBorder(c, 0, hmax - c.shape[0], 0, 6, cv2.BORDER_CONSTANT,
-                               value=(255, 255, 255)) for c in cols]
-    return np.hstack(cols)
+    return hstack_pad([label_bar(fit_width(img, width), text, height=30)
+                       for text, img in panels], gap=6)
 
 
 def crops_row(panels: list[tuple[str, np.ndarray]], frac_box: tuple[float, float, float, float],

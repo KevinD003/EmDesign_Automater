@@ -15,13 +15,9 @@ What must hold for the pipeline to be trustworthy:
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
-for p in (str(BACKEND_ROOT), str(BACKEND_ROOT / "scripts")):
-    if p not in sys.path:
-        sys.path.insert(0, p)
 
 from bench_competitor import (
     block_features,

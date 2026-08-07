@@ -26,6 +26,7 @@ sys.path.insert(0, str(BACKEND_ROOT))
 
 from bench_competitor import CASES, block_features, infer_block_type, split_blocks
 
+from app.models.design import enum_str
 from app.services.digitizer import digitize_image
 from app.services.embroidery_io import read_embroidery
 
@@ -121,8 +122,8 @@ def rows_from_stitchiq(design, design_id: str, artwork_path: Path,
                 crops_dir.mkdir(parents=True, exist_ok=True)
                 crop_path = str(crops_dir / f"{design_id}-obj{o.sequence_order}.png")
                 cv2.imwrite(crop_path, art[cy0:cy1, cx0:cx1])
-        st = o.stitch_type.value if hasattr(o.stitch_type, "value") else str(o.stitch_type)
-        ut = o.underlay_type.value if hasattr(o.underlay_type, "value") else str(o.underlay_type)
+        st = enum_str(o.stitch_type)
+        ut = enum_str(o.underlay_type)
         rows.append({
             "schema_version": 1,
             "row_id": f"{design_id}/obj-{o.sequence_order}",

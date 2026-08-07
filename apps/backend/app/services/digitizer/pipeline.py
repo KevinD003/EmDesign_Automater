@@ -21,6 +21,7 @@ from app.models.design import (
     Stitch,
     StitchType,
     UnderlayType,
+    enum_str,
 )
 from app.services import direction_field, segmentation
 from app.services.digitizer import constants, staging
@@ -1273,8 +1274,8 @@ def rebuild_design(design: Design) -> Design:
             for hole in o.holes or []:
                 cv2.fillPoly(mask, [np.array([to_px(p) for p in hole], np.int32)], 0)
 
-            st = o.stitch_type.value if hasattr(o.stitch_type, "value") else o.stitch_type
-            ut = o.underlay_type.value if hasattr(o.underlay_type, "value") else o.underlay_type
+            st = enum_str(o.stitch_type)
+            ut = enum_str(o.underlay_type)
             spacing_mm = 1.0 / max(float(o.density) or 1.0, 0.2)
             spacing_px = max(1, round(spacing_mm / mm_per_px))
             under_step_px = max(1, round(UNDERLAY_STEP_MM / mm_per_px))

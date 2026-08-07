@@ -25,6 +25,8 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
+from helpers import stream_of as _stream
+
 from app.models.design import Design, Stitch
 from app.services.digitizer import PLAN_MAX_COLORS, TRIM_MIN_GAP_MM, digitize_image
 from app.services.trim_profiles import (
@@ -41,8 +43,6 @@ def _digitize(max_colors: int) -> Design:
     return digitize_image(FIXTURE.read_bytes(), "cotton", "100x100", max_colors)
 
 
-def _stream(design: Design):
-    return [(str(s.command), round(s.x, 4), round(s.y, 4)) for s in design.stitches]
 
 
 # ── the colour-cap warning ────────────────────────────────────────────────────

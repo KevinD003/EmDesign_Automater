@@ -8,14 +8,14 @@ from __future__ import annotations
 
 import io
 
-from app.models.design import Design, Worksheet, WorksheetColorRow
+from app.models.design import Design, Worksheet, WorksheetColorRow, enum_str
 
 _DEFAULT_SPM = 800.0  # stitches per minute, for the sew-time estimate
 
 
 def _cmd(stitch) -> str:
     c = stitch.command
-    return c.value if hasattr(c, "value") else c
+    return enum_str(c)
 
 
 def _thread_lengths_mm(design: Design) -> list[float]:
