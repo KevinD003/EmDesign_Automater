@@ -1,6 +1,6 @@
 # STITCHIQ — current state, for the reviewer
 
-**Generated at STATUS v101, latest part 63.** Paste this alongside any
+**Generated at STATUS v102, latest part 64.** Paste this alongside any
 audit. It exists because four of the last five review briefs were built on state that had
 moved: the fix proposed was already shipped, or the number quoted came from an old run.
 
@@ -68,13 +68,26 @@ with or without any flow metadata (demo design 4,820 → 2,298 lineless) — reb
 regenerates plain fills from contours and always has; the pre-existing digitize-vs-rebuild
 gap has never been measured on its own.
 
+**Competitor benchmark + training-data pipeline shipped in Part 64**
+(`docs/benchmarks/v2-part64-audit.md`): rerunnable harness over 8 cases with an honest
+population statement (no Wilcom/Hatch native files held — every numeric cross-comparison is
+"not measurable from the files available"); block-type inference from machine files
+calibrated against our own generators round-tripped through DST; four-level provenance
+schema (`docs/TRAINING-DATA-SPEC.md`) with 85 validated rows extracted. The matched
+angelfish case (competitor render, photographic input) found the top gaps: body-region
+recovery on photos, small-text fidelity (badge fixture corroborates), and 30-way satin
+fragmentation of organic shapes. **Recorded: current data cannot support supervised
+training toward competitor-grade decisions** — needs native competitor design files or a
+human labelling pass first. Competitor-sourced inputs live in gitignored
+`apps/backend/data/competitor/`.
+
 ## Numbers that are current
 
 | | value | measured at |
 |---|---|---|
-| Backend tests | **933 passed, 2 xfailed** | Part 63 |
+| Backend tests | **943 passed, 2 xfailed** | Part 64 |
 | Frontend tests | **165 passed** | Part 63 |
-| `ruff check app` | 12 (the standing baseline) | Part 63 |
+| `ruff check app` | 12 (the standing baseline) | Part 64 |
 | Stitch-stream locks | **4** fixtures, sha256 of the whole stream | — |
 | Visual baselines | 10, gate SSIM ≥ 0.995 | Part 44 |
 | Corpus | 100 designs, **0 errors**, **7** zero-stitch, interior median **98.70** | Part 48 |

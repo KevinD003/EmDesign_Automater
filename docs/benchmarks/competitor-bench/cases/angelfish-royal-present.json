@@ -1,0 +1,31 @@
+{
+ "id": "angelfish-royal-present",
+ "kind": "render_only",
+ "stitchiq": {
+  "provenance": "stitchiq_generated",
+  "stitch_count": 5957,
+  "trim_count": 36,
+  "jump_count": 126,
+  "jump_travel_mm": 1105.2,
+  "color_stop_count": 4,
+  "width_mm": 64.3,
+  "height_mm": 69.4,
+  "object_count": 30,
+  "stitch_type_distribution": {
+   "SATIN": 30
+  },
+  "objects_with_holes": 16,
+  "hole_count": 633,
+  "small_objects_lt_8mm2": 1,
+  "distinct_angles": 28,
+  "median_stitches_per_object": 106
+ },
+ "competitor": {
+  "provenance": "render_only",
+  "numeric_metrics": "unavailable"
+ },
+ "notes": [
+  "Competitor render (royal-present.ru marketing photo, watermarked). No stitch file: numeric competitor columns are unavailable."
+ ],
+ "visual": "benchmarks/competitor-bench/visual/angelfish-royal-present.png"
+}

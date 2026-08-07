@@ -1,0 +1,23 @@
+{
+ "id": "sample-dst",
+ "kind": "machine_file",
+ "stitchiq": null,
+ "competitor": {
+  "stitch_count": 26,
+  "trim_count": 14,
+  "jump_count": 45,
+  "jump_travel_mm": 487.3,
+  "color_stop_count": 2,
+  "width_mm": 40.0,
+  "height_mm": 40.0,
+  "provenance": "machine_file_inference",
+  "block_count": 10,
+  "inferred_type_distribution": {
+   "unknown": 10
+  }
+ },
+ "notes": [
+  "No source artwork for this file: no matched STITCHIQ side exists. Stream metrics exact; types inferred from segment statistics."
+ ],
+ "visual": "benchmarks/competitor-bench/visual/sample-dst.png"
+}

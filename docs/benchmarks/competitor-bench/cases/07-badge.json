@@ -1,0 +1,27 @@
+{
+ "id": "07-badge",
+ "kind": "fixture",
+ "stitchiq": {
+  "provenance": "stitchiq_generated",
+  "stitch_count": 12196,
+  "trim_count": 77,
+  "jump_count": 176,
+  "jump_travel_mm": 2449.9,
+  "color_stop_count": 4,
+  "width_mm": 73.0,
+  "height_mm": 73.2,
+  "object_count": 16,
+  "stitch_type_distribution": {
+   "SATIN": 13,
+   "TATAMI": 3
+  },
+  "objects_with_holes": 10,
+  "hole_count": 30,
+  "small_objects_lt_8mm2": 2,
+  "distinct_angles": 6,
+  "median_stitches_per_object": 39
+ },
+ "competitor": null,
+ "notes": [],
+ "visual": "benchmarks/competitor-bench/visual/07-badge.png"
+}

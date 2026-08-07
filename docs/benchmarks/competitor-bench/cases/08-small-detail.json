@@ -1,0 +1,27 @@
+{
+ "id": "08-small-detail",
+ "kind": "fixture",
+ "stitchiq": {
+  "provenance": "stitchiq_generated",
+  "stitch_count": 4775,
+  "trim_count": 21,
+  "jump_count": 54,
+  "jump_travel_mm": 632.4,
+  "color_stop_count": 4,
+  "width_mm": 50.7,
+  "height_mm": 54.4,
+  "object_count": 15,
+  "stitch_type_distribution": {
+   "SATIN": 12,
+   "TATAMI": 3
+  },
+  "objects_with_holes": 4,
+  "hole_count": 9,
+  "small_objects_lt_8mm2": 3,
+  "distinct_angles": 13,
+  "median_stitches_per_object": 48
+ },
+ "competitor": null,
+ "notes": [],
+ "visual": "benchmarks/competitor-bench/visual/08-small-detail.png"
+}

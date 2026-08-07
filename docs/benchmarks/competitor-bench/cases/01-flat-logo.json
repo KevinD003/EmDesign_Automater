@@ -1,0 +1,26 @@
+{
+ "id": "01-flat-logo",
+ "kind": "fixture",
+ "stitchiq": {
+  "provenance": "stitchiq_generated",
+  "stitch_count": 4820,
+  "trim_count": 85,
+  "jump_count": 105,
+  "jump_travel_mm": 2132.1,
+  "color_stop_count": 2,
+  "width_mm": 65.7,
+  "height_mm": 65.5,
+  "object_count": 2,
+  "stitch_type_distribution": {
+   "TATAMI": 2
+  },
+  "objects_with_holes": 1,
+  "hole_count": 1,
+  "small_objects_lt_8mm2": 0,
+  "distinct_angles": 2,
+  "median_stitches_per_object": 3227
+ },
+ "competitor": null,
+ "notes": [],
+ "visual": "benchmarks/competitor-bench/visual/01-flat-logo.png"
+}

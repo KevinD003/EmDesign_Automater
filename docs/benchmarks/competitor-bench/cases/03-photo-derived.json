@@ -1,0 +1,27 @@
+{
+ "id": "03-photo-derived",
+ "kind": "fixture",
+ "stitchiq": {
+  "provenance": "stitchiq_generated",
+  "stitch_count": 4875,
+  "trim_count": 23,
+  "jump_count": 28,
+  "jump_travel_mm": 1021.2,
+  "color_stop_count": 3,
+  "width_mm": 55.2,
+  "height_mm": 54.8,
+  "object_count": 3,
+  "stitch_type_distribution": {
+   "SATIN": 2,
+   "TATAMI": 1
+  },
+  "objects_with_holes": 2,
+  "hole_count": 2,
+  "small_objects_lt_8mm2": 0,
+  "distinct_angles": 3,
+  "median_stitches_per_object": 1160
+ },
+ "competitor": null,
+ "notes": [],
+ "visual": "benchmarks/competitor-bench/visual/03-photo-derived.png"
+}

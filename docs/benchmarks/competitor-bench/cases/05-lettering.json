@@ -1,0 +1,26 @@
+{
+ "id": "05-lettering",
+ "kind": "fixture",
+ "stitchiq": {
+  "provenance": "stitchiq_generated",
+  "stitch_count": 1366,
+  "trim_count": 10,
+  "jump_count": 21,
+  "jump_travel_mm": 203.8,
+  "color_stop_count": 1,
+  "width_mm": 81.8,
+  "height_mm": 15.3,
+  "object_count": 6,
+  "stitch_type_distribution": {
+   "SATIN": 6
+  },
+  "objects_with_holes": 0,
+  "hole_count": 0,
+  "small_objects_lt_8mm2": 0,
+  "distinct_angles": 2,
+  "median_stitches_per_object": 212
+ },
+ "competitor": null,
+ "notes": [],
+ "visual": "benchmarks/competitor-bench/visual/05-lettering.png"
+}
