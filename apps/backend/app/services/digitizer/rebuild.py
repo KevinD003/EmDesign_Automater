@@ -26,6 +26,8 @@ from app.services.digitizer.constants import (
     FILL_UNDERLAY_PITCH_MULT,
     MAX_STITCH_MM,
     MIN_STITCH_MM,
+    SATIN_MAX_UNCOVERED,
+    SATIN_MAX_W_MM,
     SATIN_SPACING_MM,
     TRAVEL_STEP_MM,
     UNDERLAY_STEP_MM,
@@ -34,6 +36,7 @@ from app.services.digitizer.constants import (
 )
 from app.services.digitizer.fills import (
     _contour_fill,
+    _fill_by_component,
     _radial_fill,
     _scanline_angled,
     _spiral_fill,
@@ -56,6 +59,7 @@ from app.services.digitizer.routing import (
 from app.services.digitizer.satin import (
     _satin_axis_deg,
     _satin_zigzag,
+    _skeleton_satin_hires,
     rebuild_fill_border,
 )
 from app.services.digitizer.underlay import (
@@ -176,7 +180,72 @@ def rebuild_design(design: Design) -> Design:
                     # coincide with the raw angle still folds via % 180 below.
                     want = _satin_axis_deg(raw_rect)
                 rect = (raw_rect[0], (2.0, 1.0), want % 180.0)
-                pts = _satin_zigzag(top, rect, spacing_px, connect_px, max_step_px)
+                # SPINE SATIN AT PARITY WITH DIGITIZE (v2 Phase B1.5).
+                #
+                # digitize sews satin off the MEDIAL AXIS: columns follow the
+                # stroke, so a ring, an arc or a bend works. Rebuild used the
+                # bounding-rect zigzag, which "only ever worked for a straight
+                # bar" (Part 4) — so editing one parameter of a curved satin
+                # replaced a spine-followed column with a rect sweep. Same
+                # generator now, same arguments, including digitize's
+                # wide-remainder tatami fallback.
+                #
+                # WHY IT IS CONDITIONAL, and this is the load-bearing part: a
+                # spine has no single angle, so running it unconditionally
+                # would silently undo A5 and re-break probe P4 (an edited
+                # `stitch_angle` must change the stream). The stored angle is
+                # compared against this contour's own normalized axis — equal
+                # means "auto", i.e. the user never touched it, and the spine
+                # is what digitize would do; different means the user asked
+                # for a specific angle, which only the rect sweep can honour.
+                # That is also how the commercial tools behave: a satin column
+                # follows its spine, and an explicit angle is an override.
+                #
+                # AND why it is gated on WIDTH too: a shape wider than the
+                # satin cap has a medial axis but cannot be covered by
+                # columns, so the spine path would hand most of it back as
+                # `wide_mask` and tatami it. That is right for digitize, which
+                # is CLASSIFYING; it is wrong here, where the user has
+                # explicitly asked this object to be SATIN. The rect sweep
+                # spans any width, which is exactly why Part 4 retained it for
+                # user-forced satin — measured: the 30x8mm probe bar (8mm, over
+                # the 4.5mm cap) came back as horizontal tatami rows.
+                # The width test uses the SKELETON's own measured width, not the
+                # distance-transform median: the median under-reads a rectangle
+                # badly (measured 3.6mm for the 8mm probe bar, which would have
+                # sailed through the 4.5mm cap and been tatami'd). digitize
+                # makes the same distinction — the DT median is only its cheap
+                # pre-gate; the real decision is median_w plus the uncovered
+                # share, and those are reused verbatim here.
+                _dt = cv2.distanceTransform((top > 0).astype(np.uint8), cv2.DIST_L2, 5)
+                stroke_mm = (float(np.median(_dt[_dt > 0])) * 2.0 * mm_per_px
+                             if (_dt > 0).any() else 0.0)
+                if abs((want % 180.0) - _satin_axis_deg(raw_rect)) <= 0.15:
+                    cand, median_w, wide_mask, axis_pts = _skeleton_satin_hires(
+                        top, mm_per_px, spacing_px, max_step_px,
+                        (float(o.pull_compensation or 0.0) / 2.0) / mm_per_px,
+                        stroke_mm / mm_per_px,
+                    )
+                    top_px = max(cv2.countNonZero(top), 1)
+                    uncovered = cv2.countNonZero(wide_mask) / top_px
+                    if cand and median_w <= SATIN_MAX_W_MM and uncovered <= SATIN_MAX_UNCOVERED:
+                        pts = cand
+                        # Per-segment fallback, exactly as digitize: parts too
+                        # wide for a column are tatami'd rather than dropped.
+                        if cv2.countNonZero(wide_mask):
+                            pts = pts + _fill_by_component(
+                                wide_mask, spacing_px, fill_step_px, connect_px,
+                                start=pts[-1][:2] if pts else None,
+                            )
+                    else:
+                        # Too wide for columns, or the thinning could not
+                        # resolve it. digitize would reclassify as tatami, but
+                        # the user has explicitly asked for SATIN here, and the
+                        # rect sweep spans any width — which is exactly why
+                        # Part 4 retained it for user-forced satin.
+                        pts = _satin_zigzag(top, rect, spacing_px, connect_px, max_step_px)
+                else:
+                    pts = _satin_zigzag(top, rect, spacing_px, connect_px, max_step_px)
             elif st in ("SPIRAL_FILL", "RADIAL_FILL"):
                 # Curved fills (v2 Part 26): user-selectable via the properties
                 # panel. `stitch_angle` does not describe either and is ignored.
