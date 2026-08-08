@@ -40,6 +40,43 @@ from app.routers import (
 
 startup_logger = logging.getLogger("stitchiq.startup")
 
+
+def _validate_production_config() -> None:
+    """Fail-fast under APP_ENV=production (CTO A10/S1).
+
+    The dev fallbacks — sentinel auth, in-memory per-process stores, open
+    access — exist so a keyless checkout can run the suite and a single
+    operator can work offline. In production the same fallbacks mean a typo'd
+    SUPABASE_* var silently ships a fully unauthenticated app that mixes all
+    users into one account and loses every design on restart. Production
+    therefore refuses to BOOT rather than degrade: a crashed deploy is
+    diagnosable, a fail-open one is a breach.
+    """
+    import os
+
+    if settings.app_env.strip().lower() != "production":
+        return
+    missing = [name.upper() for name in
+               ("supabase_url", "supabase_anon_key", "supabase_service_key")
+               if not getattr(settings, name).strip()]
+    if missing:
+        raise RuntimeError(
+            f"APP_ENV=production but {', '.join(missing)} is unset. Refusing to "
+            f"boot: without Supabase the app falls back to sentinel auth and "
+            f"per-process in-memory storage — fully unauthenticated, all users "
+            f"in one account, data lost on restart. Set the missing keys or "
+            f"run with APP_ENV=development."
+        )
+    if os.environ.get("STITCHIQ_OPEN_ACCESS") == "1":
+        raise RuntimeError(
+            "APP_ENV=production with STITCHIQ_OPEN_ACCESS=1: open access "
+            "disables authentication entirely and is a dev-only switch. "
+            "Unset it to boot in production."
+        )
+
+
+_validate_production_config()
+
 # Uptime baseline for /health. Module import == process start under uvicorn,
 # and monotonic() cannot go backwards when NTP or DST shifts the wall clock.
 _STARTED_MONOTONIC = time.monotonic()
