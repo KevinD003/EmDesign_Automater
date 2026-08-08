@@ -245,6 +245,41 @@ recommended for wheel coverage) and enforce in CI.
 
 ### Phase A — Make it TRUE (correctness + trust; ~1-2 weeks of focused work)
 
+> ## ✅ PHASE A IS COMPLETE AND VERIFIED — 2026-08-08
+>
+> Executed on `claude/code-quality-improvements-hyu6dg` (now also `main`), one item per commit,
+> each with its measured baseline. Independently re-run by the CTO session: **1,024 passed /
+> 4 xfailed** reproduced, all 14 diffs read, CI history confirmed. Twelve consecutive green CI
+> runs. Ledger: [`STATUS.md`](../../STATUS.md) rows **v106–v121** (newest on top).
+>
+> | Item | Outcome | Commit | STATUS row |
+> |---|---|---|---|
+> | A1 | ✅ already done on the review branch; taken whole at reconciliation | `376f1a4` | v106 |
+> | A2 | ✅ first-start tie-in was the gap — lock coverage **95/96 → 96/96** | `107c089` | v107 |
+> | A3 | ✅ ring probe **92 crossings → 0** (adaptive detour resampling + endpoint pad) | `ac7cf5d` | v108 |
+> | A4 | ✅ **2 STOPs**, between sewn phases, surviving PES round trip | `abbd939` | v109 |
+> | A5 | ✅ angle honored (root cause: raw `rect[2]` stored 90° off) + underlay dispatch made real | `012dcf0` | v110 |
+> | A6 | ✅ 0.40mm rows · 4mm fill cap w/ ceil() repair (**15.9mm worst case found**) · alternated angles | `65f37ca` | v111 |
+> | A7 | ✅ 2.5mm default, density-aware (the 6mm machine cap had been the pitch) | `ebd15b6` | v112 |
+> | A8 | ✅ orphan `color_stop` raises; raster **4 → 10px/mm** | `5c7b946` | v113 |
+> | A9 | ✅ five real rejection criteria; the 98/A case now scores **80/B** | `2d42139` | v114 |
+> | A10 | ✅ production refuses to boot on missing keys or open-access | `0143378` | v115 |
+> | A11 | ✅ 9 compute routers authenticated; 20MB cap; 3 collateral holes closed | `4be1b7d` | v116 |
+> | A12 | ✅ 4 OFL families + licences in-repo (Montserrat instanced off its Thin default) | `1af5eb1` | v117 |
+> | A13 | ✅ PUT/versioning already shipped; RLS + schema lint added — **live apply pending, see v121** | `fb4ce61` | v118, v121 |
+> | A14 | ✅ README/STATUS drift closed against the machine | `8dba6ab` | v119 |
+> | A15 | ✅ N1, N2, N4, N5, N6 fixed; **N3 already shipped in Part 17** | `3a9f26b` | v120 |
+>
+> **Acceptance probes** ([`apps/backend/tests/test_cto_probes.py`](../../apps/backend/tests/test_cto_probes.py)):
+> P1 ring 92→**0** ✅ · P2 locks 95/96→**96/96** ✅ · P4 satin angle no-op→**differs** ✅ ·
+> P5 appliqué 0→**2 STOPs** ✅ · P7 suite **green in CI** ✅ ·
+> P3 xfail→**B4** (102 st/letter, already satin vs the review's 40/letter tatami) ·
+> P6 xfail→**B1.5** (remeasured 17,078 vs 4,989 — structural: rebuild omits fill-border satin and
+> the full underlay recipes; the verbatim ≤0.1mm criterion also needs unedited-object pass-through).
+>
+> **Carried forward, not silently absorbed:** X1 → B1 · P6's two work items → B1.5 · P3 → B4 ·
+> live RLS apply + anon-key probe → STATUS v121 (blocked on production credentials).
+
 | # | Task | Ref |
 |---|---|---|
 | A1 | ✅ *(done this branch)* `pyembroidery` into requirements-dev; CI installable | §2 |
