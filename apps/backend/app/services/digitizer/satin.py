@@ -34,6 +34,21 @@ from app.services.digitizer.skeleton import (
 )
 
 
+def _satin_axis_deg(rect) -> float:
+    """The column-walk axis `_satin_zigzag` actually uses for `rect`, in [0, 180).
+
+    minAreaRect's angle/extent pairing is arbitrary, so the walk axis is the
+    rect angle normalized long-axis-horizontal — the same `+90` flip the
+    generators apply. Recorded on satin objects at digitize (CTO A5/C4) so the
+    stored `stitch_angle` names the frame the object was actually sewn in: an
+    unedited rebuild reproduces it, an edited value rotates it.
+    """
+    (_, _), (rw, rh), ang = rect
+    if rw < rh:
+        ang += 90.0
+    return ang % 180.0
+
+
 def _satin_zigzag(region, rect, step_px: int, connect_px: float, max_step_px: int = 1_000_000):
     """Satin column for a narrow elongated region.
 

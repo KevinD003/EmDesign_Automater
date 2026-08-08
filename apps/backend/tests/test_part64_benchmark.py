@@ -66,7 +66,12 @@ def _known_types_design() -> Design:
         color_stops=[ColorStop(stop_number=1, thread_brand="M", catalog_number="1",
                                thread_name="a", hex="#223344", stitch_count=0)],
         objects=[_obj(1, run, StitchType.RUNNING_SINGLE),
-                 _obj(2, satin, StitchType.SATIN, density=4.0),
+                 # angle 90 = the bar's true column axis (it is vertical).
+                 # 0.0 was fine while rebuild ignored the field; since CTO A5
+                 # honors it, 0 would walk ACROSS the bar and sew 25mm rungs
+                 # that classify as fill — the exact no-op this fixture
+                 # predates.
+                 _obj(2, satin, StitchType.SATIN, angle=90.0, density=4.0),
                  _obj(3, fill, StitchType.TATAMI)],
         stitches=[],
     )

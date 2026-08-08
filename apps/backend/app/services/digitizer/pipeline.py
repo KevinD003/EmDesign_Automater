@@ -119,16 +119,17 @@ from app.services.digitizer.routing import (
 )
 from app.services.digitizer.satin import (
     _fill_border,
+    _satin_axis_deg,
     _satin_border,
     _satin_zigzag,
     _skeleton_satin_hires,
 )
 from app.services.digitizer.underlay import (
     _axis_underlay,
-    _center_walk,
     _edge_walk,
     _manual_run,
     _parallel_underlay,
+    _rebuild_underlay,
     _run_along,
     _with_underlay,
     _zigzag_underlay,
@@ -952,7 +953,12 @@ def digitize_image(
                     ),
                     color_stop=this_stop,
                     density=1.0 / (prof["satin_mm"] if is_satin else prof["row_mm"]),
-                    stitch_angle=round(float(rect[2]), 1) if is_satin else fill_angle,
+                    # Satin records the NORMALIZED walk axis, not raw rect[2]
+                    # (CTO A5/C4): the raw angle is off by 90° whenever the
+                    # generators' long-axis flip fired, so rebuild could not
+                    # trust the stored value and recomputed minAreaRect —
+                    # which made editing the angle a silent no-op.
+                    stitch_angle=round(_satin_axis_deg(rect), 1) if is_satin else fill_angle,
                     underlay_type=underlay,
                     pull_compensation=round(pull_mm, 2),
                     entry_point=Point(x=pts[0][0] * mm_per_px, y=pts[0][1] * mm_per_px),
@@ -1310,25 +1316,31 @@ def rebuild_design(design: Design) -> Design:
                 ]
                 pts = [p for phase in applique_phases for p in phase]
             elif st == "SATIN":
-                rect = cv2.minAreaRect(poly)
+                # The edited `stitch_angle` is authoritative (CTO A5/C4): the
+                # walk axis is the stored angle, not a recomputed minAreaRect —
+                # recomputing is what made the edit a silent no-op. digitize
+                # records the normalized axis of this same contour's rect, so an
+                # unedited rebuild reproduces the old frame to 0.1°. Both rect
+                # consumers use only the center and the long-axis flip test, so
+                # pre-normalized extents make the angle the walk axis verbatim.
+                raw_rect = cv2.minAreaRect(poly)
+                want = float(o.stitch_angle)
+                if want < 0.0 and abs(want - float(raw_rect[2])) <= 0.06:
+                    # Legacy save: pre-A5 digitize recorded RAW rect[2], which
+                    # this cv2 reports negative — a value the normalized store
+                    # never produces. When the stored angle IS this contour's
+                    # raw rect angle, it is provenance, not an edit: use the
+                    # normalized axis it always meant, reproducing the old
+                    # rebuild exactly. A deliberate negative edit that doesn't
+                    # coincide with the raw angle still folds via % 180 below.
+                    want = _satin_axis_deg(raw_rect)
+                rect = (raw_rect[0], (2.0, 1.0), want % 180.0)
                 pts = _satin_zigzag(top, rect, spacing_px, connect_px, max_step_px)
-                if ut and ut != "NONE":  # any non-NONE underlay → center-walk for satin
-                    pts = _with_underlay(_center_walk(mask, rect, under_step_px, connect_px), pts, connect_px)
             elif st in ("SPIRAL_FILL", "RADIAL_FILL"):
                 # Curved fills (v2 Part 26): user-selectable via the properties
                 # panel. `stitch_angle` does not describe either and is ignored.
                 fill_fn = _spiral_fill if st == "SPIRAL_FILL" else _radial_fill
                 pts = fill_fn(top, spacing_px, max_step_px, connect_px)
-                if ut and ut != "NONE":
-                    inset_px = max(1, round(EDGE_INSET_MM / mm_per_px))
-                    pts = _with_underlay(
-                        _edge_walk(
-                            mask, inset_px, under_step_px, connect_px,
-                            (constants._PENETRATION_FLOOR_MM / mm_per_px) if constants._PENETRATION_FLOOR_MM else 0.0,
-                            MAX_STITCH_MM / mm_per_px,
-                        ),
-                        pts, connect_px,
-                    )
             elif st == "CONTOUR_FILL":
                 # Rows follow the outline, so `stitch_angle` does not describe
                 # this object and is deliberately not consulted (v2 Part 24b).
@@ -1340,16 +1352,6 @@ def rebuild_design(design: Design) -> Design:
                     max(1, min(max_step_px, round(CONTOUR_ROW_MAX_STEP_MM / mm_per_px))),
                     connect_px,
                 )
-                if ut and ut != "NONE":
-                    inset_px = max(1, round(EDGE_INSET_MM / mm_per_px))
-                    pts = _with_underlay(
-                        _edge_walk(
-                            mask, inset_px, under_step_px, connect_px,
-                            (constants._PENETRATION_FLOOR_MM / mm_per_px) if constants._PENETRATION_FLOOR_MM else 0.0,
-                            MAX_STITCH_MM / mm_per_px,
-                        ),
-                        pts, connect_px,
-                    )
             elif st in ("RUNNING_SINGLE", "RUNNING_DOUBLE", "RUNNING_TRIPLE", "MANUAL"):
                 # Running stitch ALONG the drawn path (open polyline), not an area fill.
                 passes = {"RUNNING_DOUBLE": 2, "RUNNING_TRIPLE": 3}.get(st, 1)
@@ -1381,14 +1383,6 @@ def rebuild_design(design: Design) -> Design:
                         top, _flow_line_angle(o.flow_line, float(o.stitch_angle)),
                         spacing_px, max_step_px, connect_px,
                     )
-                if ut and ut != "NONE":  # any non-NONE underlay → edge-walk for fills
-                    inset_px = max(1, round(EDGE_INSET_MM / mm_per_px))
-                    under = _edge_walk(
-                        mask, inset_px, under_step_px, connect_px,
-                        (constants._PENETRATION_FLOOR_MM / mm_per_px) if constants._PENETRATION_FLOOR_MM else 0.0,
-                        MAX_STITCH_MM / mm_per_px,
-                    )
-                    pts = _with_underlay(under, pts, connect_px)
             else:
                 # There is deliberately no catch-all fill here (v2 Part 43). This
                 # branch used to be `else: tatami`, which is how eleven declared
@@ -1399,6 +1393,21 @@ def rebuild_design(design: Design) -> Design:
                     f"{o.name}: no generator for stitch type {st!r}. Every StitchType "
                     f"member needs a branch here — see the enum docstring in models/design.py."
                 )
+            # Underlay: the SELECTED type dispatched to its real generator
+            # (CTO A5/C5) — see _rebuild_underlay for the honesty contract.
+            under = _rebuild_underlay(
+                st, ut, mask, rect if st == "SATIN" else None,
+                float(o.stitch_angle), spacing_px, under_step_px, connect_px,
+                max_step_px, mm_per_px,
+                (constants._PENETRATION_FLOOR_MM / mm_per_px) if constants._PENETRATION_FLOOR_MM else 0.0,
+                MAX_STITCH_MM / mm_per_px,
+                max(1, round(EDGE_INSET_MM / mm_per_px)),
+                UNDERLAY_STEP_MM * UNDERLAY_ZIGZAG_PITCH_MULT / mm_per_px,
+                UNDERLAY_ZIGZAG_INSET_MM / mm_per_px,
+                FILL_UNDERLAY_PITCH_MULT, FILL_UNDERLAY_ANGLE_OFFSET_DEG,
+            )
+            if under:
+                pts = _with_underlay(under, pts, connect_px)
             # Same travel routing as the digitizer (v2 Part 25): without it a
             # rebuilt donut carried 63 hole-crossing trims that the fresh
             # digitize of the same shape had already routed away. Endpoint pad

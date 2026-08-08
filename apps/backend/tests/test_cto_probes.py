@@ -83,10 +83,11 @@ def _lockish(pts: list[tuple[float, float]]) -> bool:
     return sum(1 for a, b in zip(pts, pts[1:]) if math.dist(a, b) <= 1.0) >= 2
 
 
-def _satin_bar(stitch_type: StitchType, angle: float) -> Design:
+def _satin_bar(stitch_type: StitchType, angle: float,
+               underlay: UnderlayType = UnderlayType.NONE) -> Design:
     o = DesignObject(
         sequence_order=1, name="s", stitch_type=stitch_type, color_stop=1,
-        density=4.0, stitch_angle=angle, underlay_type=UnderlayType.NONE,
+        density=4.0, stitch_angle=angle, underlay_type=underlay,
         pull_compensation=0.0, connect_method=ConnectMethod.TRIM,
         stitch_count=0,
         contour=[Point(x=0, y=0), Point(x=30, y=0), Point(x=30, y=8), Point(x=0, y=8)],
@@ -177,14 +178,104 @@ def test_probe3_lettering_peak_at_8mm_is_dense_satin():
 # ── P4: angle test — satin 0deg vs 77deg must differ ─────────────────────────
 
 
-@pytest.mark.xfail(strict=True,
-                   reason="A5 open: satin rebuild ignores stitch_angle (identical streams)")
 def test_probe4_satin_angle_edit_changes_the_stream():
+    # A5: rebuild builds the satin frame from the stored stitch_angle instead
+    # of recomputing minAreaRect, so editing the angle is no longer a no-op.
     s0 = rebuild_design(_satin_bar(StitchType.SATIN, 0.0))
     s77 = rebuild_design(_satin_bar(StitchType.SATIN, 77.0))
     a = [(str(s.command), round(s.x, 3), round(s.y, 3)) for s in s0.stitches]
     b = [(str(s.command), round(s.x, 3), round(s.y, 3)) for s in s77.stitches]
     assert a != b
+
+
+def _dominant_seg_angle(design) -> float:
+    """Modal direction (deg, mod 180) of STITCH segments longer than 0.5mm."""
+    from collections import Counter
+
+    angles = []
+    prev = None
+    for s in design.stitches:
+        if str(s.command) == "STITCH" and prev is not None and str(prev.command) == "STITCH":
+            dx, dy = s.x - prev.x, s.y - prev.y
+            if math.hypot(dx, dy) > 0.5:
+                angles.append(math.degrees(math.atan2(dy, dx)) % 180.0)
+        prev = s
+    assert angles
+    return Counter(round(a / 5) * 5 % 180 for a in angles).most_common(1)[0][0]
+
+
+def test_satin_angle_semantics_axis_is_the_walk_direction():
+    # Regression for A5: stitch_angle names the column-walk axis, so the satin
+    # rungs (the visible thread) run PERPENDICULAR to it. Pinning the geometry
+    # keeps "honored" from regressing into "consumed but rotated 90 degrees".
+    rungs0 = _dominant_seg_angle(rebuild_design(_satin_bar(StitchType.SATIN, 0.0)))
+    rungs90 = _dominant_seg_angle(rebuild_design(_satin_bar(StitchType.SATIN, 90.0)))
+    assert abs(rungs0 - 90.0) <= 10.0, f"axis 0 should give ~90deg rungs, got {rungs0}"
+    assert rungs90 <= 10.0 or rungs90 >= 170.0, f"axis 90 should give ~0deg rungs, got {rungs90}"
+
+
+def test_digitize_records_the_normalized_satin_axis():
+    # Regression for A5: digitize stores the axis the generators actually used
+    # (minAreaRect angle + the long-axis flip, mod 180) — the raw rect[2] was
+    # off by 90 whenever the flip fired, which is why rebuild couldn't trust it.
+    import cv2
+    import numpy as np
+    from helpers import digitized_fixture
+
+    from app.services.digitizer.satin import _satin_axis_deg
+
+    d = digitized_fixture("04_thin_line_outline.png")  # all thin strokes → satin
+    satins = [o for o in d.objects if str(o.stitch_type) == "SATIN" and o.contour]
+    assert satins, "fixture has no satin objects — pick another fixture"
+    for o in satins:
+        pts = np.array([[p.x, p.y] for p in o.contour], np.float32)
+        want = _satin_axis_deg(cv2.minAreaRect(pts))
+        assert abs(o.stitch_angle - want) <= 0.06 or abs(abs(o.stitch_angle - want) - 180.0) <= 0.06, (
+            f"{o.name}: stored {o.stitch_angle}, normalized axis {want:.2f}"
+        )
+
+
+def test_legacy_raw_rect_angle_rebuilds_in_the_normalized_frame():
+    # Regression for A5's migration shim: pre-A5 saves recorded RAW
+    # minAreaRect[2] (negative in this cv2) — provenance, not an edit. Such a
+    # design must rebuild exactly as if it carried the normalized axis, so old
+    # saved satin doesn't rotate 90 degrees on its first post-A5 rebuild.
+    import cv2 as _cv2
+
+    from app.services.digitizer.satin import _satin_axis_deg
+
+    legacy = _satin_bar(StitchType.SATIN, 0.0)
+    pts = np.array([[p.x, p.y] for p in legacy.objects[0].contour], np.float32)
+    raw_rect = _cv2.minAreaRect(pts)
+    raw = round(float(raw_rect[2]), 1)
+    assert raw < 0.0, "shim precondition: this cv2 reports raw rect angles negative"
+    legacy.objects[0].stitch_angle = raw
+
+    normalized = _satin_bar(StitchType.SATIN, _satin_axis_deg(raw_rect))
+    a = [(str(s.command), round(s.x, 3), round(s.y, 3))
+         for s in rebuild_design(legacy).stitches]
+    b = [(str(s.command), round(s.x, 3), round(s.y, 3))
+         for s in rebuild_design(normalized).stitches]
+    assert a == b
+
+
+def test_underlay_selection_is_consumed_on_rebuild():
+    # Regression for A5/C5: the dropdown used to collapse every non-NONE choice
+    # to one generator per family. Distinct choices must now yield distinct
+    # streams, and each must be a superset-length of the underlay-free build.
+    bare = rebuild_design(_satin_bar(StitchType.SATIN, 0.0)).stitch_count
+    center = rebuild_design(_satin_bar(StitchType.SATIN, 0.0, UnderlayType.CENTER_WALK))
+    zigzag = rebuild_design(_satin_bar(StitchType.SATIN, 0.0, UnderlayType.DOUBLE_ZIGZAG))
+    assert center.stitch_count > bare and zigzag.stitch_count > bare
+    assert [(round(s.x, 2), round(s.y, 2)) for s in center.stitches] != \
+           [(round(s.x, 2), round(s.y, 2)) for s in zigzag.stitches]
+
+    bare_f = rebuild_design(_satin_bar(StitchType.TATAMI, 0.0)).stitch_count
+    edge = rebuild_design(_satin_bar(StitchType.TATAMI, 0.0, UnderlayType.EDGE_WALK))
+    par = rebuild_design(_satin_bar(StitchType.TATAMI, 0.0, UnderlayType.PARALLEL))
+    assert edge.stitch_count > bare_f
+    # PARALLEL = edge walk + crossing tatami layer, so it must out-stitch EDGE_WALK
+    assert par.stitch_count > edge.stitch_count
 
 
 # ── P5: applique test — STOP after placement and after tackdown ──────────────

@@ -4,6 +4,7 @@ import { useDesignStore } from '../../store/designStore';
 import { api } from '../../api/client';
 import { toastError } from '../feedback/toastStore';
 import { flowAngleDeg, flowDivideValid, flowSideAngles } from '../../lib/flow';
+import { UNDERLAY_LABEL, underlayFamily, underlayOptions } from '../../lib/underlay';
 
 /** Coerce arbitrary hex to the #rrggbb form that <input type="color"> requires. */
 function normalizeHex(h: string): string {
@@ -134,17 +135,20 @@ export function PropertiesPanel() {
           </label>
           <label className="prop-row">
             <span>Angle (°)</span>
+            {/* Satin angle is editable since CTO A5: rebuild honors the stored
+                walk axis instead of recomputing minAreaRect, so the edit is no
+                longer a silent no-op. */}
             <input
               type="number"
               step="5"
               value={angle}
               onChange={(e) => setAngle(e.target.value)}
-              disabled={obj.stitchType === 'SATIN' || !!obj.flowLine || !!obj.flowLineB}
+              disabled={!!obj.flowLine || !!obj.flowLineB}
               title={
-                obj.stitchType === 'SATIN'
-                  ? 'Satin columns follow the shape axis'
-                  : obj.flowLine || obj.flowLineB
-                    ? 'Overridden by the Stitch Flow line — remove the line to edit'
+                obj.flowLine || obj.flowLineB
+                  ? 'Overridden by the Stitch Flow line — remove the line to edit'
+                  : obj.stitchType === 'SATIN'
+                    ? 'Column axis — stitches run across it'
                     : ''
               }
             />
@@ -243,18 +247,27 @@ export function PropertiesPanel() {
           )}
           <label className="prop-row">
             <span>Underlay</span>
-            {/* Every type the generator can PRODUCE is listed for both families
-                (v2 Part 24 added DOUBLE_ZIGZAG and PARALLEL; this dropdown was
-                not updated with it, so an object could carry an underlay the
-                panel could neither display nor round-trip — the select showed
-                blank). Rebuild maps any non-NONE value to the width-appropriate
-                underlay for the object's current stitch type. */}
-            <select value={underlay} onChange={(e) => setUnderlay(e.target.value)}>
-              <option value="NONE">None</option>
-              <option value="CENTER_WALK">Center walk</option>
-              <option value="EDGE_WALK">Edge walk</option>
-              <option value="DOUBLE_ZIGZAG">Double zigzag</option>
-              <option value="PARALLEL">Edge walk + tatami</option>
+            {/* Per-family choices, every one dispatched to a real generator on
+                rebuild (CTO A5/C5 — the old shared list collapsed most values
+                to one default per family, so the selection was fake). A legacy
+                stored value outside the family list is appended so the select
+                never renders blank. Runs/manual/appliqué take no underlay, so
+                the control is disabled for them. */}
+            <select
+              value={underlay}
+              onChange={(e) => setUnderlay(e.target.value)}
+              disabled={underlayFamily(obj.stitchType).length === 0}
+              title={
+                underlayFamily(obj.stitchType).length === 0
+                  ? 'This stitch type takes no underlay'
+                  : ''
+              }
+            >
+              {underlayOptions(obj.stitchType, underlay).map((u) => (
+                <option key={u} value={u}>
+                  {UNDERLAY_LABEL[u] ?? u}
+                </option>
+              ))}
             </select>
           </label>
           <label className="prop-row">

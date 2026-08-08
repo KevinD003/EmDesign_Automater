@@ -260,3 +260,52 @@ def _with_underlay(under, top, connect_px: float):
         x, y, _ = top[0]
         top = [(x, y, _dist(under[-1], (x, y)) > connect_px)] + top[1:]
     return under + top
+
+
+def _rebuild_underlay(st: str, ut: str, mask, rect, stitch_angle: float,
+                      spacing_px: int, under_step_px: int, connect_px: float,
+                      max_step_px: int, mm_per_px: float, floor_px: float,
+                      max_px: float, edge_inset_px: int, zigzag_pitch_px: float,
+                      zigzag_inset_px: float, parallel_pitch_mult: float,
+                      parallel_angle_offset_deg: float):
+    """Underlay for a rebuilt object: the SELECTED type dispatched to its real
+    generator (CTO A5/C5). Returns [(x, y, is_jump)] or [] for none.
+
+    Before this, any non-NONE choice silently collapsed to center-walk (satin)
+    / edge-walk (fills), so the dropdown was mostly fake. Runs/manual/appliqué
+    take no underlay. A stored value digitize never assigns to the family (a
+    legacy save from the old free-for-all dropdown) keeps the old collapse so
+    no design errors out on load.
+    """
+    if not ut or ut == "NONE":
+        return []
+    if st == "SATIN":
+        if ut == "DOUBLE_ZIGZAG":
+            # Zigzag lattice along the column midline — same generator and
+            # pitch recipe as digitize's wide-satin path.
+            axis = _center_walk(mask, rect, under_step_px, connect_px)
+            return _zigzag_underlay(
+                mask, axis, zigzag_pitch_px, zigzag_inset_px, connect_px,
+                floor_px, max_px,
+            ) or _center_walk(mask, rect, under_step_px, connect_px)
+        if ut == "EDGE_WALK":
+            return _edge_walk(mask, edge_inset_px, under_step_px, connect_px,
+                              floor_px, max_px)
+        # CENTER_WALK, plus legacy PARALLEL/CONTOUR saves
+        return _center_walk(mask, rect, under_step_px, connect_px)
+    if st in ("TATAMI", "CONTOUR_FILL", "SPIRAL_FILL", "RADIAL_FILL"):
+        under = _edge_walk(mask, edge_inset_px, under_step_px, connect_px,
+                           floor_px, max_px)
+        if ut == "PARALLEL":
+            # Edge run PLUS the low-density crossing tatami layer — digitize's
+            # PARALLEL recipe (v2 Part 24), previously unreachable from an edit.
+            par = _parallel_underlay(
+                mask, edge_inset_px,
+                max(1, round(spacing_px * parallel_pitch_mult)),
+                stitch_angle + parallel_angle_offset_deg,
+                max_step_px, connect_px, floor_px, max_px,
+            )
+            if par:
+                under = _with_underlay(under, par, connect_px)
+        return under
+    return []
