@@ -260,7 +260,11 @@ def _lock_stream(stitches: list) -> list:
         pts = [s for s in out if s.command == "STITCH"]
         return [(p.x, p.y) for p in pts[-n:]]
 
-    pending_tie_in = False
+    # True at entry: the stream's FIRST object start needs a tie-in exactly
+    # like every start after a cut. Initializing False left it as the one
+    # unsecured thread end in the design — measured 95/96 starts tied on the
+    # ring probe before this, 96/96 after (CTO review C1 / Phase A2).
+    pending_tie_in = True
     for i, s in enumerate(stitches):
         if s.command in ("TRIM", "COLOR_CHANGE", "END"):
             # Tie-off runs BACKWARD along the just-stitched path, so the lock
