@@ -13,6 +13,7 @@ from app.services.digitizer.constants import (
 )
 from app.services.digitizer.geometry import (
     _dist,
+    _drop_floor_reversals,
     _restore_for_floor,
 )
 
@@ -433,3 +434,23 @@ def _nearest_neighbour_order(points, start=None):
         remaining[here] = False
         order.append(here)
     return order
+
+
+def _finish_rebuild_segment(seg, mask, mm_per_px: float, route_pad: int,
+                            min_stitch_mm: float, travel_step_mm: float,
+                            max_stitch_mm: float):
+    """Finishing transforms for one rebuilt segment, in the digitizer's order:
+    coalesce sub-minimum stitches, route in-region jumps as hidden travel runs
+    (v2 Part 25 — without this a rebuilt donut carried 63 hole-crossing trims
+    the fresh digitize had routed away; endpoint pad by pull comp because the
+    sewn top layer overhangs the mask, CTO A3), then the floor backstop."""
+    from app.services.digitizer import constants
+
+    seg = _coalesce_short(seg, min_stitch_mm / mm_per_px)
+    seg = _route_travel(seg, mask, travel_step_mm / mm_per_px, pad_px=route_pad)
+    if constants._PENETRATION_FLOOR_MM:
+        seg = _drop_floor_reversals(
+            seg, constants._PENETRATION_FLOOR_MM / mm_per_px,
+            max_stitch_mm / mm_per_px,
+        )
+    return seg

@@ -425,12 +425,39 @@ def test_run_density_is_honored():
     assert 3.2 <= coarse <= 4.8, f"density 0.25 → pitch {coarse:.2f}mm, want ~4"
 
 
+# ── A8: rebuild validation — orphan color stops raise; 0.1mm raster ──────────
+
+
+def test_rebuild_raises_on_orphan_color_stop():
+    # A8/C9: an object referencing a nonexistent stop used to be silently
+    # filtered out of the emission loop — it simply vanished from the rebuilt
+    # design. Corrupt references must fail loudly and name the object.
+    d = _satin_bar(StitchType.SATIN, 0.0)
+    d.objects[0].color_stop = 99
+    with pytest.raises(ValueError, match=r"color stops that do not exist.*color_stop=99"):
+        rebuild_design(d)
+
+
+def test_rebuild_raster_is_dst_resolution():
+    # A8/C6: rebuild re-rastered at <=4px/mm (0.25mm grid), roughening every
+    # edge on each edit. At 10px/mm the grid is 0.1mm — DST's own coordinate
+    # resolution — so rebuilt coordinates must land off the old 0.25mm grid.
+    built = rebuild_design(_satin_bar(StitchType.SATIN, 0.0))
+    xs = [s.x for s in built.stitches if str(s.command) == "STITCH"]
+    off_coarse_grid = sum(1 for x in xs if abs(x / 0.25 - round(x / 0.25)) > 0.01)
+    assert off_coarse_grid > 0, "every coordinate sits on the coarse 0.25mm grid"
+
+
 # ── P6: fidelity test — rebuild of an unedited design ────────────────────────
 
 
 @pytest.mark.xfail(strict=True,
-                   reason="A8 open: digitize 4820 vs rebuild 2298 stitches at baseline "
-                          "(rebuild re-rasters at <=4px/mm)")
+                   reason="Beyond A8: digitize 17078 vs rebuild 4989 (70.8%) even at the "
+                          "A8 10px/mm raster — the gap is structural, not resolution: "
+                          "rebuild's generator family omits digitize's fill border satin "
+                          "and full underlay recipes, and the probe's verbatim criterion "
+                          "(no coordinate moves >0.1mm) additionally needs pass-through "
+                          "of unedited objects. Flagged as discovered work.")
 def test_probe6_rebuild_of_unedited_design_is_faithful():
     from helpers import digitized_fixture
 

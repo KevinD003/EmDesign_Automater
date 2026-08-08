@@ -355,3 +355,23 @@ def _satin_width_underlay(region, axis_pts, median_w: float, prof: dict,
         )
         name = "CENTER_WALK"
     return under, name
+
+
+def _applique_phases(poly, mm_per_px: float, connect_px: float,
+                     satin_spacing_mm: float):
+    """The three machine phases of an appliqué object (spec §4.3; CTO C3/A4):
+    placement outline run, tackdown run, satin edge cover. The caller keeps
+    them separate through the finishing transforms and emits a STOP between
+    consecutive surviving phases — the machine pauses so the operator can lay
+    the appliqué fabric after placement and trim it after tackdown; run as one
+    sequence the feature was decorative, not manufacturable."""
+    from app.services.digitizer.satin import _satin_border
+
+    run_step = max(2, round(2.0 / mm_per_px))
+    border_px = max(2, round(2.0 / mm_per_px))  # 2mm satin border
+    sat_step = max(1, round(satin_spacing_mm / mm_per_px))
+    return [
+        _run_along(poly, run_step, connect_px, True),
+        _run_along(poly, run_step, connect_px, False),
+        _satin_border(poly, border_px, sat_step, connect_px),
+    ]

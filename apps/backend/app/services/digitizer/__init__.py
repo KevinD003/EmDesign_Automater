@@ -190,6 +190,7 @@ from app.services.digitizer.planning import (
 )
 from app.services.digitizer.routing import (
     _coalesce_short,
+    _finish_rebuild_segment,
     _lock_stream,
     _merge_adjacent_same_hex,
     _nearest_neighbour_order,
@@ -229,6 +230,7 @@ from app.services.digitizer.staging import (
     remember,
 )
 from app.services.digitizer.underlay import (
+    _applique_phases,
     _axis_underlay,
     _center_walk,
     _edge_walk,
@@ -361,6 +363,7 @@ __all__ = [
     "FieldArtifact",
     "RegionPlan",
     "_absorb_specks",
+    "_applique_phases",
     "_arc_at",
     "_assign_boundary",
     "_axis_branches",
@@ -395,6 +398,7 @@ __all__ = [
     "_fill_angle_provenance",
     "_fill_border",
     "_fill_by_component",
+    "_finish_rebuild_segment",
     "_flow_divide_valid",
     "_flow_line_angle",
     "_flow_side",

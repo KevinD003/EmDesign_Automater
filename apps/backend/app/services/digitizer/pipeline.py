@@ -111,6 +111,7 @@ from app.services.digitizer.planning import (
 )
 from app.services.digitizer.routing import (
     _coalesce_short,
+    _finish_rebuild_segment,
     _lock_stream,
     _merge_adjacent_same_hex,
     _nearest_neighbour_order,
@@ -119,16 +120,15 @@ from app.services.digitizer.routing import (
 from app.services.digitizer.satin import (
     _fill_border,
     _satin_axis_deg,
-    _satin_border,
     _satin_zigzag,
     _skeleton_satin_hires,
 )
 from app.services.digitizer.underlay import (
+    _applique_phases,
     _edge_walk,
     _manual_run,
     _parallel_underlay,
     _rebuild_underlay,
-    _run_along,
     _satin_width_underlay,
     _with_underlay,
 )
@@ -1244,13 +1244,30 @@ def rebuild_design(design: Design) -> Design:
         raise ValueError("Design has no objects to rebuild (imported stitch files are not regenerable)")
     if any(not o.contour for o in objs):
         raise ValueError("Some objects have no contour — design is not regenerable")
+    # An object whose color_stop matches no stop used to be silently filtered
+    # out of the emission loop below — the object simply vanished from the
+    # rebuilt design (CTO A8/C9). Corrupt references now fail loudly and name
+    # the objects, so the caller fixes the data instead of losing stitches.
+    known_stops = {c.stop_number for c in design.color_stops}
+    orphans = [o for o in objs if o.color_stop not in known_stops]
+    if orphans:
+        names = ", ".join(f"{o.name} (color_stop={o.color_stop})" for o in orphans)
+        raise ValueError(
+            f"Objects reference color stops that do not exist: {names}. "
+            f"Known stops: {sorted(known_stops)}."
+        )
 
     xs = [p.x for o in objs for p in o.contour]
     ys = [p.y for o in objs for p in o.contour]
     minx, miny = min(xs), min(ys)
     w_mm = max(max(xs) - minx, 1.0)
     h_mm = max(max(ys) - miny, 1.0)
-    px_per_mm = min(4.0, 800.0 / max(w_mm, h_mm))  # ≤800px canvas
+    # 10px/mm = a 0.1mm raster, matching DST's own coordinate resolution
+    # (CTO A8/C6). The old 4px/mm (0.25mm grid) roughened every edge on each
+    # rebuild and the damage accumulated across repeated edits. The 2000px
+    # canvas cap keeps full resolution up to a 200mm design — beyond every
+    # supported hoop — and degrades gracefully past it.
+    px_per_mm = min(10.0, 2000.0 / max(w_mm, h_mm))
     mm_per_px = 1.0 / px_per_mm
     pad = 2
     cw, ch = int(w_mm * px_per_mm) + 2 * pad, int(h_mm * px_per_mm) + 2 * pad
@@ -1293,22 +1310,10 @@ def rebuild_design(design: Design) -> Design:
             top = _dilate_pull(mask, float(o.pull_compensation or 0.0), mm_per_px)  # honor edited pull comp
             applique_phases = None
             if st == "APPLIQUE":
-                # placement outline → STOP → tackdown → STOP → satin edge
-                # cover (spec §4.3; STOPs per CTO review C3/A4). The machine
-                # pauses at each STOP so the operator can lay the appliqué
-                # fabric after the placement outline and trim it after the
-                # tackdown; without them the three phases ran as one sequence
-                # and appliqué was unusable in production. Phases are kept
-                # separate through the finishing transforms so the STOPs land
-                # exactly between them.
-                run_step = max(2, round(2.0 / mm_per_px))
-                border_px = max(2, round(2.0 / mm_per_px))  # 2mm satin border
-                sat_step = max(1, round(SATIN_SPACING_MM / mm_per_px))
-                applique_phases = [
-                    _run_along(poly, run_step, connect_px, True),
-                    _run_along(poly, run_step, connect_px, False),
-                    _satin_border(poly, border_px, sat_step, connect_px),
-                ]
+                # placement → STOP → tackdown → STOP → satin cover; the STOP
+                # rationale and phase recipe live on _applique_phases (A4).
+                applique_phases = _applique_phases(poly, mm_per_px, connect_px,
+                                                   SATIN_SPACING_MM)
                 pts = [p for phase in applique_phases for p in phase]
             elif st == "SATIN":
                 # The edited `stitch_angle` is authoritative (CTO A5/C4): the
@@ -1411,23 +1416,15 @@ def rebuild_design(design: Design) -> Design:
             )
             if under:
                 pts = _with_underlay(under, pts, connect_px)
-            # Same travel routing as the digitizer (v2 Part 25): without it a
-            # rebuilt donut carried 63 hole-crossing trims that the fresh
-            # digitize of the same shape had already routed away. Endpoint pad
-            # by pull comp for the same reason the digitizer pads by
-            # border+pull: the sewn top layer overhangs `mask` (CTO A3).
+            # Finishing chain shared with the digitizer — see
+            # _finish_rebuild_segment (coalesce → travel-route → floor).
             route_pad = max(2, round(float(o.pull_compensation or 0.0) / mm_per_px))
 
             def _finish(seg):
-                seg = _coalesce_short(seg, MIN_STITCH_MM / mm_per_px)
-                seg = _route_travel(seg, mask, TRAVEL_STEP_MM / mm_per_px,  # noqa: B023
-                                    pad_px=route_pad)  # noqa: B023
-                if constants._PENETRATION_FLOOR_MM:
-                    seg = _drop_floor_reversals(
-                        seg, constants._PENETRATION_FLOOR_MM / mm_per_px,
-                        MAX_STITCH_MM / mm_per_px,
-                    )
-                return seg
+                return _finish_rebuild_segment(
+                    seg, mask, mm_per_px, route_pad,  # noqa: B023
+                    MIN_STITCH_MM, TRAVEL_STEP_MM, MAX_STITCH_MM,
+                )
 
             if applique_phases is not None:
                 applique_phases = [f for f in (_finish(p) for p in applique_phases)
