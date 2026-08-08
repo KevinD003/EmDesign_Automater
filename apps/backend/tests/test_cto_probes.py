@@ -190,12 +190,44 @@ def test_probe4_satin_angle_edit_changes_the_stream():
 # ── P5: applique test — STOP after placement and after tackdown ──────────────
 
 
-@pytest.mark.xfail(strict=True,
-                   reason="A4 open: applique emits no STOP at baseline")
 def test_probe5_applique_emits_stops():
+    # A4: rebuild sews applique as three machine phases (placement run,
+    # tackdown run, satin cover) with a STOP after each of the first two.
     built = rebuild_design(_satin_bar(StitchType.APPLIQUE, 0.0))
     stops = sum(1 for s in built.stitches if str(s.command) == "STOP")
     assert stops >= 2, f"expected STOP after placement and after tackdown, got {stops}"
+
+
+def test_applique_stops_partition_the_phases():
+    # Regression for A4: the STOPs must land between sewn phases, not at the
+    # stream edges — each STOP needs real stitches both before and after it,
+    # so the operator genuinely pauses mid-object to place/inspect fabric.
+    built = rebuild_design(_satin_bar(StitchType.APPLIQUE, 0.0))
+    cmds = [str(s.command) for s in built.stitches]
+    stop_idx = [i for i, c in enumerate(cmds) if c == "STOP"]
+    assert len(stop_idx) == 2
+    for i in stop_idx:
+        assert "STITCH" in cmds[:i], f"STOP at {i} has no sewn phase before it"
+        assert "STITCH" in cmds[i + 1:], f"STOP at {i} has no sewn phase after it"
+    # A STOP is a pause, not a movement: it must sit on the previous needle
+    # position so the machine does not drag thread while paused.
+    for i in stop_idx:
+        prev = built.stitches[i - 1]
+        cur = built.stitches[i]
+        assert (cur.x, cur.y) == (prev.x, prev.y)
+
+
+def test_applique_stops_survive_file_round_trip():
+    # Regression for A4: STOP must survive export/import, otherwise the
+    # machine file loses the pause and the fix is cosmetic.
+    from app.services.embroidery_io import read_embroidery, write_embroidery
+
+    built = rebuild_design(_satin_bar(StitchType.APPLIQUE, 0.0))
+    want = sum(1 for s in built.stitches if str(s.command) == "STOP")
+    assert want >= 2
+    back = read_embroidery(write_embroidery(built, "pes"), "pes")
+    got = sum(1 for s in back.stitches if str(s.command) == "STOP")
+    assert got == want, f"STOPs lost in round trip: wrote {want}, read {got}"
 
 
 # ── P6: fidelity test — rebuild of an unedited design ────────────────────────

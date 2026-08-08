@@ -1290,16 +1290,25 @@ def rebuild_design(design: Design) -> Design:
             spacing_px = max(1, round(spacing_mm / mm_per_px))
             under_step_px = max(1, round(UNDERLAY_STEP_MM / mm_per_px))
             top = _dilate_pull(mask, float(o.pull_compensation or 0.0), mm_per_px)  # honor edited pull comp
+            applique_phases = None
             if st == "APPLIQUE":
-                # placement outline → tackdown → satin edge cover (spec §4.3)
+                # placement outline → STOP → tackdown → STOP → satin edge
+                # cover (spec §4.3; STOPs per CTO review C3/A4). The machine
+                # pauses at each STOP so the operator can lay the appliqué
+                # fabric after the placement outline and trim it after the
+                # tackdown; without them the three phases ran as one sequence
+                # and appliqué was unusable in production. Phases are kept
+                # separate through the finishing transforms so the STOPs land
+                # exactly between them.
                 run_step = max(2, round(2.0 / mm_per_px))
                 border_px = max(2, round(2.0 / mm_per_px))  # 2mm satin border
                 sat_step = max(1, round(SATIN_SPACING_MM / mm_per_px))
-                pts = (
-                    _run_along(poly, run_step, connect_px, True)
-                    + _run_along(poly, run_step, connect_px, False)
-                    + _satin_border(poly, border_px, sat_step, connect_px)
-                )
+                applique_phases = [
+                    _run_along(poly, run_step, connect_px, True),
+                    _run_along(poly, run_step, connect_px, False),
+                    _satin_border(poly, border_px, sat_step, connect_px),
+                ]
+                pts = [p for phase in applique_phases for p in phase]
             elif st == "SATIN":
                 rect = cv2.minAreaRect(poly)
                 pts = _satin_zigzag(top, rect, spacing_px, connect_px, max_step_px)
@@ -1390,19 +1399,30 @@ def rebuild_design(design: Design) -> Design:
                     f"{o.name}: no generator for stitch type {st!r}. Every StitchType "
                     f"member needs a branch here — see the enum docstring in models/design.py."
                 )
-            pts = _coalesce_short(pts, MIN_STITCH_MM / mm_per_px)
             # Same travel routing as the digitizer (v2 Part 25): without it a
             # rebuilt donut carried 63 hole-crossing trims that the fresh
             # digitize of the same shape had already routed away. Endpoint pad
             # by pull comp for the same reason the digitizer pads by
             # border+pull: the sewn top layer overhangs `mask` (CTO A3).
             route_pad = max(2, round(float(o.pull_compensation or 0.0) / mm_per_px))
-            pts = _route_travel(pts, mask, TRAVEL_STEP_MM / mm_per_px,
-                                pad_px=route_pad)
-            if constants._PENETRATION_FLOOR_MM:
-                pts = _drop_floor_reversals(
-                    pts, constants._PENETRATION_FLOOR_MM / mm_per_px, MAX_STITCH_MM / mm_per_px,
-                )
+
+            def _finish(seg):
+                seg = _coalesce_short(seg, MIN_STITCH_MM / mm_per_px)
+                seg = _route_travel(seg, mask, TRAVEL_STEP_MM / mm_per_px,  # noqa: B023
+                                    pad_px=route_pad)  # noqa: B023
+                if constants._PENETRATION_FLOOR_MM:
+                    seg = _drop_floor_reversals(
+                        seg, constants._PENETRATION_FLOOR_MM / mm_per_px,
+                        MAX_STITCH_MM / mm_per_px,
+                    )
+                return seg
+
+            if applique_phases is not None:
+                applique_phases = [f for f in (_finish(p) for p in applique_phases)
+                                   if len(f) >= 2]
+                pts = [p for phase in applique_phases for p in phase]
+            else:
+                pts = _finish(pts)
             if len(pts) < 2:
                 continue
 
@@ -1412,9 +1432,19 @@ def rebuild_design(design: Design) -> Design:
                 ex, ey = to_mm(pts[0][0], pts[0][1])
                 stitches.append(Stitch(x=ex, y=ey, command="JUMP"))
             obj_start = len(stitches)
-            for x, y, jump in pts:
-                mx, my = to_mm(x, y)
-                stitches.append(Stitch(x=mx, y=my, command="JUMP" if jump else "STITCH"))
+            if applique_phases is not None:
+                for pi, phase in enumerate(applique_phases):
+                    for x, y, jump in phase:
+                        mx, my = to_mm(x, y)
+                        stitches.append(Stitch(x=mx, y=my,
+                                               command="JUMP" if jump else "STITCH"))
+                    if pi < len(applique_phases) - 1:
+                        last = stitches[-1]
+                        stitches.append(Stitch(x=last.x, y=last.y, command="STOP"))
+            else:
+                for x, y, jump in pts:
+                    mx, my = to_mm(x, y)
+                    stitches.append(Stitch(x=mx, y=my, command="JUMP" if jump else "STITCH"))
 
             entry = to_mm(pts[0][0], pts[0][1])
             exit_ = to_mm(pts[-1][0], pts[-1][1])
