@@ -177,7 +177,6 @@ from app.services.digitizer.geometry import (
 from app.services.digitizer.pipeline import (
     _uncovered_chunk_mm2,
     digitize_image,
-    rebuild_design,
 )
 from app.services.digitizer.planning import (
     _absorb_specks,
@@ -196,6 +195,9 @@ from app.services.digitizer.provenance import (
     objects_match_stream,
     rebuild_is_a_noop,
 )
+from app.services.digitizer.rebuild import (
+    rebuild_design,
+)
 from app.services.digitizer.routing import (
     _coalesce_short,
     _finish_rebuild_segment,
@@ -213,6 +215,7 @@ from app.services.digitizer.satin import (
     _satin_zigzag,
     _skeleton_satin,
     _skeleton_satin_hires,
+    rebuild_fill_border,
 )
 from app.services.digitizer.skeleton import (
     _axis_branches,
@@ -478,6 +481,7 @@ __all__ = [
     "object_params_hash",
     "objects_match_stream",
     "rebuild_design",
+    "rebuild_fill_border",
     "rebuild_is_a_noop",
     "remember",
     "set_penetration_floor",

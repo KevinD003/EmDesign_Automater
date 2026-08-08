@@ -311,3 +311,38 @@ def _fill_border(contour, hole_contours, width_px: float, step_px: int,
         seg[0] = (x, y, prev is not None and _dist(prev, (x, y)) > connect_px)
         out.extend(seg)
     return out
+
+
+def rebuild_fill_border(poly, hole_polys, mask, mm_per_px: float, connect_px: float,
+                        last_pt):
+    """The satin border digitize puts on every fill big enough to earn one,
+    applied on rebuild too (v2 Phase B1.5). Returns [] when the object is
+    below the area gate, so the caller can always concatenate.
+
+    digitize finishes a fill with a narrow satin around the outline and its
+    kept holes — most of the visual difference between "rows of thread" and
+    proper embroidery (Part 15). Rebuild omitted it, so editing ONE parameter
+    stripped the finish off the object: measured on fixture 01, a 1% density
+    nudge cost 76% of that object's stitches. Same generator, same area gate
+    and same half-width as digitize, so an edited object is finished the way a
+    freshly digitized one is.
+    """
+    import cv2
+
+    from app.services.digitizer.constants import (
+        FILL_BORDER_MIN_MM2,
+        FILL_BORDER_MM,
+        SATIN_SPACING_MM,
+    )
+
+    area_mm2 = float(cv2.countNonZero(mask)) * mm_per_px * mm_per_px
+    if area_mm2 < FILL_BORDER_MIN_MM2:
+        return []
+    return _fill_border(
+        poly, hole_polys,
+        max(2.0, FILL_BORDER_MM / mm_per_px),
+        max(1, round(SATIN_SPACING_MM / mm_per_px)),
+        connect_px, last_pt,
+        (constants._PENETRATION_FLOOR_MM / mm_per_px)
+        if constants._PENETRATION_FLOOR_MM else 0.0,
+    )
