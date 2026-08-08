@@ -25,6 +25,15 @@ MAX_FILL_STITCH_MM = 4.0
 MAX_STITCH_MM = 6.0       # subdivide longer runs (machine safety << 12.7mm)
 
 
+# Default RUNNING/MANUAL stitch pitch (CTO A7/C7). The pro default is ~2.5mm;
+# before this the rebuild reused MAX_STITCH_MM as the pitch, so every manual
+# or running object sewed 6mm floats — snag-prone and visibly coarse. A run
+# object with a meaningful density overrides it (pitch = 1/density, clamped to
+# [MIN_STITCH_MM, MAX_STITCH_MM]); the manual tool creates runs with
+# density=0, which means "unset" and takes this default.
+RUN_PITCH_MM = 2.5
+
+
 # Warn the user when at least this share of the segmented foreground was
 # dropped as unsewable (v2 Part 25). Calibrated on the corpus: every fixture at
 # its intended hoop loses well under 2% (anti-aliasing specks), while the badge

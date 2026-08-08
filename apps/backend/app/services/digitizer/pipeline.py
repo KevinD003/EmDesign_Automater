@@ -1348,9 +1348,17 @@ def rebuild_design(design: Design) -> Design:
                     connect_px,
                 )
             elif st in ("RUNNING_SINGLE", "RUNNING_DOUBLE", "RUNNING_TRIPLE", "MANUAL"):
-                # Running stitch ALONG the drawn path (open polyline), not an area fill.
+                # Running stitch ALONG the drawn path (open polyline), not an
+                # area fill. Pitch is density-aware with the 2.5mm pro default
+                # (CTO A7/C7): the machine cap was being reused as the pitch —
+                # 6mm floats — and `density` on run objects was ignored. A run
+                # stores pitch as 1/density (see the dark-linework emitter);
+                # density 0 means unset and takes the default.
                 passes = {"RUNNING_DOUBLE": 2, "RUNNING_TRIPLE": 3}.get(st, 1)
-                pts = _manual_run(poly, max_step_px, passes)
+                run_d = float(o.density or 0.0)
+                pitch_mm = (min(max(1.0 / run_d, MIN_STITCH_MM), MAX_STITCH_MM)
+                            if run_d > 0 else constants.RUN_PITCH_MM)
+                pts = _manual_run(poly, max(1, round(pitch_mm / mm_per_px)), passes)
             elif st == "TATAMI":
                 # Stitch Flow (v2 Part 62): a stored direction line beats the
                 # stored angle; no line means exactly the old behaviour.

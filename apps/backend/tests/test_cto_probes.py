@@ -376,6 +376,55 @@ def test_successive_isotropic_fills_alternate_angles():
     )
 
 
+# ── A7: run pitch 2.5mm default, density-aware ───────────────────────────────
+
+
+def _run_bar(density: float) -> Design:
+    o = DesignObject(
+        sequence_order=1, name="r", stitch_type=StitchType.RUNNING_SINGLE,
+        color_stop=1, density=density, stitch_angle=0.0,
+        underlay_type=UnderlayType.NONE, pull_compensation=0.0,
+        connect_method=ConnectMethod.TRIM, stitch_count=0,
+        contour=[Point(x=0, y=10), Point(x=60, y=10)],
+    )
+    return Design(
+        name="t", width_mm=60, height_mm=20, stitch_count=0, version=1,
+        status="digitized",
+        color_stops=[ColorStop(stop_number=1, thread_brand="M", catalog_number="1",
+                               thread_name="a", hex="#112233", stitch_count=0)],
+        objects=[o], stitches=[],
+    )
+
+
+def _median_run_pitch(design) -> float:
+    gaps = []
+    prev = None
+    for s in design.stitches:
+        if str(s.command) == "STITCH" and prev is not None and str(prev.command) == "STITCH":
+            g = math.dist((prev.x, prev.y), (s.x, s.y))
+            if g > 0.05:
+                gaps.append(g)
+        prev = s
+    assert gaps
+    gaps.sort()
+    return gaps[len(gaps) // 2]
+
+
+def test_run_pitch_defaults_to_2_5mm():
+    # A7/C7: the machine cap (6mm) was reused as the run pitch. A run with
+    # density unset (0 — what the manual tool stores) must sew ~2.5mm.
+    pitch = _median_run_pitch(rebuild_design(_run_bar(0.0)))
+    assert 2.0 <= pitch <= 3.0, f"default run pitch {pitch:.2f}mm, want ~2.5"
+
+
+def test_run_density_is_honored():
+    # A7/C7: density on run objects was ignored entirely. Pitch = 1/density.
+    fine = _median_run_pitch(rebuild_design(_run_bar(1.0)))    # 1mm pitch
+    coarse = _median_run_pitch(rebuild_design(_run_bar(0.25)))  # 4mm pitch
+    assert 0.7 <= fine <= 1.4, f"density 1.0 → pitch {fine:.2f}mm, want ~1"
+    assert 3.2 <= coarse <= 4.8, f"density 0.25 → pitch {coarse:.2f}mm, want ~4"
+
+
 # ── P6: fidelity test — rebuild of an unedited design ────────────────────────
 
 
