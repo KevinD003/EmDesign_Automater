@@ -72,15 +72,14 @@ from app.services.digitizer.constants import (
     TEXTURE_SMOOTH_MIN,
     TRAVEL_STEP_MM,
     TRIM_MIN_GAP_MM,
-    UNDERLAY_EDGE_MIN_MM,
     UNDERLAY_STEP_MM,
     UNDERLAY_ZIGZAG_INSET_MM,
-    UNDERLAY_ZIGZAG_MIN_MM,
     UNDERLAY_ZIGZAG_PITCH_MULT,
 )
 from app.services.digitizer.fills import (
     _contour_fill,
     _fill_angle,
+    _fill_angle_provenance,
     _fill_by_component,
     _radial_fill,
     _scanline_angled,
@@ -125,14 +124,13 @@ from app.services.digitizer.satin import (
     _skeleton_satin_hires,
 )
 from app.services.digitizer.underlay import (
-    _axis_underlay,
     _edge_walk,
     _manual_run,
     _parallel_underlay,
     _rebuild_underlay,
     _run_along,
+    _satin_width_underlay,
     _with_underlay,
-    _zigzag_underlay,
 )
 
 # Set by every digitize_image call: the PIXEL share of owned foreground that
@@ -331,6 +329,9 @@ def digitize_image(
     prof = _fabric_profile(fabric_type)
     row_px = max(1, round(prof["row_mm"] / mm_per_px))
     max_step_px = max(2, round(MAX_STITCH_MM / mm_per_px))
+    # Fills subdivide on their own, tighter grid (CTO A6): tatami rows cap at
+    # MAX_FILL_STITCH_MM, not the general run cap — see the constant's note.
+    fill_step_px = max(2, round(constants.MAX_FILL_STITCH_MM / mm_per_px))
     min_area_px = max(0.0, float(min_region_mm2)) / (mm_per_px * mm_per_px)
     connect_px = CONNECT_MM / mm_per_px
 
@@ -340,6 +341,11 @@ def digitize_image(
     color_stops: list[ColorStop] = []
     objects: list[DesignObject] = []
     seq = 0
+    # CTO A6: successive ISOTROPIC fills alternate their fallback angle by 90
+    # degrees so push/pull spreads across the design instead of accumulating
+    # one way. Regions with a real long axis are exempt — the axis is a
+    # property of the shape and wins (see _fill_angle_provenance).
+    iso_fills = 0
     substrate_px = 0            # garment-coloured pixels deliberately left unstitched
     substrate_owned = np.zeros(fg_mask.shape, np.uint8)
     dropped_speck_count = 0     # regions under min_region_mm2 at THIS hoop size
@@ -713,7 +719,7 @@ def digitize_image(
                         # Per-segment fallback: tatami only the parts too wide,
                         # fragment-by-fragment from wherever the satin ended.
                         cand = cand + _fill_by_component(
-                            wide_mask, row_px, max_step_px, connect_px,
+                            wide_mask, row_px, fill_step_px, connect_px,
                             start=cand[-1][:2] if cand else None,
                             angle_deg=_fill_angle(wide_mask),
                         )
@@ -743,37 +749,15 @@ def digitize_image(
                 # itself is retained: `rebuild_design` still uses it for objects
                 # a user explicitly sets to SATIN.)
                 # Underlay chosen by COLUMN WIDTH (v2 Part 24) instead of the
-                # unconditional centre run every satin object got up to Part 23.
-                # `median_w` is the skeleton's own measured stroke width, which
-                # is the quantity the width bands are stated in.
-                floor_arg = (constants._PENETRATION_FLOOR_MM / mm_per_px) if constants._PENETRATION_FLOOR_MM else 0.0
-                if median_w >= UNDERLAY_ZIGZAG_MIN_MM:
-                    under = _zigzag_underlay(
-                        region, axis_pts,
-                        prof["under_mm"] * UNDERLAY_ZIGZAG_PITCH_MULT / mm_per_px,
-                        UNDERLAY_ZIGZAG_INSET_MM / mm_per_px, connect_px,
-                        floor_arg, MAX_STITCH_MM / mm_per_px,
-                    )
-                    underlay = UnderlayType.DOUBLE_ZIGZAG
-                elif median_w >= UNDERLAY_EDGE_MIN_MM:
-                    under = _edge_walk(
-                        region, max(1, round(prof["inset_mm"] / mm_per_px)),
-                        under_step_px, connect_px, floor_arg, MAX_STITCH_MM / mm_per_px,
-                    )
-                    underlay = UnderlayType.EDGE_WALK
-                else:
-                    # Centre-walk ALONG THE MEDIAL AXIS, not the bounding-rect midline.
-                    under = _axis_underlay(
-                        axis_pts, prof["under_mm"] / mm_per_px, connect_px,
-                        floor_arg, MAX_STITCH_MM / mm_per_px,
-                    )
-                    underlay = UnderlayType.CENTER_WALK
-                if not under:  # a generator that found nothing must not lose the underlay
-                    under = _axis_underlay(
-                        axis_pts, prof["under_mm"] / mm_per_px, connect_px,
-                        floor_arg, MAX_STITCH_MM / mm_per_px,
-                    )
-                    underlay = UnderlayType.CENTER_WALK
+                # unconditional centre run every satin object got up to Part 23
+                # — recipe in _satin_width_underlay.
+                under, under_name = _satin_width_underlay(
+                    region, axis_pts, median_w, prof, mm_per_px, under_step_px,
+                    connect_px,
+                    (constants._PENETRATION_FLOOR_MM / mm_per_px) if constants._PENETRATION_FLOOR_MM else 0.0,
+                    MAX_STITCH_MM / mm_per_px,
+                )
+                underlay = UnderlayType(under_name)
                 pts = _with_underlay(under, skel_pts, connect_px)
             else:
                 # v2 Part 14: small holes are NOT knocked out of a fill. A hole
@@ -823,8 +807,16 @@ def digitize_image(
                     # v2 Part 24: rows follow the region's own long axis instead
                     # of the hard 0 degrees every fill got from Part 0 to Part 23.
                     use_contour = False
-                    fill_angle = _fill_angle(top_region)
-                    fill_pts = _fill_by_component(top_region, row_px, max_step_px, connect_px,
+                    fill_angle, from_axis = _fill_angle_provenance(top_region)
+                    if not from_axis:
+                        # A6 alternation — free here: the edge-avoiding penalty
+                        # has period 90, so the rotated angle dodges the same
+                        # edges equally well.
+                        if iso_fills % 2:
+                            fill_angle = (fill_angle + 90.0) % 180.0
+                            fill_angle = round(fill_angle - 180.0 if fill_angle > 90.0 else fill_angle, 1)
+                        iso_fills += 1
+                    fill_pts = _fill_by_component(top_region, row_px, fill_step_px, connect_px,
                                                   angle_deg=fill_angle)
                 # Satin border on top of the fill (v2 Part 15) — the pro finish.
                 # Area-gated: bordering specks doubles them for nothing.
@@ -1270,6 +1262,9 @@ def rebuild_design(design: Design) -> Design:
         return ((x - pad) * mm_per_px + minx, (y - pad) * mm_per_px + miny)
 
     max_step_px = max(2, round(MAX_STITCH_MM / mm_per_px))
+    # Fills subdivide on their own, tighter grid (CTO A6): tatami rows cap at
+    # MAX_FILL_STITCH_MM, not the general run cap — see the constant's note.
+    fill_step_px = max(2, round(constants.MAX_FILL_STITCH_MM / mm_per_px))
     connect_px = CONNECT_MM / mm_per_px
 
     stitches: list[Stitch] = []
@@ -1376,12 +1371,12 @@ def rebuild_design(design: Design) -> Design:
                                               (ang_pos, ang_neg)):
                         if cv2.countNonZero(side_mask):
                             pts += _scanline_angled(
-                                side_mask, ang, spacing_px, max_step_px, connect_px,
+                                side_mask, ang, spacing_px, fill_step_px, connect_px,
                             )
                 else:
                     pts = _scanline_angled(
                         top, _flow_line_angle(o.flow_line, float(o.stitch_angle)),
-                        spacing_px, max_step_px, connect_px,
+                        spacing_px, fill_step_px, connect_px,
                     )
             else:
                 # There is deliberately no catch-all fill here (v2 Part 43). This

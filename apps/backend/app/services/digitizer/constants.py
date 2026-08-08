@@ -7,7 +7,19 @@ Values are unchanged from the pre-split module.
 from __future__ import annotations
 
 # Tunables (mm unless noted) — see spec "Quick Reference" table.
-ROW_SPACING_MM = 0.45     # fill row pitch — full-coverage tatami (0.6 left fabric showing through)
+# 0.40 per the CTO backlog (A6): the 40wt industry default is ~0.35-0.42mm;
+# 0.45 was the previous measured-good value and 0.6 left fabric showing through.
+ROW_SPACING_MM = 0.40     # fill row pitch — full-coverage tatami
+
+
+# Longest FILL stitch (tatami row segment) the generators may emit (CTO A6).
+# Distinct from MAX_STITCH_MM (the general run-subdivision cap): commercial
+# tatami tops out around 4mm — longer floats snag and read as satin sheen in
+# the middle of a matte fill. Before this cap, rows subdivided on the
+# MAX_STITCH_MM grid and the stagger end-guard let end segments reach
+# step*(1+2*guard): measured 15.9mm worst case on a 75mm fill at a 12.7mm
+# step — over the machine limit itself.
+MAX_FILL_STITCH_MM = 4.0
 
 
 MAX_STITCH_MM = 6.0       # subdivide longer runs (machine safety << 12.7mm)
@@ -256,7 +268,7 @@ SMOOTH_MIN_POINTS = 10    # below this a contour is left alone entirely
 # competitor in docs/LAUNCH-READINESS-GAPS.md B1. Fields per fabric:
 #   pull_mm   — pull compensation per side (values carried over from PULL_BY_FABRIC,
 #               which tests/test_pullcomp.py pinned; higher for stretchy fabrics)
-#   row_mm    — tatami fill row pitch (was global ROW_SPACING_MM = 0.45)
+#   row_mm    — tatami fill row pitch (was global ROW_SPACING_MM; 0.40 default per CTO A6)
 #   satin_mm  — satin zigzag pitch (was global SATIN_SPACING_MM = 0.4)
 #   under_mm  — underlay running-stitch length (was global UNDERLAY_STEP_MM = 2.0);
 #               shorter on high-loft fabrics so the underlay actually tacks the nap
@@ -271,7 +283,7 @@ SMOOTH_MIN_POINTS = 10    # below this a contour is left alone entirely
 # column length from the pitch assuming SATIN_SPACING_MM; for a 0.5mm-pitch
 # fabric the guard runs ~25% long (more protective, never less).
 FABRIC_PROFILES: dict[str, dict[str, float]] = {
-    "cotton":    {"pull_mm": 0.2,  "row_mm": 0.45, "satin_mm": 0.4,  "under_mm": 2.0, "inset_mm": 0.6},
+    "cotton":    {"pull_mm": 0.2,  "row_mm": 0.40, "satin_mm": 0.4,  "under_mm": 2.0, "inset_mm": 0.6},
     "denim":     {"pull_mm": 0.15, "row_mm": 0.40, "satin_mm": 0.35, "under_mm": 2.0, "inset_mm": 0.6},
     "twill":     {"pull_mm": 0.15, "row_mm": 0.40, "satin_mm": 0.35, "under_mm": 2.0, "inset_mm": 0.6},
     "poplin":    {"pull_mm": 0.15, "row_mm": 0.40, "satin_mm": 0.35, "under_mm": 2.0, "inset_mm": 0.6},
@@ -290,7 +302,7 @@ FABRIC_PROFILES: dict[str, dict[str, float]] = {
 }
 
 
-FABRIC_DEFAULT = {"pull_mm": 0.25, "row_mm": 0.45, "satin_mm": 0.4, "under_mm": 2.0, "inset_mm": 0.6}
+FABRIC_DEFAULT = {"pull_mm": 0.25, "row_mm": 0.40, "satin_mm": 0.4, "under_mm": 2.0, "inset_mm": 0.6}
 
 
 PULL_DEFAULT_MM = FABRIC_DEFAULT["pull_mm"]  # name kept: tests/test_pullcomp.py pins it
@@ -630,7 +642,14 @@ CONTOUR_FILL_MAX_BAND_RATIO = 0.30
 # a third of a thread width, so the deviation is hidden inside the thread that
 # draws it. Halving the step to 2.0mm bought +0.1 interior coverage for 48% more
 # stitches, which is not a trade worth making.
-CONTOUR_ROW_MAX_STEP_MM = 3.0
+#
+# 2.9, not 3.0, since CTO A6: STRICTLY under MAX_STITCH_MM / 2. A contour row
+# tracing a thin tongue comes back on its own line, and repairing the
+# needle-into-needle turnaround (_drop_floor_reversals) merges two row steps
+# into one stitch — at exactly 3.0 the merge is 6.0+mm, over the machine-safe
+# cap, so the repair declined and fixture 07's Fill 2 shipped a 0.146mm
+# same-side pair when the A6 pitch change first produced such a tongue.
+CONTOUR_ROW_MAX_STEP_MM = 2.9
 
 
 # --- Underlay selection by column width (v2 Part 24) -------------------------

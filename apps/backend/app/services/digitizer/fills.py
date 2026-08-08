@@ -294,7 +294,19 @@ def _contour_fill(region, row_px: int, max_step_px: int, connect_px: float, star
 
 
 def _fill_angle(region) -> float:
-    """Fill direction for a region, in degrees, from the region's own geometry.
+    """`_fill_angle_provenance` without the provenance — see there."""
+    return _fill_angle_provenance(region)[0]
+
+
+def _fill_angle_provenance(region) -> tuple[float, bool]:
+    """Fill direction for a region, plus whether it came from a real long axis.
+
+    The bool is what CTO A6's alternation keys on: an angle derived from the
+    region's own long axis is a property of the shape and must be obeyed, while
+    the isotropic fallback is an arbitrary (if edge-aware) choice — successive
+    isotropic fills may rotate it 90 degrees to spread push/pull, and can do so
+    for free because `_edge_avoiding_angle`'s penalty |cos(2(theta-edge))| has
+    period 90: the rotated angle avoids exactly the same edges exactly as well.
 
     Returns the orientation of the principal (major) axis when the shape is
     elongated enough for that axis to be meaningful, else FILL_ANGLE_DEFAULT_DEG.
@@ -315,7 +327,7 @@ def _fill_angle(region) -> float:
 
     m = cv2.moments(region, binaryImage=True)
     if m["m00"] <= 0:
-        return FILL_ANGLE_DEFAULT_DEG
+        return FILL_ANGLE_DEFAULT_DEG, False
     mu20 = m["mu20"] / m["m00"]
     mu02 = m["mu02"] / m["m00"]
     mu11 = m["mu11"] / m["m00"]
@@ -325,12 +337,12 @@ def _fill_angle(region) -> float:
     disc = math.sqrt(max(0.0, ((mu20 - mu02) / 2.0) ** 2 + mu11 * mu11))
     lam_hi, lam_lo = half + disc, half - disc
     if lam_lo <= 1e-9 or math.sqrt(lam_hi / lam_lo) < FILL_ANGLE_MIN_ELONGATION:
-        return _edge_avoiding_angle(region)
+        return _edge_avoiding_angle(region), False
     ang = math.degrees(0.5 * math.atan2(2.0 * mu11, mu20 - mu02)) % 180.0
     # Fold to (-90, 90]. A fill direction is an axis, not a heading — 175 and -5
     # lay the same rows — and the folded form keeps `_scanline_angled`'s
     # near-horizontal short-circuit reachable for a shape that measures 179.8.
-    return round(ang - 180.0 if ang > 90.0 else ang, 1)
+    return round(ang - 180.0 if ang > 90.0 else ang, 1), True
 
 
 def _fill_by_component(region, row_px: int, max_step_px: int, connect_px: float, start=None,
@@ -386,6 +398,8 @@ def _scanline_fill(region, row_px: int, max_step_px: int, connect_px: float):
     not its travel start, so the stagger diagonal runs one way across the whole
     fill instead of herringboning with the serpentine direction.
     """
+    import math
+
     import numpy as np
 
     pts: list[tuple[float, float, bool]] = []
@@ -420,9 +434,30 @@ def _scanline_fill(region, row_px: int, max_step_px: int, connect_px: float):
                 s += step
             if a > b:
                 inner.reverse()
-            for s in inner:
+            # ceil() end-gap repair (CTO A6/C8): the stagger grid + end guard
+            # leaves the span from a row end to its nearest kept penetration
+            # unbounded by `step` — worst case step*(1+2*guard), measured
+            # 15.9mm on a 75mm fill at the 12.7mm machine cap, i.e. OVER the
+            # cap. Any over-step gap in [a, inner..., b] is subdivided into
+            # ceil(gap/step) parts, each <= step. The split points carry the
+            # row's own stagger PHASE (fractions (k+phase)/n, all parts still
+            # <= gap/n): unstaggered equal splits put the two legs of an
+            # out-and-back row pair — a thin tongue nearly parallel to the
+            # rows — needle-into-needle, measured 0.146mm same-side pairs on
+            # fixture 07's Fill 2, and `_drop_floor_reversals` cannot repair a
+            # retrace whose merged stitch would exceed the machine cap.
+            row = [float(a), *(float(s) for s in inner), float(b)]
+            filled: list[float] = [row[0]]
+            for nxt in row[1:]:
+                gap = abs(nxt - filled[-1])
+                if gap > step:
+                    n = math.ceil(gap / step)
+                    base, d = filled[-1], nxt - filled[-1]
+                    ks = [k + phase for k in range(n)] if phase > 1e-9 else range(1, n)
+                    filled.extend(base + d * k_ / n for k_ in ks)
+                filled.append(nxt)
+            for s in filled[1:]:
                 pts.append((float(s), float(y), False))
-            pts.append((float(b), float(y), False))
         left_to_right = not left_to_right
     return pts
 

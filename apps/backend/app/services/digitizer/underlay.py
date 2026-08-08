@@ -309,3 +309,49 @@ def _rebuild_underlay(st: str, ut: str, mask, rect, stitch_angle: float,
                 under = _with_underlay(under, par, connect_px)
         return under
     return []
+
+
+def _satin_width_underlay(region, axis_pts, median_w: float, prof: dict,
+                          mm_per_px: float, under_step_px: int,
+                          connect_px: float, floor_px: float, max_px: float):
+    """Digitize-side satin underlay chosen by COLUMN WIDTH (v2 Part 24).
+
+    ``median_w`` is the skeleton's own measured stroke width, which is the
+    quantity the width bands are stated in — wide strokes earn a zigzag
+    lattice, medium ones an edge walk, thin ones a centre run ALONG THE MEDIAL
+    AXIS (not the bounding-rect midline). Returns ``(points, type_name)`` with
+    the UnderlayType member name; a generator that found nothing must not lose
+    the underlay, so the axis run is also the universal fallback.
+    """
+    from app.services.digitizer.constants import (
+        UNDERLAY_EDGE_MIN_MM,
+        UNDERLAY_ZIGZAG_INSET_MM,
+        UNDERLAY_ZIGZAG_MIN_MM,
+        UNDERLAY_ZIGZAG_PITCH_MULT,
+    )
+
+    if median_w >= UNDERLAY_ZIGZAG_MIN_MM:
+        under = _zigzag_underlay(
+            region, axis_pts,
+            prof["under_mm"] * UNDERLAY_ZIGZAG_PITCH_MULT / mm_per_px,
+            UNDERLAY_ZIGZAG_INSET_MM / mm_per_px, connect_px,
+            floor_px, max_px,
+        )
+        name = "DOUBLE_ZIGZAG"
+    elif median_w >= UNDERLAY_EDGE_MIN_MM:
+        under = _edge_walk(
+            region, max(1, round(prof["inset_mm"] / mm_per_px)),
+            under_step_px, connect_px, floor_px, max_px,
+        )
+        name = "EDGE_WALK"
+    else:
+        under = _axis_underlay(
+            axis_pts, prof["under_mm"] / mm_per_px, connect_px, floor_px, max_px,
+        )
+        name = "CENTER_WALK"
+    if not under:
+        under = _axis_underlay(
+            axis_pts, prof["under_mm"] / mm_per_px, connect_px, floor_px, max_px,
+        )
+        name = "CENTER_WALK"
+    return under, name

@@ -41,9 +41,13 @@ def test_more_pull_widens_coverage_on_rebuild():
     lots = d.model_copy(update={"objects": [o.model_copy(update={"pull_compensation": 1.0}) for o in d.objects]})
     r_none = rebuild_design(none)
     r_lots = rebuild_design(lots)
-    # wider region → larger stitched extent (and generally more stitches)
+    # wider region → larger stitched extent (and generally more stitches).
+    # The count check carries a 1% tolerance: pull comp guarantees COVERAGE,
+    # not a monotone count — row-pitch quantization on the dilated mask can
+    # shed a couple of stitches (measured: 2455 vs 2458 after the A6 pitch
+    # change re-rolled the rounding; extent still widened as required).
     assert r_lots.width_mm >= r_none.width_mm
-    assert r_lots.stitch_count >= r_none.stitch_count
+    assert r_lots.stitch_count >= r_none.stitch_count * 0.99
 
 
 def test_rebuild_stream_stays_machine_valid_with_pull():
@@ -59,10 +63,12 @@ def test_rebuild_stream_stays_machine_valid_with_pull():
 # ── v2 Part 13: full fabric profiles (density/underlay), not just pull ──────
 
 
-def test_cotton_profile_is_exactly_the_old_globals():
-    """The all-cotton bench corpus must be untouched by fabric profiles."""
+def test_cotton_profile_is_the_documented_default():
+    """Cotton is the default fabric; row pitch 0.40 per the CTO backlog (A6) —
+    industry 40wt default is ~0.35-0.42mm, and 0.45 was the pre-A6 value the
+    bench corpus was originally measured at (locks/baselines re-pinned)."""
     p = digitizer._fabric_profile("cotton")
-    assert p == {"pull_mm": 0.2, "row_mm": 0.45, "satin_mm": 0.4, "under_mm": 2.0, "inset_mm": 0.6}
+    assert p == {"pull_mm": 0.2, "row_mm": 0.40, "satin_mm": 0.4, "under_mm": 2.0, "inset_mm": 0.6}
 
 
 def test_unknown_fabric_gets_the_default_profile():

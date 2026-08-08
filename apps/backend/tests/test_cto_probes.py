@@ -15,6 +15,7 @@ them. Baseline measured 2026-08-08 at the reconciliation merge:
 
 from __future__ import annotations
 
+import itertools
 import math
 
 import cv2
@@ -319,6 +320,60 @@ def test_applique_stops_survive_file_round_trip():
     back = read_embroidery(write_embroidery(built, "pes"), "pes")
     got = sum(1 for s in back.stitches if str(s.command) == "STOP")
     assert got == want, f"STOPs lost in round trip: wrote {want}, read {got}"
+
+
+# ── A6: fill quality — stitch cap, spacing, alternated isotropic angles ──────
+
+
+def test_fill_rows_never_exceed_the_fill_stitch_cap():
+    # A6/C8: the stagger end-guard let end segments reach step*(1+2*guard) —
+    # measured 15.9mm worst case at a 12.7mm step, over the machine limit
+    # itself. The ceil() end-gap repair bounds every within-row segment by the
+    # step at generation, at any angle.
+    from app.services.digitizer.fills import _scanline_angled
+
+    region = np.zeros((400, 400), np.uint8)
+    region[50:350, 50:350] = 255
+    step_px = 16  # 4mm at 4px/mm
+    for ang in (0.0, 30.0, 77.0):
+        pts = _scanline_angled(region, ang, 2, step_px, 4.0)
+        gaps = [math.dist(a[:2], b[:2])
+                for a, b in itertools.pairwise(pts) if not b[2]]
+        assert gaps and max(gaps) <= step_px + 0.51, (
+            f"angle {ang}: max within-row segment {max(gaps):.1f}px > cap {step_px}px"
+        )
+
+
+def test_fill_spacing_default_is_backlog_verbatim():
+    from app.services.digitizer.constants import (
+        FABRIC_DEFAULT,
+        MAX_FILL_STITCH_MM,
+        ROW_SPACING_MM,
+    )
+
+    assert ROW_SPACING_MM == 0.40
+    assert FABRIC_DEFAULT["row_mm"] == 0.40
+    assert MAX_FILL_STITCH_MM == 4.0
+
+
+def test_successive_isotropic_fills_alternate_angles():
+    # A6: two discs have no long axis, so their fallback angles are arbitrary —
+    # and arbitrary repeated is push/pull accumulating one way. The second
+    # isotropic fill must sew perpendicular to the first (alternation is free:
+    # the edge-avoiding penalty has period 90 degrees).
+    img = np.full((500, 900, 3), 255, np.uint8)
+    cv2.circle(img, (230, 250), 140, (40, 60, 160), -1, cv2.LINE_AA)
+    cv2.circle(img, (670, 250), 140, (40, 60, 160), -1, cv2.LINE_AA)
+    ok, buf = cv2.imencode(".png", img)
+    assert ok
+    cv2.setRNGSeed(1234)
+    d = digitize_image(buf.tobytes(), "cotton", "100x100", 2)
+    fills = [o for o in d.objects if str(o.stitch_type) == "TATAMI"]
+    assert len(fills) == 2, f"expected two tatami discs, got {[o.name for o in d.objects]}"
+    diff = abs(fills[0].stitch_angle - fills[1].stitch_angle) % 180.0
+    assert min(diff, 180.0 - diff) >= 80.0, (
+        f"iso fills did not alternate: {fills[0].stitch_angle} vs {fills[1].stitch_angle}"
+    )
 
 
 # ── P6: fidelity test — rebuild of an unedited design ────────────────────────
