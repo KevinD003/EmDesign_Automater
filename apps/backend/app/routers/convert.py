@@ -7,11 +7,12 @@ import binascii
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from app.deps import current_user
 from app.models.design import ConvertRequest, ConvertResponse
 from app.services import embroidery_io
 from app.services.plans import require_feature
 
-router = APIRouter(tags=["convert"])
+router = APIRouter(tags=["convert"], dependencies=[Depends(current_user)])
 
 # Formats that store no thread colors — converting INTO them loses color data.
 _COLORLESS = {"dst", "exp", "dsb", "dsz", "tap", "u01"}

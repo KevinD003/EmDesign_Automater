@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from app.deps import current_user
 from app.models.design import Design, OptimizeResult, QualityReport
 from app.services import optimizer
 from app.services.plans import require_feature
 
-router = APIRouter(prefix="/optimize", tags=["optimize"])
+router = APIRouter(prefix="/optimize", tags=["optimize"], dependencies=[Depends(current_user)])
 
 
 @router.post("/path", response_model=OptimizeResult, dependencies=[Depends(require_feature("optimize"))])

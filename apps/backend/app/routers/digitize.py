@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, File, Form, Header, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile
 
+from app.deps import current_user
 from app.models.design import Design
 from app.services import digitizer, plans
 
-router = APIRouter(tags=["digitize"])
+router = APIRouter(tags=["digitize"], dependencies=[Depends(current_user)])
 
 
 # Deliberately a plain `def`, NOT `async def` (v2 Part 25) — and the same choice

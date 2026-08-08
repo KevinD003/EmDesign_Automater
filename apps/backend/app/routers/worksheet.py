@@ -7,11 +7,12 @@ import io
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
+from app.deps import current_user
 from app.models.design import Design, Worksheet
 from app.services import worksheet_pdf
 from app.services.plans import require_feature
 
-router = APIRouter(tags=["worksheet"])
+router = APIRouter(tags=["worksheet"], dependencies=[Depends(current_user)])
 
 
 @router.post("/worksheet", response_model=Worksheet)

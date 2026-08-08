@@ -174,8 +174,11 @@ def test_plan_gate_blocks_free_allows_paid_and_is_inert_by_default(
         client.post("/api/export/package", json=design, headers=free_h).status_code
         == 402
     )
-    # Anonymous callers are free-tier too.
-    assert client.post("/api/optimize/path", json=design).status_code == 402
+    # Anonymous callers are refused at the AUTH gate, not billed as free tier:
+    # compute endpoints require current_user since CTO A11, and the dependency
+    # runs before the plan gate can classify anyone. (Pre-A11 this asserted
+    # 402 — anonymous-as-free — which was itself the S2 hole.)
+    assert client.post("/api/optimize/path", json=design).status_code == 401
     # Admins bypass every gate.
     assert (
         client.post("/api/optimize/path", json=design, headers=admin_h).status_code

@@ -8,6 +8,7 @@ import math
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
+from app.deps import current_user
 from app.models.design import Design, ValidationReport, enum_str
 from app.services import embroidery_io
 from app.services import package as package_svc
@@ -15,7 +16,7 @@ from app.services.optimizer import parse_hoop
 from app.services.plans import require_feature
 from app.services.trim_profiles import DEFAULT_PROFILE, apply_trim_profile
 
-router = APIRouter(tags=["export"])
+router = APIRouter(tags=["export"], dependencies=[Depends(current_user)])
 
 # Machine formats we ADVERTISE for export, in recommendation order (spec §4.8).
 # The endpoint intersects this with pyembroidery's actual writer table, so a format
@@ -26,7 +27,13 @@ router = APIRouter(tags=["export"])
 MACHINE_EXPORT_FORMATS: tuple[str, ...] = ("dst", "pes", "pec", "jef", "exp", "vp3", "xxx", "u01", "csv")
 
 
-@router.get("/formats")
+# Capability listing stays PUBLIC (like /health): static metadata, no compute,
+# no user data — the frontend queries it before login to build the format
+# dropdowns, and gating it behind auth broke exactly that (CTO A11 rollout).
+public_router = APIRouter(tags=["export"])
+
+
+@public_router.get("/formats")
 def formats() -> dict[str, object]:
     """Supported export formats + machine-brand recommendation table (spec §4.8)."""
     writable = embroidery_io.supported_write_exts()

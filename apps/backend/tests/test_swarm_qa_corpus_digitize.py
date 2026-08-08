@@ -94,19 +94,37 @@ class Result(NamedTuple):
 
 
 @pytest.fixture(scope="module")
-def corpus_results() -> dict[str, Result]:
-    """Digitize every corpus image once; shared by all tests in this module."""
-    results: dict[str, Result] = {}
-    for path in CORPUS_FILES:
-        name = os.path.basename(path)
-        with open(path, "rb") as fh:
-            data = fh.read()
-        started = time.monotonic()
-        response = client.post(DIGITIZE_URL, files={"file": (name, data, "image/png")})
-        elapsed = time.monotonic() - started
-        body = response.json() if response.status_code == 200 else None
-        results[name] = Result(response.status_code, elapsed, body, response.text)
-    return results
+def corpus_results(tmp_path_factory) -> dict[str, Result]:
+    """Digitize every corpus image once; shared by all tests in this module.
+
+    Isolates the user store ITSELF (the conftest contract's escape hatch): a
+    module-scoped fixture runs BEFORE the function-scoped autouse isolation,
+    so without this it resolves auth against the operator's real
+    data/local_users.json — and once any real profile exists, every request
+    here is an unauthenticated compute call and 401s (CTO A11 made compute
+    endpoints authenticated; the pre-A11 corpus never noticed the ordering).
+    """
+    from app.services import user_store
+
+    mp = pytest.MonkeyPatch()
+    mp.setenv("STITCHIQ_USER_STORE",
+              str(tmp_path_factory.mktemp("corpus-users") / "local_users.json"))
+    user_store.reset_store_cache()
+    try:
+        results: dict[str, Result] = {}
+        for path in CORPUS_FILES:
+            name = os.path.basename(path)
+            with open(path, "rb") as fh:
+                data = fh.read()
+            started = time.monotonic()
+            response = client.post(DIGITIZE_URL, files={"file": (name, data, "image/png")})
+            elapsed = time.monotonic() - started
+            body = response.json() if response.status_code == 200 else None
+            results[name] = Result(response.status_code, elapsed, body, response.text)
+        return results
+    finally:
+        mp.undo()
+        user_store.reset_store_cache()
 
 
 def assert_design_shape(name: str, body: dict[str, Any]) -> None:

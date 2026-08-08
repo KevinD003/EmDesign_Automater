@@ -85,7 +85,7 @@ export const api = {
   exportDesign: async (design: Design, format = 'dst', trimProfile?: TrimProfile): Promise<Blob> => {
     const res = await fetch(`${API_BASE}/api/export?${exportQuery(format, trimProfile)}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify(design),
     });
     if (!res.ok) throw new Error(`${res.status} ${res.statusText} — export`);
@@ -96,7 +96,7 @@ export const api = {
   exportPackage: async (design: Design, format = 'dst', trimProfile?: TrimProfile): Promise<Blob> => {
     const res = await fetch(`${API_BASE}/api/export/package?${exportQuery(format, trimProfile)}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify(design),
     });
     if (!res.ok) throw new Error(`${res.status} ${res.statusText} — package`);
@@ -110,7 +110,7 @@ export const api = {
   worksheetPdf: async (design: Design): Promise<Blob> => {
     const res = await fetch(`${API_BASE}/api/worksheet/pdf`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify(design),
     });
     if (!res.ok) throw new Error(`${res.status} ${res.statusText} — worksheet pdf`);

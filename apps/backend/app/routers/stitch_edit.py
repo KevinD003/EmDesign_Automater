@@ -10,13 +10,14 @@ stream is CPU-bound.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
+from app.deps import current_user
 from app.models.design import CamelModel, Design
 from app.services import stitch_edit
 
-router = APIRouter(prefix="/stitches", tags=["stitches"])
+router = APIRouter(prefix="/stitches", tags=["stitches"], dependencies=[Depends(current_user)])
 
 MAX_OPS = 200
 

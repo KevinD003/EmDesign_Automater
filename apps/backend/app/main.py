@@ -216,3 +216,6 @@ def health() -> dict[str, str | int]:
 
 for module in (auth, files, convert, digitize, lettering, worksheet, export, threads, designs, optimize, auth_local, admin, image_edit, thread_edit, stitch_edit):
     app.include_router(module.router, prefix="/api")
+# Public capability listing — deliberately outside the authenticated export
+# router (CTO A11): see the note on export.public_router.
+app.include_router(export.public_router, prefix="/api")

@@ -16,9 +16,10 @@ import json
 
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-# Generous cap for photo uploads to /api/digitize; protects a 100-user LAN
-# deployment from accidental multi-GB posts.
-DEFAULT_MAX_BODY_BYTES = 25 * 1024 * 1024
+# Cap for photo uploads to /api/digitize; protects a 100-user LAN deployment
+# from accidental multi-GB posts. 20MB per the CTO backlog (A11: "10-20MB
+# caps") — the top of the named range, since digitize accepts real photos.
+DEFAULT_MAX_BODY_BYTES = 20 * 1024 * 1024
 
 # Unit divisors for the human-readable limit in the 413 message.
 BYTES_PER_MIB = 1024 * 1024

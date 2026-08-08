@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 
+from app.deps import current_user
 from app.models.design import Design
 from app.services import embroidery_io
 
-router = APIRouter(tags=["files"])
+router = APIRouter(tags=["files"], dependencies=[Depends(current_user)])
 
 # Real machine files are well under 1 MB, so 10 MB is a generous ceiling. It sits
 # below the global 25 MB body cap (app/middleware/body_limit.py) so an oversized

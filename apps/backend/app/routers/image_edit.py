@@ -12,12 +12,13 @@ from __future__ import annotations
 
 import io
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 
+from app.deps import current_user
 from app.services.image_edit import EditParams, apply_edits, suggest
 
-router = APIRouter(prefix="/image", tags=["image"])
+router = APIRouter(prefix="/image", tags=["image"], dependencies=[Depends(current_user)])
 
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 

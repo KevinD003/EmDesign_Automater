@@ -116,7 +116,7 @@ def test_fast_path_refuses_before_reading_any_body_byte() -> None:
     assert sent[0]["type"] == "http.response.start"
     assert sent[0]["status"] == 413
     body = b"".join(m.get("body", b"") for m in sent if m["type"] == "http.response.body")
-    assert json.loads(body) == {"detail": "Request body too large (limit 25 MB)"}
+    assert json.loads(body) == {"detail": "Request body too large (limit 20 MB)"}  # 20MB per CTO A11
 
 
 def test_non_http_scope_passes_through_untouched() -> None:

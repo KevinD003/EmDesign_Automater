@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import Field
 
+from app.deps import current_user
 from app.models.design import CamelModel, Design
 from app.services import lettering
 
-router = APIRouter(tags=["lettering"])
+router = APIRouter(tags=["lettering"], dependencies=[Depends(current_user)])
 
 
 class FontInfo(CamelModel):
