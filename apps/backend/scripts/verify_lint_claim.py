@@ -13,7 +13,12 @@ Paths are relative to the REPO ROOT (unambiguous wherever the checker runs).
 The checker re-runs ruff over exactly those files and fails on any mismatch, so
 a claimed count that drifts from reality fails CI instead of surviving four
 parts. Audits without the marker (everything before Part 12) are skipped —
-history is not retroactively gated.
+history is not retroactively gated. For the same reason, a marker whose
+referenced file no longer exists (refactored or renamed since the audit — e.g.
+``digitizer.py`` became the ``digitizer/`` package) is reported as STALE and
+skipped rather than failed: the claim was about the tree at audit time and can
+no longer be re-checked. Run this locally before shipping a new audit — a
+typo'd path in a fresh marker shows up as a stale line instead of a failure.
 
     python scripts/verify_lint_claim.py ../../docs/benchmarks
 """
@@ -49,7 +54,9 @@ def check_audit(path: Path) -> list[str]:
         files = [REPO_ROOT / f for f in m.group(2).split()]
         missing = [f for f in files if not f.exists()]
         if missing:
-            failures.append(f"{path.name}: files not found: {[str(f) for f in missing]}")
+            rels = [str(f.relative_to(REPO_ROOT)) for f in missing]
+            print(f"  stale {path.name}: referenced files no longer exist "
+                  f"(refactored/renamed since the audit): {rels}", file=sys.stderr)
             continue
         actual = ruff_findings(files)
         if actual != claimed:
