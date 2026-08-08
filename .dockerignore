@@ -1,0 +1,29 @@
+# Keep the build context small and keep secrets/artifacts out of images.
+# Both Dockerfiles use this file (the frontend builds from the repo root).
+
+.git
+.github
+node_modules
+**/node_modules
+**/.venv
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/.ruff_cache
+apps/frontend/dist
+
+# Secrets — never copy a real .env into an image layer.
+**/.env
+**/.env.*
+!**/.env.example
+
+# Test corpora, baselines and benchmark output: hundreds of PNGs the runtime
+# image has no use for.
+apps/backend/tests
+apps/backend/data
+docs/benchmarks
+tools
+
+# Docs
+*.md
+!README.md

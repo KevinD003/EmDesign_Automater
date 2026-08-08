@@ -7,6 +7,8 @@ are stubs (HTTP 501). Run: ``uvicorn app.main:app --reload --port 8000``.
 from __future__ import annotations
 
 import logging
+import os
+import pathlib
 import platform
 import sys
 import time
@@ -15,11 +17,13 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.concurrency import run_in_threadpool
 
 from app.config import settings
 from app.middleware.body_limit import BodySizeLimitMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware
 from app.middleware.request_logging import RequestLoggingMiddleware
+from app.observability import init_observability
 from app.routers import (
     admin,
     auth,
@@ -37,6 +41,7 @@ from app.routers import (
     threads,
     worksheet,
 )
+from app.services import local_store, supabase_store
 
 startup_logger = logging.getLogger("stitchiq.startup")
 
@@ -76,6 +81,10 @@ def _validate_production_config() -> None:
 
 
 _validate_production_config()
+
+# Error reporting (CTO B1). No-op unless SENTRY_DSN is set, and it never
+# raises — a monitoring outage must not become an application outage.
+OBSERVABILITY_ENABLED = init_observability()
 
 # Uptime baseline for /health. Module import == process start under uvicorn,
 # and monotonic() cannot go backwards when NTP or DST shifts the wall clock.
@@ -203,15 +212,70 @@ async def validation_exception_handler(
 
 
 @app.get("/health", tags=["meta"])
-def health() -> dict[str, str | int]:
+def health() -> dict[str, str | int | bool]:
     """Liveness probe: dependency-free, touches no I/O, and must never raise —
-    a monitor that gets a 500 here cannot distinguish it from a dead process."""
+    a monitor that gets a 500 here cannot distinguish it from a dead process.
+
+    Deliberately NOT a readiness check. Liveness answers "is this process
+    alive and its loop responsive?", which is also what makes it the probe that
+    detects the X1 freeze: if a digitize has the event loop wedged, this stops
+    answering. Dependency health lives at /health/ready.
+    """
     return {
         "status": "ok",
         "version": app.version,
         "uptimeSeconds": int(time.monotonic() - _STARTED_MONOTONIC),
         "pythonVersion": platform.python_version(),
+        "environment": settings.app_env,
+        "release": os.environ.get("RELEASE") or os.environ.get("GIT_SHA") or "dev",
+        "errorReporting": OBSERVABILITY_ENABLED,
     }
+
+
+@app.get("/health/ready", tags=["health"])
+async def readiness() -> JSONResponse:
+    """Readiness probe: can this process actually SERVE?
+
+    A readiness check that does not touch its dependency is theatre, so this
+    one really exercises the design store — the failure mode it exists to catch
+    is a container whose data volume did not mount, which looks perfectly
+    healthy to a liveness probe and loses every save. 503 (not an exception) so
+    an orchestrator drains the instance instead of restart-looping it.
+    """
+    checks: dict[str, str] = {}
+    ok = True
+
+    if supabase_store.is_enabled():
+        checks["store"] = "supabase: configured"
+    else:
+        # Prove the directory is really writable, do not just stat it: a
+        # read-only or unmounted volume passes existence checks and then fails
+        # on the user's first save.
+        try:
+            probe = await run_in_threadpool(_probe_local_store)
+            checks["store"] = f"local: writable ({probe})"
+        except Exception as exc:  # noqa: BLE001 - reported, never raised
+            ok = False
+            checks["store"] = f"local: NOT WRITABLE ({type(exc).__name__}: {exc})"
+
+    return JSONResponse(
+        status_code=200 if ok else 503,
+        content={"status": "ready" if ok else "not ready", "checks": checks},
+    )
+
+
+def _probe_local_store() -> str:
+    """Write and delete a temp file in the designs dir; returns the path.
+
+    Uses local_store's OWN root resolver rather than re-deriving it, so the
+    probe can never certify a different directory than the one saves land in.
+    """
+    directory = pathlib.Path(local_store._root())
+    directory.mkdir(parents=True, exist_ok=True)
+    probe = directory / ".readiness"
+    probe.write_text("ok", encoding="utf-8")
+    probe.unlink(missing_ok=True)
+    return str(directory)
 
 
 for module in (auth, files, convert, digitize, lettering, worksheet, export, threads, designs, optimize, auth_local, admin, image_edit, thread_edit, stitch_edit):

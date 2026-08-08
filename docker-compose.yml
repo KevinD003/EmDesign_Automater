@@ -1,0 +1,57 @@
+# STITCHIQ — the whole product on one machine (CTO B1).
+#
+#   docker compose up --build     → http://localhost:8080
+#
+# Backend and frontend are separate images so they can also deploy separately
+# (backend → Fly/Railway, frontend → Vercel/CF Pages); this file is for local
+# review, demos and self-hosting.
+#
+# Secrets: never inline them here. Copy apps/backend/.env.example to
+# apps/backend/.env and fill it in — .env is gitignored and the backend reads
+# it via pydantic-settings. With no .env the stack runs in development mode
+# (local profiles, on-disk store), which is the intended default; setting
+# APP_ENV=production without the Supabase keys makes the backend refuse to
+# boot on purpose (CTO A10).
+
+services:
+  backend:
+    build:
+      context: ./apps/backend
+    env_file:
+      - path: ./apps/backend/.env
+        required: false
+    environment:
+      # (2 x cores) + 1 is the usual starting point. These are PROCESSES: the
+      # X1 stall is GIL contention, so worker count is the only lever that
+      # actually keeps one digitize from freezing everyone else.
+      WEB_CONCURRENCY: ${WEB_CONCURRENCY:-4}
+      CORS_ORIGINS: '["http://localhost:8080"]'
+    volumes:
+      # Designs and local profiles outlive the container. Without this, every
+      # rebuild silently wipes the user's saved work.
+      - stitchiq-data:/data
+      # U2-Net weights are ~170MB; keep them across rebuilds.
+      - u2net-cache:/opt/u2net
+    restart: unless-stopped
+    # No published port: the browser reaches the API through the frontend's
+    # /api proxy, so the backend is not directly exposed.
+    expose:
+      - "8000"
+
+  frontend:
+    build:
+      context: .
+      dockerfile: apps/frontend/Dockerfile
+      args:
+        # Same origin — nginx proxies /api to the backend service.
+        VITE_API_BASE_URL: ""
+    ports:
+      - "8080:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  stitchiq-data:
+  u2net-cache:

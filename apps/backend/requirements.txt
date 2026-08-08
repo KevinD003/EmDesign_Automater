@@ -15,3 +15,15 @@ pyembroidery>=1.5    # read/write 45+ embroidery formats — core Open/Export/Co
 # vector logos skip the neural-matte guesswork entirely — digitizer._decode_svg.
 svglib>=2.0          # SVG parsing to a ReportLab drawing
 rlPyCairo>=0.4       # renderPM backend that rasterises the drawing
+
+# Production process manager (v2 Phase B1). PROCESSES, not threads: the
+# measured X1 stall (1,198ms of frozen event loop during one digitize) is GIL
+# contention inside the threadpool, so only separate interpreters remove it.
+# Dev still runs plain `uvicorn --reload`; the Dockerfile runs gunicorn with
+# UvicornWorker.
+gunicorn>=23.0
+
+# Error reporting (v2 Phase B1). Optional at runtime: app/observability.py
+# imports it only when SENTRY_DSN is set and degrades to a warning if it is
+# missing, so a slim install still boots.
+sentry-sdk[fastapi]>=2.20
