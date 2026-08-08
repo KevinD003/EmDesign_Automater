@@ -23,6 +23,9 @@ jobs:
             apps/backend/requirements.txt
             apps/backend/requirements-dev.txt
             apps/backend/requirements-features.txt
+      # rlPyCairo (the Part 25 SVG rasterizer, in core requirements) builds
+      # pycairo from source, which needs the system cairo headers.
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libcairo2-dev pkg-config
       # Features requirements are REQUIRED for the suite, not optional: the
       # stream-lock hashes and visual baselines were captured on the
       # with-rembg segmentation path, and most engine tests exercise cv2.
