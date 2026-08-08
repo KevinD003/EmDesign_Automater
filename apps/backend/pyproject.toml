@@ -5,6 +5,22 @@ description = "STITCHIQ AI embroidery platform — FastAPI backend (scaffold)."
 requires-python = ">=3.11"
 # Dependencies are managed via requirements.txt / requirements-features.txt.
 
+[tool.pytest.ini_options]
+# The `timing` marker is for SCHEDULING-DELAY measurements (v2 Phase B1).
+# They are real and they pass standalone, but a full-suite run loads the
+# machine enough that event-loop lag stops meaning anything — measured: the
+# two /health-lag guards pass alone and fail inside `pytest tests`. Rather
+# than loosen them until they cannot fail (a green test that proves nothing),
+# they are deselected by default and run on demand:
+#
+#     pytest -m timing            # the measurements, on an idle machine
+#     pytest tests                # everything else, deterministic
+#
+# The always-on structural guard in the same file is what actually prevents a
+# regression; these quantify why that guard matters.
+markers = ["timing: load-sensitive event-loop measurements; run standalone"]
+addopts = "-m 'not timing'"
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"

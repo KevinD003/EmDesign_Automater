@@ -674,3 +674,21 @@ def _decode_image_bgr(data: bytes):
     elif img.ndim == 2:  # grayscale → 3-channel
         img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
     return img
+
+
+def _uncovered_chunk_mm2(art_base, emitted_mask, mm_per_px: float) -> float:
+    """Largest connected unsewn piece of foreground, in mm² (v2 Part 65).
+
+    The rescue's shape test: a webbed photo leaves body-sized chunks unsewn;
+    a speck-noise image leaves thousands of dots; a correctly-empty design
+    leaves nothing. Only computed once the share gate has already tripped, so
+    it costs one connected-components pass on the bounded work canvas.
+    """
+    import cv2
+    import numpy as np
+
+    unsewn = cv2.bitwise_and(art_base, (emitted_mask == 0).astype(np.uint8))
+    n, _lab, stats, _c = cv2.connectedComponentsWithStats(unsewn, connectivity=8)
+    if n <= 1:
+        return 0.0
+    return float(stats[1:, cv2.CC_STAT_AREA].max()) * mm_per_px * mm_per_px

@@ -192,6 +192,20 @@ class DesignObject(CamelModel):
     # every earlier design loads and rebuilds untouched.
     flow_divide: list[Point] | None = None
     flow_line_b: list[Point] | None = None
+    # Fingerprint of the parameters that PRODUCED this object's stored stitches
+    # (v2 Phase B1.5). Set by digitize_image and by rebuild_design for every
+    # object it regenerates; compared on the next rebuild to tell "the user
+    # edited THIS object" from "the user edited something else". An unedited
+    # object is then passed through byte-for-byte instead of re-rastered —
+    # which is what stops every Optimize/Apply from roughening the whole design
+    # (C6), and is the only way the fidelity probe's "no coordinate moves
+    # >0.1mm" criterion can hold: regenerating from a contour cannot reproduce
+    # coordinates to 0.1mm, only approximate them.
+    #
+    # None means "unknown provenance" — every design saved before B1.5 and
+    # every imported machine file — and those always regenerate, i.e. exactly
+    # the old behaviour, so no existing design changes meaning.
+    params_hash: str | None = None
 
     @field_validator("stitch_type", mode="before")
     @classmethod

@@ -27,6 +27,7 @@ PKG_DIR = Path(digitizer.__file__).parent
 LAYERS = [
     "constants",
     "geometry",
+    "provenance",
     "skeleton",
     "columns",
     "fills",

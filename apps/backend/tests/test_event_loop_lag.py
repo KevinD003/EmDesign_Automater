@@ -16,6 +16,15 @@ What this file pins is the part that was genuinely on the loop and is now off
 it: the `designs` router awaited nothing for its file reads and rendered PNG
 thumbnails inline (preview measured a 174ms stall; a plain GET, 50ms).
 
+WHY TWO OF THESE CARRY `@pytest.mark.timing`. They pass standalone and fail
+inside a full `pytest tests` run — the suite loads the machine enough that
+scheduling delay stops measuring the application. They are therefore
+deselected by default (see pyproject) and run with `pytest -m timing` on an
+idle machine. Loosening the ratio until they could not fail was the other
+option and was rejected: a timing guard that cannot fail proves nothing. The
+structural guard below has no such problem and is what actually prevents a
+regression.
+
 MEASUREMENT NOTE. Per-request latency cannot see a blocked loop — a blocked
 loop simply never schedules the poller, so the stall falls between samples.
 The instrument is scheduling delay: tick every 5ms and record how late each
@@ -79,6 +88,7 @@ def _run(coro):
     return asyncio.run(coro)
 
 
+@pytest.mark.timing
 @pytest.mark.skipif(os.environ.get("CI") == "true",
                     reason="scheduling-delay measurement; shared CI runners add "
                            "their own jitter and the ratio stops meaning anything")
@@ -101,6 +111,7 @@ def test_thumbnail_render_does_not_freeze_the_loop(saved_design):
     )
 
 
+@pytest.mark.timing
 @pytest.mark.skipif(os.environ.get("CI") == "true",
                     reason="scheduling-delay measurement; see above")
 def test_design_fetch_does_not_freeze_the_loop(saved_design):

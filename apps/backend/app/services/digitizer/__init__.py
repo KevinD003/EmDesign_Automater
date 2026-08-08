@@ -169,6 +169,7 @@ from app.services.digitizer.geometry import (
     _smooth_contour,
     _split_mask_by_line,
     _subdivide_long,
+    _uncovered_chunk_mm2,
     _uncovered_mask,
     _warp_fit,
     last_classification_log,
@@ -188,6 +189,12 @@ from app.services.digitizer.planning import (
     _sketch_from_labels,
     _split_bimodal_clusters,
     _verify_sketch,
+)
+from app.services.digitizer.provenance import (
+    is_unedited,
+    object_params_hash,
+    objects_match_stream,
+    rebuild_is_a_noop,
 )
 from app.services.digitizer.routing import (
     _coalesce_short,
@@ -465,9 +472,13 @@ __all__ = [
     "_zigzag_underlay",
     "add_to_seed",
     "digitize_image",
+    "is_unedited",
     "last_classification_log",
     "last_field_artifact",
+    "object_params_hash",
+    "objects_match_stream",
     "rebuild_design",
+    "rebuild_is_a_noop",
     "remember",
     "set_penetration_floor",
 ]

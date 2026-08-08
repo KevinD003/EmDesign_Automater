@@ -101,6 +101,7 @@ from app.services.digitizer.geometry import (
     _resample_open,
     _smooth_contour,
     _split_mask_by_line,
+    _uncovered_chunk_mm2,
 )
 from app.services.digitizer.planning import (
     _band_ratio,
@@ -109,6 +110,10 @@ from app.services.digitizer.planning import (
     _plan_palette,
     _sketch_from_labels,
     _verify_sketch,
+)
+from app.services.digitizer.provenance import (
+    object_params_hash,
+    rebuild_is_a_noop,
 )
 from app.services.digitizer.routing import (
     _coalesce_short,
@@ -143,24 +148,6 @@ from app.services.digitizer.underlay import (
 # was unsewn). The rescue reads this pixel share back after its recursive
 # retry to decide whether the smoothed pass actually recovered artwork.
 _LAST_UNCOVERED_PX: float = 0.0
-
-
-def _uncovered_chunk_mm2(art_base, emitted_mask, mm_per_px: float) -> float:
-    """Largest connected unsewn piece of foreground, in mm² (v2 Part 65).
-
-    The rescue's shape test: a webbed photo leaves body-sized chunks unsewn;
-    a speck-noise image leaves thousands of dots; a correctly-empty design
-    leaves nothing. Only computed once the share gate has already tripped, so
-    it costs one connected-components pass on the bounded work canvas.
-    """
-    import cv2
-    import numpy as np
-
-    unsewn = cv2.bitwise_and(art_base, (emitted_mask == 0).astype(np.uint8))
-    n, _lab, stats, _c = cv2.connectedComponentsWithStats(unsewn, connectivity=8)
-    if n <= 1:
-        return 0.0
-    return float(stats[1:, cv2.CC_STAT_AREA].max()) * mm_per_px * mm_per_px
 
 
 def digitize_image(
@@ -960,8 +947,14 @@ def digitize_image(
                     stitch_count=count,
                     contour=outline,
                     holes=hole_outlines,
+                    # Provenance for the B1.5 pass-through: where this object's
+                    # stitches are, and a fingerprint of the parameters that
+                    # produced them. Filled in below, once the object exists to
+                    # hash.
+                    stitch_start=obj_start,
                 )
             )
+            objects[-1].params_hash = object_params_hash(objects[-1])
 
         if this_stop is not None:  # cluster produced no stitchable objects → no phantom stop
             color_stops.append(
@@ -1258,6 +1251,10 @@ def rebuild_design(design: Design) -> Design:
             f"Known stops: {sorted(known_stops)}."
         )
 
+    # Nothing to rebuild? Return the design untouched — see `rebuild_is_a_noop`.
+    if rebuild_is_a_noop(design, objs):
+        return design
+
     xs = [p.x for o in objs for p in o.contour]
     ys = [p.y for o in objs for p in o.contour]
     minx, miny = min(xs), min(ys)
@@ -1458,15 +1455,18 @@ def rebuild_design(design: Design) -> Design:
 
             entry = to_mm(pts[0][0], pts[0][1])
             exit_ = to_mm(pts[-1][0], pts[-1][1])
-            new_objects.append(
-                o.model_copy(
-                    update={
-                        "stitch_count": len(stitches) - obj_start,
-                        "entry_point": Point(x=entry[0], y=entry[1]),
-                        "exit_point": Point(x=exit_[0], y=exit_[1]),
-                    }
-                )
+            regenerated = o.model_copy(
+                update={
+                    "stitch_count": len(stitches) - obj_start,
+                    "entry_point": Point(x=entry[0], y=entry[1]),
+                    "exit_point": Point(x=exit_[0], y=exit_[1]),
+                }
             )
+            # Re-stamp provenance so the NEXT rebuild can pass this object
+            # through; without it every rebuild would regenerate everything
+            # forever and the damage would keep accumulating.
+            regenerated.params_hash = object_params_hash(regenerated)
+            new_objects.append(regenerated)
         stop_counts[stop.stop_number] = len(stitches) - stop_start
 
     if stitches:

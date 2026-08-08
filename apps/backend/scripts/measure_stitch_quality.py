@@ -206,20 +206,57 @@ def penetration_metrics(design, pitch_mm: float, floor_mm: float) -> dict:
     }
 
 
+# How close a stitch must be to an object's recorded entry point to be taken as
+# that object's first stitch. A tenth of the 0.1mm fidelity criterion, so float
+# round-tripping cannot miss the anchor and a genuinely different stitch cannot
+# match it.
+_ANCHOR_TOLERANCE_MM = 0.01
+
+
 def _object_slices(design):
     """Pair each object with its own slice of the stitch stream.
 
-    Objects are emitted contiguously in sequence order and ``stitch_count``
-    covers exactly that object's entries; COLOR_CHANGE markers sit between
-    objects and belong to none of them, and END closes the stream.
+    ANCHORED ON ENTRY POINTS, not on cumulative counting (fixed 2026-08-08,
+    Phase B1.5). Counting looks obvious and is wrong: both pipelines emit
+    object bodies and THEN rewrite the whole stream — `_lock_stream` inserts
+    tie stitches inside every block — so `stitch_count` no longer describes a
+    contiguous run by the time the design is returned. (The two paths also
+    disagree on whether the leading TRIM/JUMP is inside the count: digitize
+    sets its object start before them, rebuild after.) Measured on fixture 01,
+    the old walker put 1 of 2 objects' slices somewhere other than that
+    object's own first stitch — in BOTH digitized and rebuilt designs — so
+    per-object penetration numbers were being attributed to the wrong object.
+
+    Each object's slice therefore starts at its recorded `entry_point` and runs
+    to the next object's start (or the end of the stream). An object whose
+    entry point cannot be found in order yields an empty slice rather than a
+    wrong one: no measurement beats a misattributed measurement.
     """
+    import math
+
     stitches = list(design.stitches)
-    i = 0
-    for obj in sorted(design.objects, key=lambda o: o.sequence_order):
-        while i < len(stitches) and _cmd(stitches[i]) in ("COLOR_CHANGE", "END"):
-            i += 1
-        yield obj, stitches[i:i + obj.stitch_count]
-        i += obj.stitch_count
+    objs = sorted(design.objects, key=lambda o: o.sequence_order)
+
+    starts: list[int | None] = []
+    cursor = 0
+    for obj in objs:
+        point = getattr(obj, "entry_point", None)
+        found = None
+        if point is not None:
+            for i in range(cursor, len(stitches)):
+                s = stitches[i]
+                if math.hypot(s.x - point.x, s.y - point.y) <= _ANCHOR_TOLERANCE_MM:
+                    found = i
+                    cursor = i + 1
+                    break
+        starts.append(found)
+
+    for n, (obj, start) in enumerate(zip(objs, starts)):
+        if start is None:
+            yield obj, []
+            continue
+        nxt = next((s for s in starts[n + 1:] if s is not None), len(stitches))
+        yield obj, stitches[start:nxt]
 
 
 # ── Coverage: interior / edge band / spill ───────────────────────────────────

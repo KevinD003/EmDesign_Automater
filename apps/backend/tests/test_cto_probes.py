@@ -470,16 +470,20 @@ def test_transparent_png_keeps_black_artwork():
 # ── P6: fidelity test — rebuild of an unedited design ────────────────────────
 
 
-@pytest.mark.xfail(strict=True,
-                   reason="Beyond A8: digitize 17078 vs rebuild 4989 (70.8%) even at the "
-                          "A8 10px/mm raster — the gap is structural, not resolution: "
-                          "rebuild's generator family omits digitize's fill border satin "
-                          "and full underlay recipes, and the probe's verbatim criterion "
-                          "(no coordinate moves >0.1mm) additionally needs pass-through "
-                          "of unedited objects. Flagged as discovered work.")
 def test_probe6_rebuild_of_unedited_design_is_faithful():
+    # B1.5: an unedited design rebuilds to ITSELF — not "within 0.1mm" but
+    # identical, because rebuild now recognises that nothing it could change
+    # has changed and returns the design untouched. Full contract and the
+    # edited-design counterpart live in test_rebuild_parity.py.
     from helpers import digitized_fixture
 
     d = digitized_fixture()
     r = rebuild_design(d)
     assert abs(r.stitch_count - d.stitch_count) <= 0.01 * d.stitch_count
+    # The review's verbatim criterion: no coordinate moves by more than 0.1mm.
+    assert len(r.stitches) == len(d.stitches)
+    worst = max(math.hypot(a.x - b.x, a.y - b.y)
+                for a, b in zip(d.stitches, r.stitches))
+    assert worst <= 0.1, f"worst coordinate move {worst:.3f}mm"
+    assert all(str(a.command) == str(b.command)
+               for a, b in zip(d.stitches, r.stitches))
