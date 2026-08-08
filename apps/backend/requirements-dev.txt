@@ -1,6 +1,7 @@
 # Dev/test dependencies.
 pytest>=8.0
 httpx>=0.27        # FastAPI TestClient (for future endpoint tests)
+pyembroidery>=1.5  # file I/O core — required by most tests (was only in requirements-features.txt, which broke fresh-clone pytest and CI)
 reportlab>=4.2     # exercised by test_worksheet.py (worksheet PDF render)
 opencv-python-headless>=4.10  # exercised by test_digitizer.py (auto-digitize)
 numpy>=1.26
