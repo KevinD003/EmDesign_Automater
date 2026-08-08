@@ -9,6 +9,7 @@ from fastapi.responses import StreamingResponse
 
 from app.deps import current_user
 from app.models.design import Design, Worksheet
+from app.services import package as package_svc
 from app.services import worksheet_pdf
 from app.services.plans import require_feature
 
@@ -33,5 +34,7 @@ def worksheet_pdf_download(design: Design) -> StreamingResponse:
     return StreamingResponse(
         io.BytesIO(data),
         media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{stem}-worksheet.pdf"'},
+        # RFC 5987 (CTO A15/N4): this endpoint put the RAW name in the header
+        # — a Japanese design name 500'd every worksheet download.
+        headers={"Content-Disposition": package_svc.content_disposition(f"{stem}-worksheet.pdf")},
     )

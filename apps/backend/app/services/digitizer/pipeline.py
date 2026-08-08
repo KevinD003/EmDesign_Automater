@@ -87,6 +87,7 @@ from app.services.digitizer.fills import (
 )
 from app.services.digitizer.geometry import (
     _border_color,
+    _decode_image_bgr,
     _decode_svg,
     _dilate_pull,
     _drop_floor_reversals,
@@ -182,8 +183,8 @@ def digitize_image(
     import cv2
     import numpy as np
 
-    buf = np.frombuffer(data, np.uint8)
-    img = cv2.imdecode(buf, cv2.IMREAD_COLOR)
+    # Alpha-aware decode (CTO A15/N2) — rationale on _decode_image_bgr.
+    img = _decode_image_bgr(data)
     svg_mask = None
     if img is None:
         decoded = _decode_svg(data)  # vector path (v2 Part 25)

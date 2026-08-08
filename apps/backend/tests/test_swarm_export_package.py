@@ -150,8 +150,12 @@ def test_package_endpoint_streams_zip_for_every_format(fmt):
     )
     assert resp.status_code == 200, f"{fmt}: {resp.text}"
     assert resp.headers["content-type"] == "application/zip"
-    expected = f'attachment; filename="{safe_stem(design.name)}-package.zip"'
-    assert resp.headers["content-disposition"] == expected
+    # RFC 5987 since CTO A15/N4: ASCII fallback + filename* with the real
+    # UTF-8 name, so non-Latin design names download instead of 500ing.
+    from app.services.package import content_disposition
+
+    stem = (design.name or "design").rsplit(".", 1)[0]
+    assert resp.headers["content-disposition"] == content_disposition(f"{stem}-package.zip")
     z = zipfile.ZipFile(io.BytesIO(resp.content))
     assert set(z.namelist()) == _expected_members(design, fmt)
 

@@ -58,6 +58,19 @@ async def login(email: str, password: str) -> dict | None:
         return r.json() if r.status_code == 200 else None
 
 
+async def refresh(refresh_token: str) -> dict | None:
+    """Refresh grant (CTO A15/N5). GoTrue access tokens live ~3600s; without
+    this the frontend had no way to renew one, so cloud save silently broke an
+    hour into every session. Returns the new token/session dict or None."""
+    async with httpx.AsyncClient(timeout=15) as client:
+        r = await client.post(
+            f"{_auth()}/token?grant_type=refresh_token",
+            headers=_anon_headers(),
+            json={"refresh_token": refresh_token},
+        )
+        return r.json() if r.status_code == 200 else None
+
+
 async def signup(email: str, password: str) -> tuple[dict | None, str | None]:
     """Create a confirmed user (admin) then log in. Returns (session, error)."""
     async with httpx.AsyncClient(timeout=20) as client:

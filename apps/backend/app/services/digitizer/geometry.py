@@ -647,3 +647,30 @@ def _split_mask_by_line(mask, a_px, b_px):
     pos = (inside & (cross >= 0)).astype(np.uint8) * 255
     neg = (inside & (cross < 0)).astype(np.uint8) * 255
     return pos, neg
+
+
+def _decode_image_bgr(data: bytes):
+    """Decode raster bytes to 3-channel BGR, or None if not a raster.
+
+    IMREAD_UNCHANGED, not IMREAD_COLOR (CTO A15/N2): COLOR strips alpha, so a
+    transparent background decodes as BLACK — and the corner-average
+    background heuristic then classifies the artwork's own black linework as
+    background and deletes it. Reproduced on an RGBA logo: the black ring
+    vanished, only the red square survived. Transparent PNGs with dark
+    outlines are the single most common real digitizing input, so the alpha
+    plane is composited over white — transparent pixels become background the
+    heuristic reads correctly, and dark ink stays ink.
+    """
+    import cv2
+    import numpy as np
+
+    img = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_UNCHANGED)
+    if img is None:
+        return None
+    if img.ndim == 3 and img.shape[2] == 4:
+        alpha = img[:, :, 3:4].astype(np.float32) / 255.0
+        img = (img[:, :, :3].astype(np.float32) * alpha
+               + 255.0 * (1.0 - alpha)).astype(np.uint8)
+    elif img.ndim == 2:  # grayscale → 3-channel
+        img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+    return img

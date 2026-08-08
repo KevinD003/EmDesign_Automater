@@ -59,8 +59,13 @@ export function Toolbar() {
   const fileRef = useRef<HTMLInputElement>(null);
   const imgRef = useRef<HTMLInputElement>(null);
   // Which long call is in flight (null = idle). Digitize/lettering get a staged
-  // progress overlay; everything else is a 'quick' op that only disables controls.
-  const [busyOp, setBusyOp] = useState<null | BusyOp>(null);
+  // progress overlay; everything else is a 'quick' op that only disables
+  // controls. ONE flag in the store since CTO A15/N6, shared with the
+  // properties panel's Apply and the stitch editor, so two mutations can
+  // never interleave their responses.
+  const busyOp = useDesignStore((s) => s.busyOp) as BusyOp | null;
+  const beginOp = useDesignStore((s) => s.beginOp);
+  const endOp = useDesignStore((s) => s.endOp);
   const busy = busyOp !== null;
   const [pendingImage, setPendingImage] = useState<File | null>(null);
   // The image-prep step (v2 Part 36) sits between picking a file and the
@@ -89,13 +94,13 @@ export function Toolbar() {
   useEffect(refreshSaved, []);
 
   const run = async (fn: () => Promise<void>, op: BusyOp = 'quick') => {
-    setBusyOp(op);
+    if (!beginOp(op)) return; // something else is mid-flight — refuse to interleave
     try {
       await fn();
     } catch (ex) {
       toastError(ex instanceof Error ? ex.message : 'Something went wrong');
     } finally {
-      setBusyOp(null);
+      endOp();
     }
   };
 
@@ -146,7 +151,11 @@ export function Toolbar() {
   const onOptimize = () =>
     design &&
     run(async () => {
+      // Stale-response guard (N6): if another design was loaded while the
+      // server worked, this result belongs to the OLD design — drop it.
+      const epoch = useDesignStore.getState().epoch;
       const result = await api.optimizePath(design);
+      if (useDesignStore.getState().epoch !== epoch) return;
       setOptimizeReport(result.report);
       if (result.report.reordered) {
         replaceDesign(result.design); // keeps undo history

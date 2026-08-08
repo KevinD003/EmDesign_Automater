@@ -170,3 +170,29 @@ describe('designStore', () => {
     expect(s.selectedStop).toBe(1);
   });
 });
+
+describe('global busy flag + epoch (CTO A15/N6)', () => {
+  it('beginOp claims exclusively; endOp releases', () => {
+    useDesignStore.setState({ busyOp: null });
+    const s = useDesignStore.getState();
+    expect(s.beginOp('rebuild')).toBe(true);
+    // a second mutation must be refused while the first is mid-flight
+    expect(useDesignStore.getState().beginOp('optimize')).toBe(false);
+    expect(useDesignStore.getState().busyOp).toBe('rebuild');
+    useDesignStore.getState().endOp();
+    expect(useDesignStore.getState().busyOp).toBeNull();
+    expect(useDesignStore.getState().beginOp('optimize')).toBe(true);
+    useDesignStore.getState().endOp();
+  });
+
+  it('loading a design bumps the epoch; in-place replace does not', () => {
+    const d = { name: 'a', widthMm: 1, heightMm: 1, stitchCount: 0, version: 1,
+                status: 'digitized', objects: [], colorStops: [], stitches: [] } as never;
+    const e0 = useDesignStore.getState().epoch;
+    useDesignStore.getState().setDesign(d);
+    const e1 = useDesignStore.getState().epoch;
+    expect(e1).toBe(e0 + 1); // a different design: stale async responses must drop
+    useDesignStore.getState().replaceDesign(d);
+    expect(useDesignStore.getState().epoch).toBe(e1); // same design, new stitches: keep
+  });
+});

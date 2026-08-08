@@ -448,6 +448,25 @@ def test_rebuild_raster_is_dst_resolution():
     assert off_coarse_grid > 0, "every coordinate sits on the coarse 0.25mm grid"
 
 
+# ── A15/N2: transparent PNGs keep their dark artwork ─────────────────────────
+
+
+def test_transparent_png_keeps_black_artwork():
+    # N2: IMREAD_COLOR strips alpha, transparent pixels decode as BLACK, and
+    # the corner-average background heuristic then deletes the artwork's own
+    # black linework. Reproduced pre-fix: this ring vanished entirely.
+    img = np.zeros((500, 500, 4), np.uint8)  # fully transparent canvas
+    cv2.circle(img, (160, 250), 100, (10, 10, 10, 255), 24, cv2.LINE_AA)
+    cv2.rectangle(img, (300, 160), (440, 320), (40, 40, 200, 255), -1)
+    ok, buf = cv2.imencode(".png", img)
+    assert ok
+    cv2.setRNGSeed(1234)
+    d = digitize_image(buf.tobytes(), "cotton", "100x100", 3)
+    hexes = {c.hex for c in d.color_stops}
+    assert any(h <= "#404040" for h in hexes), f"black ring lost: {hexes}"
+    assert len(d.objects) >= 2 and d.stitch_count > 500
+
+
 # ── P6: fidelity test — rebuild of an unedited design ────────────────────────
 
 

@@ -93,4 +93,20 @@ describe('reorderColorStop', () => {
     expect(reorderColorStop({ ...d, stitches: [S(0, 0), S(1, 1)] }, 2, 'up').colorStops).toHaveLength(3);
     expect(reorderColorStop({ ...d, stitches: [S(0, 0), S(1, 1)] }, 2, 'up').stitches).toHaveLength(2);
   });
+
+  it('remaps object colorStop bindings across the swap (CTO A15/N1)', () => {
+    // Pre-N1 the objects kept their old numbers, so after ▲/▼ every object
+    // pointed at the OTHER color's stop; the next rebuild sewed each region
+    // in the other region's thread and Save persisted the corruption.
+    const obj = (seq: number, stop: number): Design['objects'][number] =>
+      ({ sequenceOrder: seq, colorStop: stop, name: `o${seq}` }) as Design['objects'][number];
+    const d = { ...design3(), objects: [obj(1, 1), obj(2, 2), obj(3, 3)] };
+    const r = reorderColorStop(d, 2, 'up');
+    // Green is now stop 1, Red is stop 2; the green object must follow it.
+    const byName = Object.fromEntries(r.objects.map((o) => [o.name, o.colorStop]));
+    expect(byName).toEqual({ o1: 2, o2: 1, o3: 3 });
+    // Round trip restores the original bindings.
+    const back = reorderColorStop(r, 1, 'down');
+    expect(back.objects.map((o) => o.colorStop)).toEqual([1, 2, 3]);
+  });
 });

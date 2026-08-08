@@ -34,6 +34,32 @@ def safe_stem(name: str | None) -> str:
 _stem = safe_stem  # backwards-compat alias for existing internal/router callers
 
 
+def content_disposition(filename: str) -> str:
+    """RFC 5987/6266 Content-Disposition for a possibly non-Latin filename
+    (CTO A15/N4). Starlette encodes headers as Latin-1, so a raw design name
+    like ロゴ or logo😀 raised UnicodeEncodeError before the response could
+    stream — an HTTP 500 on every download for any non-Latin name, and names
+    come straight from the uploaded file. The plain `filename` carries an
+    ASCII fallback (safe_stem), `filename*` carries the real UTF-8 name
+    percent-encoded; browsers that understand RFC 5987 use the latter.
+    """
+    from urllib.parse import quote
+
+    stem, dot, ext = filename.rpartition(".")
+    # Sanitize the stem directly — NOT via safe_stem, whose own rsplit would
+    # re-split at any dot still inside the stem (a name carrying ".." lost
+    # everything after it, measured: 'bad name!/..\"x' → 'bad_name'). And \w
+    # is UNICODE \w — it keeps Japanese/emoji word characters — so the
+    # fallback is then forced to ASCII or the header still breaks.
+    clean = re.sub(r"[^\w\-]+", "_", stem or filename).strip("_")
+    ascii_name = f"{clean}{dot}{ext}" if dot else clean
+    ascii_name = ascii_name.encode("ascii", "ignore").decode().lstrip("-_") or "design"
+    if ascii_name.startswith("."):
+        ascii_name = "design" + ascii_name
+    utf8_name = quote(filename, safe="")
+    return f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{utf8_name}"
+
+
 def _cmd(s) -> str:
     c = s.command
     return enum_str(c)

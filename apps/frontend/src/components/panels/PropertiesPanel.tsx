@@ -38,7 +38,12 @@ export function PropertiesPanel() {
   const [underlay, setUnderlay] = useState('NONE');
   const [pull, setPull] = useState('');
   const [stype, setStype] = useState('');
-  const [busy, setBusy] = useState(false);
+  // Shared global busy flag (CTO A15/N6): Apply cannot interleave with
+  // Optimize/Open/Load — each used to keep a private flag and their
+  // responses could race.
+  const busy = useDesignStore((s) => s.busyOp) !== null;
+  const beginOp = useDesignStore((s) => s.beginOp);
+  const endOp = useDesignStore((s) => s.endOp);
   const [err, setErr] = useState<string | null>(null);
   useEffect(() => {
     setDensity(obj ? String(obj.density) : '');
@@ -76,13 +81,12 @@ export function PropertiesPanel() {
       setErr('Density must be > 0; angle must be a number.');
       return;
     }
-    setBusy(true);
+    if (!beginOp('rebuild')) return; // another mutation is mid-flight
     setErr(null);
     try {
       const p = Number(pull);
       if (!Number.isFinite(p) || p < 0 || p > 2) {
         setErr('Pull compensation must be 0–2 mm.');
-        setBusy(false);
         return;
       }
       const patched = {
@@ -100,13 +104,18 @@ export function PropertiesPanel() {
             : o,
         ),
       };
-      replaceDesign(await api.rebuild(patched)); // history recorded; undo restores pre-rebuild
+      // Stale-response guard (N6): a rebuild that lands after the user
+      // opened another design belongs to the OLD design — drop it.
+      const epoch = useDesignStore.getState().epoch;
+      const rebuilt = await api.rebuild(patched);
+      if (useDesignStore.getState().epoch !== epoch) return;
+      replaceDesign(rebuilt); // history recorded; undo restores pre-rebuild
     } catch (ex) {
       const msg = ex instanceof Error ? ex.message : 'Rebuild failed';
       setErr(msg); // inline error stays next to the form fields
       toastError(msg);
     } finally {
-      setBusy(false);
+      endOp();
     }
   };
 

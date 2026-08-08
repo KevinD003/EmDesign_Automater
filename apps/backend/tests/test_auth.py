@@ -40,3 +40,38 @@ def test_designs_require_auth_when_supabase_enabled(monkeypatch):
     monkeypatch.setattr(supabase_auth, "verify_token", _no_user)
     assert client.get("/api/designs").status_code == 401  # missing header
     assert client.get("/api/designs", headers={"Authorization": "Bearer bad"}).status_code == 401
+
+
+# ── CTO A15/N5: refresh grant ─────────────────────────────────────────────────
+
+
+def test_refresh_returns_a_new_session(monkeypatch):
+    monkeypatch.setattr(supabase_auth, "is_enabled", lambda: True)
+
+    async def _ok(tok):
+        assert tok == "old-refresh"
+        return {"access_token": "new-access", "refresh_token": "new-refresh",
+                "user": {"id": "u1", "email": "a@b.co"}}
+
+    monkeypatch.setattr(supabase_auth, "refresh", _ok)
+    r = client.post("/api/auth/refresh", json={"refreshToken": "old-refresh"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["accessToken"] == "new-access"
+    assert body["refreshToken"] == "new-refresh"
+    assert body["userId"] == "u1"
+
+
+def test_refresh_401_on_a_dead_token(monkeypatch):
+    monkeypatch.setattr(supabase_auth, "is_enabled", lambda: True)
+
+    async def _no(tok):
+        return None
+
+    monkeypatch.setattr(supabase_auth, "refresh", _no)
+    assert client.post("/api/auth/refresh", json={"refreshToken": "revoked"}).status_code == 401
+
+
+def test_refresh_503_when_auth_disabled(monkeypatch):
+    monkeypatch.setattr(supabase_auth, "is_enabled", lambda: False)
+    assert client.post("/api/auth/refresh", json={"refreshToken": "x"}).status_code == 503

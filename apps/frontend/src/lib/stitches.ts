@@ -119,5 +119,21 @@ export function reorderColorStop(design: Design, stopNumber: number, direction: 
   [swapped[idx], swapped[target]] = [swapped[target], swapped[idx]];
   const newStops = swapped.map((cs, i) => ({ ...cs, stopNumber: i + 1 }));
 
-  return { ...design, stitches: newStitches, colorStops: newStops };
+  // Remap every object's colorStop across the swap (CTO A15/N1). The stops
+  // are renumbered by position, so after a swap the same thread carries the
+  // OTHER number — objects that kept their old reference pointed at the other
+  // color's stop, looked fine until the next rebuild/Optimize, then sewed
+  // each region in the other region's thread; Save/export persisted the
+  // corruption.
+  const a = design.colorStops[idx].stopNumber;
+  const b = design.colorStops[target].stopNumber;
+  const newObjects = design.objects.map((o) =>
+    o.colorStop === a
+      ? { ...o, colorStop: b }
+      : o.colorStop === b
+        ? { ...o, colorStop: a }
+        : o,
+  );
+
+  return { ...design, stitches: newStitches, colorStops: newStops, objects: newObjects };
 }

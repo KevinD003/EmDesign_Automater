@@ -79,6 +79,24 @@ async def login(creds: Credentials) -> Session:
     return _to_session(session)
 
 
+class RefreshRequest(CamelModel):
+    refresh_token: str
+
+
+@router.post("/refresh", response_model=Session)
+async def refresh(body: RefreshRequest) -> Session:
+    """Exchange a refresh token for a fresh session (CTO A15/N5).
+
+    401 on a used/revoked/expired refresh token — the client clears its
+    session and prompts re-login rather than silently failing saves.
+    """
+    _require_enabled()
+    raw = await supabase_auth.refresh(body.refresh_token)
+    if raw is None:
+        raise HTTPException(status_code=401, detail="refresh token invalid or expired")
+    return _to_session(raw)
+
+
 @router.get("/me")
 async def me(user_id: str = Depends(current_user)) -> dict[str, str]:
     """Echo the authenticated user id (401 if the token is missing/invalid)."""

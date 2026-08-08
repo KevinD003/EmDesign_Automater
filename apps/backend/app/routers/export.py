@@ -74,11 +74,12 @@ def export_package(
         raise HTTPException(status_code=415, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Package build failed: {exc}") from exc
-    stem = package_svc.safe_stem(design.name)
+    stem = (design.name or "design").rsplit(".", 1)[0]
     return StreamingResponse(
         io.BytesIO(data),
         media_type="application/zip",
-        headers={"Content-Disposition": f'attachment; filename="{stem}-package.zip"'},
+        # RFC 5987 (CTO A15/N4): non-Latin names must not 500 the download.
+        headers={"Content-Disposition": package_svc.content_disposition(f"{stem}-package.zip")},
     )
 
 _MAX_STITCH_MM = 12.7  # machine limit (0.5")
@@ -116,12 +117,13 @@ def export_design(
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Export failed: {exc}") from exc
 
-    # design.name is arbitrary user input; safe_stem strips header-breaking chars.
-    filename = f"{package_svc.safe_stem(design.name)}.{fmt}"
+    # design.name is arbitrary user input — RFC 5987 keeps the real name in
+    # filename* and an ASCII fallback in filename (CTO A15/N4).
+    stem = (design.name or "design").rsplit(".", 1)[0]
     return StreamingResponse(
         io.BytesIO(data),
         media_type="application/octet-stream",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={"Content-Disposition": package_svc.content_disposition(f"{stem}.{fmt}")},
     )
 
 

@@ -20,7 +20,10 @@ export function StitchEditor() {
   const [rotate, setRotate] = useState(0);
   const [notes, setNotes] = useState<string[]>([]);
   const [err, setErr] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  // Shared global busy flag (CTO A15/N6) — see designStore.busyOp.
+  const busy = useDesignStore((s) => s.busyOp) !== null;
+  const beginOp = useDesignStore((s) => s.beginOp);
+  const endOp = useDesignStore((s) => s.endOp);
 
   if (!design) {
     return (
@@ -33,11 +36,15 @@ export function StitchEditor() {
 
   const total = design.stitches.length;
   const run = async (ops: StitchOp[]) => {
-    setBusy(true);
+    if (!beginOp('stitch-edit')) return; // another mutation is mid-flight
     setErr(null);
     setNotes([]);
     try {
+      // Stale-response guard (N6): drop the result if another design was
+      // loaded while the server worked.
+      const epoch = useDesignStore.getState().epoch;
       const res = await api.editStitches(design, ops);
+      if (useDesignStore.getState().epoch !== epoch) return;
       setDesign(res.design);
       setNotes(res.notes);
       setEnd(Math.min(end, res.design.stitches.length - 1));
@@ -45,7 +52,7 @@ export function StitchEditor() {
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
-      setBusy(false);
+      endOp();
     }
   };
 

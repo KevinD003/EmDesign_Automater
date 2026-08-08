@@ -143,6 +143,7 @@ from app.services.digitizer.fills import (
 from app.services.digitizer.geometry import (
     _border_color,
     _chaikin_closed,
+    _decode_image_bgr,
     _decode_svg,
     _default_pull,
     _dilate_pull,
@@ -380,6 +381,7 @@ __all__ = [
     "_column_grid",
     "_contour_fill",
     "_dark_linework",
+    "_decode_image_bgr",
     "_decode_svg",
     "_default_pull",
     "_dilate_pull",

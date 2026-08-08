@@ -13,6 +13,19 @@ export const MANUAL_TOOLS = ['run', 'satin', 'fill'] as const;
 
 interface DesignState {
   design: Design | null;
+  /** Monotonic design identity (CTO A15/N6): bumped whenever a different
+   *  design is LOADED (setDesign). Async flows capture it before awaiting and
+   *  drop responses whose epoch no longer matches — a rebuild that lands after
+   *  the user opened another file must not clobber the new design. */
+  epoch: number;
+  /** The one in-flight server mutation ('rebuild' | 'optimize' | 'digitize' |
+   *  ...), or null. ONE flag across Apply/Optimize/Open/Load (N6): before it,
+   *  each component kept a private busy state and two mutations could
+   *  interleave, racing their replaceDesign calls. */
+  busyOp: string | null;
+  /** Claim the busy flag; false = something else is already running. */
+  beginOp: (op: string) => boolean;
+  endOp: () => void;
   /** Currently selected color stop (ColorStop.stopNumber), or null. */
   selectedStop: number | null;
   /** Currently selected object (DesignObject.sequenceOrder), or null. Digitized designs only. */
@@ -49,8 +62,16 @@ interface DesignState {
 const push = (past: Design[], d: Design) => [...past, d].slice(-HISTORY_LIMIT);
 
 /** Current-design state + undo/redo. Populated by /api/files/parse or /api/digitize. */
-export const useDesignStore = create<DesignState>((set) => ({
+export const useDesignStore = create<DesignState>((set, get) => ({
   design: null,
+  epoch: 0,
+  busyOp: null,
+  beginOp: (op) => {
+    if (get().busyOp) return false;
+    set({ busyOp: op });
+    return true;
+  },
+  endOp: () => set({ busyOp: null }),
   selectedStop: null,
   selectedObject: null,
   playHead: null,
@@ -63,8 +84,9 @@ export const useDesignStore = create<DesignState>((set) => ({
     // Also drop any in-progress manual draw — a stale tool/draft must never leak onto a
     // freshly loaded design (Open/Load/Digitize/CloudOpen all route through here).
     // The quality report belongs to the outgoing design, so it goes too.
-    set({
+    set((state) => ({
       design,
+      epoch: state.epoch + 1,
       playHead: null,
       selectedStop: null,
       selectedObject: null,
@@ -73,7 +95,7 @@ export const useDesignStore = create<DesignState>((set) => ({
       quality: null,
       past: [],
       future: [],
-    }),
+    })),
   setDesignId: (id) => set((state) => (state.design ? { design: { ...state.design, id } } : {})),
   replaceDesign: (design) =>
     set((state) => (state.design ? { design, past: push(state.past, state.design), future: [] } : { design })),

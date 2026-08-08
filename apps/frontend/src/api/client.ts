@@ -34,6 +34,23 @@ function authHeaders(): Record<string, string> {
   return authToken ? { Authorization: `Bearer ${authToken}` } : {};
 }
 
+/**
+ * 401 recovery hook (CTO A15/N5). GoTrue access tokens live ~an hour; before
+ * this nothing handled a 401, so cloud save silently broke mid-session while
+ * the UI kept showing "signed in". The auth store registers a handler that
+ * tries the refresh grant once and clears the session on failure; request()
+ * retries the original call exactly once with the renewed token.
+ */
+let unauthorizedHandler: (() => Promise<string | null>) | null = null;
+export function setUnauthorizedHandler(fn: (() => Promise<string | null>) | null): void {
+  unauthorizedHandler = fn;
+}
+
+async function recoverAuth(): Promise<string | null> {
+  if (!unauthorizedHandler || !authToken) return null; // anonymous 401s are real
+  return unauthorizedHandler();
+}
+
 /** Extract a useful message from a JSON error body ({detail: ...}) when present. */
 async function errorMessage(res: Response, path: string): Promise<string> {
   try {
@@ -45,11 +62,15 @@ async function errorMessage(res: Response, path: string): Promise<string> {
   return `${res.status} ${res.statusText} — ${path}`;
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function request<T>(path: string, init?: RequestInit, retried = false): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     headers: { 'Content-Type': 'application/json', ...authHeaders(), ...(init?.headers ?? {}) },
     ...init,
   });
+  if (res.status === 401 && !retried) {
+    const renewed = await recoverAuth();
+    if (renewed) return request<T>(path, init, true);
+  }
   if (!res.ok) {
     throw new Error(await errorMessage(res, path));
   }
@@ -135,6 +156,10 @@ export const api = {
     request<Session>('/api/auth/signup', { method: 'POST', body: JSON.stringify({ email, password }) }),
   login: (email: string, password: string) =>
     request<Session>('/api/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
+
+  /** Exchange a refresh token for a fresh session (CTO A15/N5). */
+  refresh: (refreshToken: string) =>
+    request<Session>('/api/auth/refresh', { method: 'POST', body: JSON.stringify({ refreshToken }) }),
 
   // ── Cloud design persistence (authenticated, per-user) ──
   listDesigns: () => request<Design[]>('/api/designs'),
