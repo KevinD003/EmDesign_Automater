@@ -894,7 +894,17 @@ def digitize_image(
             # needle-in-one-hole reversal the underlay dead-ends had in Part 11
             # (measured on fixture 04: travel out at x=45.11, back at 45.07,
             # 0.18mm apart at the turn). Same defect, same repair.
-            pts = _route_travel(pts, region, TRAVEL_STEP_MM / mm_per_px)
+            # Border satin and pull comp land stitches up to the border
+            # half-width OUTSIDE the region, so with the default 2px pad 77 of
+            # the ring probe's 109 jump connections had "outside" endpoints
+            # and were never routed — they shipped as trimmed jumps straight
+            # across the counter (CTO review C2/A3). pad_px lets ENDPOINTS
+            # overhang by that much; path interiors still must stay inside
+            # the tight region (see _route_travel on why the whole-mask
+            # dilation version bridged the gaps between letters).
+            route_pad = max(2, round((FILL_BORDER_MM / 2 + pull_mm) / mm_per_px))
+            pts = _route_travel(pts, region, TRAVEL_STEP_MM / mm_per_px,
+                                pad_px=route_pad)
             if constants._PENETRATION_FLOOR_MM:
                 pts = _drop_floor_reversals(
                     pts, constants._PENETRATION_FLOOR_MM / mm_per_px, MAX_STITCH_MM / mm_per_px,
@@ -1383,8 +1393,12 @@ def rebuild_design(design: Design) -> Design:
             pts = _coalesce_short(pts, MIN_STITCH_MM / mm_per_px)
             # Same travel routing as the digitizer (v2 Part 25): without it a
             # rebuilt donut carried 63 hole-crossing trims that the fresh
-            # digitize of the same shape had already routed away.
-            pts = _route_travel(pts, mask, TRAVEL_STEP_MM / mm_per_px)
+            # digitize of the same shape had already routed away. Endpoint pad
+            # by pull comp for the same reason the digitizer pads by
+            # border+pull: the sewn top layer overhangs `mask` (CTO A3).
+            route_pad = max(2, round(float(o.pull_compensation or 0.0) / mm_per_px))
+            pts = _route_travel(pts, mask, TRAVEL_STEP_MM / mm_per_px,
+                                pad_px=route_pad)
             if constants._PENETRATION_FLOOR_MM:
                 pts = _drop_floor_reversals(
                     pts, constants._PENETRATION_FLOOR_MM / mm_per_px, MAX_STITCH_MM / mm_per_px,

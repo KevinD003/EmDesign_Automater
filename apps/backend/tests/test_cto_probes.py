@@ -103,17 +103,38 @@ def _satin_bar(stitch_type: StitchType, angle: float) -> Design:
 # ── P1: ring test — zero crossings of the open counter ───────────────────────
 
 
-@pytest.mark.xfail(strict=True,
-                   reason="A3 open: 92 segments cross the counter at baseline")
 def test_probe1_ring_has_zero_counter_crossings(ring):
+    # A3 (2026-08-08): baseline was 92 trimmed jumps straight across the
+    # counter. Two routing fixes took it to zero — adaptive detour resampling
+    # on concave (hole) boundaries, and a routing mask padded by the border
+    # overhang + pull comp so border-phase connections are routable at all.
     assert _counter_crossings(ring) == 0
 
 
 # ── P2: lock test — tie-off before every trim, tie-in at every start ─────────
 
 
-def test_probe2_every_thread_end_is_locked_in_the_exported_dst(ring):
-    sts = read_embroidery(write_embroidery(ring, "dst"), "dst").stitches
+@pytest.fixture(scope="module")
+def two_color() -> Design:
+    """Two separated SAME-colour blobs plus a third colour.
+
+    Same-colour separation is what forces explicit TRIMs (a colour change
+    carries an implicit machine trim and needs none). The ring stopped being
+    usable for the lock probe the moment A3 landed — with every connection
+    routed inside the body it sews with ZERO trims.
+    """
+    img = np.full((500, 900, 3), 255, np.uint8)
+    cv2.circle(img, (180, 250), 120, (40, 60, 160), -1, cv2.LINE_AA)
+    cv2.circle(img, (720, 250), 120, (40, 60, 160), -1, cv2.LINE_AA)
+    cv2.circle(img, (450, 250), 90, (150, 60, 40), -1, cv2.LINE_AA)
+    ok, buf = cv2.imencode(".png", img)
+    assert ok
+    cv2.setRNGSeed(1234)
+    return digitize_image(buf.tobytes(), "cotton", "100x100", 3)
+
+
+def test_probe2_every_thread_end_is_locked_in_the_exported_dst(two_color):
+    sts = read_embroidery(write_embroidery(two_color, "dst"), "dst").stitches
 
     trim_idx = [i for i, s in enumerate(sts) if str(s.command) == "TRIM"]
     assert trim_idx, "probe needs at least one trim"

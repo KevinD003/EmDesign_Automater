@@ -67,7 +67,8 @@ def _merge_adjacent_same_hex(stitches, color_stops, objects) -> int:
     return merged
 
 
-def _route_travel(pts, region, step_px: float, dilate_px: int = 2):
+def _route_travel(pts, region, step_px: float, dilate_px: int = 2,
+                  pad_px: int | None = None):
     """Replace needle-up jumps whose path stays inside the object's own region
     with running stitches at TRAVEL_STEP_MM (v2 Part 25).
 
@@ -79,6 +80,16 @@ def _route_travel(pts, region, step_px: float, dilate_px: int = 2):
     The region is dilated a couple of pixels before testing because
     boundary-paced satin ends sit ON the boundary, and a move between two
     branch tips legitimately hugs the edge.
+
+    ``pad_px`` (CTO A3): border satin and pull comp land stitches up to the
+    border half-width OUTSIDE the region, so their connections' ENDPOINTS may
+    legitimately overhang by that much — but only the endpoints. The first
+    version of this fix dilated the whole test mask by the pad, and travel
+    promptly bridged the open gaps between letters (two letters 1.6mm apart
+    merged into one blob, and a stitched run crossed bare fabric — seen on the
+    badge fixture's HARBOR CLUB). Endpoints are therefore tested against the
+    padded mask, while every PATH INTERIOR — straight or detour — must stay
+    within the tight region, whose coverage is real.
     """
     import math
 
@@ -88,15 +99,18 @@ def _route_travel(pts, region, step_px: float, dilate_px: int = 2):
     if len(pts) < 2 or region is None:
         return pts
     mask = cv2.dilate(region, np.ones((2 * dilate_px + 1,) * 2, np.uint8)) > 0
+    end_mask = mask if not pad_px or pad_px <= dilate_px else (
+        cv2.dilate(region, np.ones((2 * pad_px + 1,) * 2, np.uint8)) > 0)
     h, w = mask.shape
 
-    def inside(ax, ay, bx, by, length):
+    def inside(ax, ay, bx, by, length, m=None):
+        m = mask if m is None else m
         n = max(2, int(length))  # ~1px sampling
         for t in range(n + 1):
             x = ax + (bx - ax) * t / n
             y = ay + (by - ay) * t / n
             iy, ix = round(y), round(x)
-            if not (0 <= iy < h and 0 <= ix < w) or not mask[iy, ix]:
+            if not (0 <= iy < h and 0 <= ix < w) or not m[iy, ix]:
                 return False
         return True
 
@@ -134,17 +148,36 @@ def _route_travel(pts, region, step_px: float, dilate_px: int = 2):
         fwd = (ib - ia) % n
         idxs = ([(ia + s) % n for s in range(fwd + 1)] if fwd <= n - fwd
                 else [(ia - s) % n for s in range((n - fwd) + 1)])
-        path = [(float(poly[i][0]), float(poly[i][1])) for i in idxs]
-        # Resample to the travel pitch; the raw contour is one point per pixel.
-        keep = [path[0]]
-        acc = 0.0
-        for p, q in pairwise(path):
-            acc += math.hypot(q[0] - p[0], q[1] - p[1])
-            if acc >= step_px:
-                keep.append(q)
-                acc = 0.0
-        keep.append(path[-1])
-        return keep
+        # Full-resolution path (one point per pixel); the caller resamples it
+        # to the travel pitch with the inside-check in the loop.
+        return [(float(poly[i][0]), float(poly[i][1])) for i in idxs]
+
+    def resample_inside(path, pitch):
+        """Resample a boundary path to ~pitch, refining where chords escape.
+
+        A chord across a CONCAVE stretch of boundary — the rim of a hole —
+        cuts into the open area even though every raw point is inside; on a
+        plain ring that rejected every detour, so all 92 cross-counter
+        underlay connections stayed as trimmed jumps (CTO review C2/A3,
+        measured). Halving the pitch until every chord passes keeps the
+        travel pitch where the boundary allows it and only densifies the
+        concave stretches; below 2px the boundary is genuinely unusable and
+        the caller keeps the jump.
+        """
+        while pitch >= 2.0:
+            keep = [path[0]]
+            acc = 0.0
+            for p, q in pairwise(path):
+                acc += math.hypot(q[0] - p[0], q[1] - p[1])
+                if acc >= pitch:
+                    keep.append(q)
+                    acc = 0.0
+            keep.append(path[-1])
+            if all(inside(p[0], p[1], q[0], q[1], math.hypot(q[0] - p[0], q[1] - p[1]))
+                   for p, q in pairwise(keep)):
+                return keep
+            pitch /= 2.0
+        return None
 
     out = [pts[0]]
     for prev, cur in pairwise(pts):
@@ -163,16 +196,24 @@ def _route_travel(pts, region, step_px: float, dilate_px: int = 2):
                 out.append((ax + (bx - ax) * j / k, ay + (by - ay) * j / k, False))
             out.append((bx, by, False))
             continue
-        via = detour(ax, ay, bx, by)
-        if via is not None and all(
-            inside(p[0], p[1], q[0], q[1], math.hypot(q[0] - p[0], q[1] - p[1]))
-            for p, q in pairwise([(ax, ay), *via, (bx, by)])
-        ):
-            for p in via:
-                out.append((p[0], p[1], False))
-            out.append((bx, by, False))
-        else:
-            out.append(cur)  # genuinely cross-fabric: left for _lock_stream
+        raw = detour(ax, ay, bx, by)
+        via = resample_inside(raw, step_px) if raw is not None else None
+        # Entry/exit chords hop from the (possibly overhanging) endpoints onto
+        # the tight boundary: tested against the endpoint mask and length-
+        # capped to the overhang scale, so a "nearest" boundary point that is
+        # actually far away can never become a long exposed run.
+        max_hop = max(3.0 * (pad_px or dilate_px), 3.0 * dilate_px)
+        if via is not None:
+            d_in = math.dist((ax, ay), via[0])
+            d_out = math.dist(via[-1], (bx, by))
+            if (d_in <= max_hop and d_out <= max_hop
+                    and inside(ax, ay, via[0][0], via[0][1], d_in, end_mask)
+                    and inside(via[-1][0], via[-1][1], bx, by, d_out, end_mask)):
+                for p in via:
+                    out.append((p[0], p[1], False))
+                out.append((bx, by, False))
+                continue
+        out.append(cur)  # genuinely cross-fabric: left for _lock_stream
     return out
 
 
