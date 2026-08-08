@@ -9,7 +9,7 @@ Built from [`AI-Embroidery-Software-Prompt.md`](./AI-Embroidery-Software-Prompt.
 
 ## Quickstart
 
-Prereqs: Node 18+, Python 3.11–3.14 (3.14 confirmed; reportlab/opencv need wheels — use 3.12 if a build fails).
+Prereqs: Node 18+, **Python 3.11** (the version CI pins and the stream locks/visual baselines were captured on — see `.github/workflows/ci.yml`; 3.12+ runs but produces float drift against the pinned instruments).
 
 ```bash
 # 1. Frontend deps (npm workspaces)
@@ -72,7 +72,7 @@ Three ways in, full editing, every way out:
 | Layer | Language | Tech |
 |---|---|---|
 | Frontend | **TypeScript** | React + Vite · Konva (2D canvas) · Three.js (TrueView 3D) · Zustand · TanStack Query · vitest |
-| Backend | **Python 3.14** | FastAPI + Uvicorn · Pydantic v2 · **pyembroidery** (45+ formats) · **OpenCV/NumPy/Pillow** (digitize) · **ReportLab** (PDF) · pytest |
+| Backend | **Python 3.11** | FastAPI + Uvicorn · Pydantic v2 · **pyembroidery** (45+ formats) · **OpenCV/NumPy/Pillow** (digitize) · **ReportLab** (PDF) · pytest |
 | Data | PostgreSQL | Supabase schema in [`db/schema.sql`](./db/schema.sql) — applied to a live project; keyless in-memory fallback for local dev |
 
 > All UI is TypeScript/TSX. The single `apps/frontend/index.html` is a ~12-line Vite bootstrap that mounts React.
@@ -93,8 +93,8 @@ The data model is mirrored in two files — **edit both together**:
 ## Test
 
 ```bash
-cd apps/backend && python -m pytest tests -q     # 83 passed
-npm test -w apps/frontend                         # vitest 57 passed
+cd apps/backend && python -m pytest tests -q     # 1,000+ passed (see STATUS.md changelog for the current count)
+npm test -w apps/frontend                         # vitest 170+ passed
 npm run typecheck                                 # tsc --noEmit, clean
 ```
 
@@ -104,4 +104,4 @@ npm run typecheck                                 # tsc --noEmit, clean
 - [`docs/FAQ.md`](./docs/FAQ.md) — common questions and troubleshooting.
 - [`STATUS.md`](./STATUS.md) — the living project log (changelog, feature matrix, roadmap, risks).
 - [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) · [`docs/DATA-MODEL.md`](./docs/DATA-MODEL.md)
-- [`.github/workflows/ci.yml`](./.github/workflows/ci.yml) — CI config (written but **unverified** — no remote yet).
+- [`.github/workflows/ci.yml`](./.github/workflows/ci.yml) — CI, **green on GitHub** (runs backend pytest on pinned py3.11 numerics + frontend vitest/typecheck/build on every push).
