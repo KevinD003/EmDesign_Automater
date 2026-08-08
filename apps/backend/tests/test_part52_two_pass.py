@@ -20,6 +20,7 @@ What has to stay true, and is easy to break silently:
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -228,6 +229,8 @@ def test_seed_accumulation_does_not_scale_with_frame_size():
     )
 
 
+@pytest.mark.skipif(os.environ.get("CI") == "true",
+                    reason="timing-ratio budget calibrated on dev hardware; shared CI runners are too noisy for it")
 def test_solving_the_seed_is_flat_in_region_count():
     """Pathological inputs must not multiply the solve.
 

@@ -8,9 +8,12 @@ test_swarm_ops_preflight.py.
 from __future__ import annotations
 
 import importlib.util
+import os
 import socket
 import sys
 from pathlib import Path
+
+import pytest
 
 # scripts/ has no package __init__, so load preflight.py by file path.
 _PREFLIGHT_PATH = (
@@ -88,6 +91,8 @@ def test_check_disk_space_warns_between_thresholds():
     assert "recommended" in result.detail
 
 
+@pytest.mark.skipif(os.environ.get("CI") == "true",
+                    reason="preflight describes a developer machine; CI backend job has no node_modules")
 def test_check_frontend_deps_passes_here():
     # Both repo-root and apps/frontend node_modules exist in this checkout.
     result = preflight.check_frontend_deps()

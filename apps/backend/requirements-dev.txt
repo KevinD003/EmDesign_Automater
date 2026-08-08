@@ -6,3 +6,4 @@ reportlab>=4.2     # exercised by test_worksheet.py (worksheet PDF render)
 opencv-python-headless>=4.10  # exercised by test_digitizer.py (auto-digitize)
 numpy>=1.26
 pillow>=10.4
+ruff==0.16.*   # verify_lint_claim.py runs it; unpinned counts drift between releases

@@ -17,7 +17,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.12' # broad wheel coverage; matches local 3.11-3.12 band
+          python-version: '3.11' # MUST match the venv the stream locks/baselines were pinned on
           cache: pip
           cache-dependency-path: |
             apps/backend/requirements.txt
@@ -30,6 +30,10 @@ jobs:
       # stream-lock hashes and visual baselines were captured on the
       # with-rembg segmentation path, and most engine tests exercise cv2.
       - run: pip install -r requirements.txt -r requirements-dev.txt -r requirements-features.txt
+      # The stream-lock hashes and SSIM baselines are float-sensitive: CI must
+      # run the exact numerics stack they were captured on (fixture 07
+      # diverged by SSIM 0.0006 on a newer build before these pins).
+      - run: pip install 'opencv-python-headless==5.0.0' 'numpy==2.4.6'
       # rembg fetches its U2-Net weights (~170MB) on first use; cache them so
       # every run after the first is warm.
       - uses: actions/cache@v4

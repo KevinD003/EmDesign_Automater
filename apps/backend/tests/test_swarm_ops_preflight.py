@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import sys
 from pathlib import Path
+
+import pytest
 
 # scripts/ has no package __init__, so load preflight.py by file path.
 _PREFLIGHT_PATH = (
@@ -58,6 +61,8 @@ def test_check_backend_imports_fails_on_missing_module():
     assert "numpy" not in result.detail
 
 
+@pytest.mark.skipif(os.environ.get("CI") == "true",
+                    reason="preflight describes a developer machine; CI has no venv by design")
 def test_check_venv_never_worse_than_warn_here():
     # .venv exists in this repo, so the worst allowed outcome is WARN.
     result = preflight.check_venv()
