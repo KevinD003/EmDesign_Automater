@@ -15,6 +15,7 @@ import uuid
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import Field
+from starlette.concurrency import run_in_threadpool
 
 from app.deps import current_user
 from app.models.design import CamelModel, Design
@@ -88,7 +89,7 @@ async def list_designs(user_id: str = Depends(current_user)) -> list[Design]:
             return await supabase_store.list_designs(user_id)
         except httpx.HTTPError as exc:
             raise _storage_error(exc) from exc
-    return local_store.list_designs(user_id)
+    return await run_in_threadpool(local_store.list_designs, user_id)
 
 
 @router.get("/designs/stats", response_model=DesignStats)
@@ -99,7 +100,9 @@ async def stats(user_id: str = Depends(current_user)) -> DesignStats:
             return DesignStats.model_validate(await supabase_store.design_stats(user_id))
         except httpx.HTTPError as exc:
             raise _storage_error(exc) from exc
-    return DesignStats.model_validate(local_store.design_stats(user_id))
+    return DesignStats.model_validate(
+        await run_in_threadpool(local_store.design_stats, user_id)
+    )
 
 
 async def _fetch_design(design_id: str, user_id: str) -> Design:
@@ -114,7 +117,7 @@ async def _fetch_design(design_id: str, user_id: str) -> Design:
         except httpx.HTTPError as exc:
             raise _storage_error(exc) from exc
     else:
-        design = local_store.get_design(design_id, user_id)
+        design = await run_in_threadpool(local_store.get_design, design_id, user_id)
     if design is None:
         raise HTTPException(status_code=404, detail="design not found")
     return design
@@ -142,7 +145,14 @@ async def design_preview(design_id: str, user_id: str = Depends(current_user)) -
     # at import time — cost the design routes shouldn't pay just to be registered.
     from app.services.package import render_preview
 
-    png = render_preview(design, px_per_mm=THUMB_PX_PER_MM)
+    # OFF THE EVENT LOOP (CTO B1/X1). Measured on the 17k-stitch fixture: this
+    # render stalled the loop for 174ms, and the library grid (B8) fires one
+    # per tile — N thumbnails meant N sequential stalls with /health frozen
+    # behind them. Every local_store call in this router got the same
+    # treatment: they are synchronous file reads plus a full-design JSON parse
+    # (a plain GET measured a 50ms stall).
+
+    png = await run_in_threadpool(render_preview, design, px_per_mm=THUMB_PX_PER_MM)
     # no-store: autosave overwrites a design in place under the same id, so any cached
     # thumbnail would be stale the moment the user saves.
     return Response(content=png, media_type="image/png", headers={"Cache-Control": "no-store"})
@@ -158,7 +168,7 @@ async def create_design(design: Design, user_id: str = Depends(current_user)) ->
             raise _storage_error(exc) from exc
     # Local fallback: local_store assigns a fresh uuid4 hex when the id is absent
     # or unsafe, so ids are never reused after a delete.
-    return local_store.create_design(design, user_id)
+    return await run_in_threadpool(local_store.create_design, design, user_id)
 
 
 @router.put("/designs/{design_id}", response_model=Design)
@@ -177,7 +187,9 @@ async def update_design(
         except httpx.HTTPError as exc:
             raise _storage_error(exc) from exc
     else:
-        updated = local_store.update_design(design_id, design, user_id)
+        updated = await run_in_threadpool(
+            local_store.update_design, design_id, design, user_id
+        )
     if updated is None:
         raise HTTPException(status_code=404, detail="design not found")
     return updated
@@ -210,7 +222,9 @@ async def rename_design(
             raise HTTPException(status_code=404, detail="design not found")
     else:
         try:
-            design = local_store.rename_design(design_id, name, user_id)
+            design = await run_in_threadpool(
+                local_store.rename_design, design_id, name, user_id
+            )
         except ValueError as exc:  # defense in depth: _clean_name already rejects blanks
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         if design is None:
@@ -228,4 +242,4 @@ async def delete_design(design_id: str, user_id: str = Depends(current_user)) ->
         except httpx.HTTPError as exc:
             raise _storage_error(exc) from exc
     else:
-        local_store.delete_design(design_id, user_id)
+        await run_in_threadpool(local_store.delete_design, design_id, user_id)
