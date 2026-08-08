@@ -144,3 +144,32 @@ create policy "own designs" on public.designs
 -- thread_database is shared read-only reference data.
 alter table public.thread_database enable row level security;
 create policy "threads readable" on public.thread_database for select using (true);
+
+-- ─── Identity & membership RLS (CTO A13/S3) ─────────────────────────────────
+-- Without RLS these three tables were readable AND writable via the public
+-- anon key: subscription_tier, usage counters, team rosters — all exposed.
+-- Policies are written recursion-safe: team_members policies never reference
+-- teams (a teams policy may subquery team_members, and if team_members
+-- subqueried teams back, Postgres RLS evaluation recurses infinitely — the
+-- classic Supabase membership-table pitfall). Membership WRITES are
+-- server-side only (the service key bypasses RLS by design), so no
+-- insert/update policy is granted to clients at all.
+
+alter table public.users enable row level security;
+create policy "own profile" on public.users
+  for all using (auth.uid() = id) with check (auth.uid() = id);
+
+alter table public.team_members enable row level security;
+create policy "see own memberships" on public.team_members
+  for select using (user_id = auth.uid());
+
+alter table public.teams enable row level security;
+create policy "owner manages team" on public.teams
+  for all using (owner_user_id = auth.uid()) with check (owner_user_id = auth.uid());
+create policy "members see their teams" on public.teams
+  for select using (
+    exists (
+      select 1 from public.team_members tm
+      where tm.team_id = id and tm.user_id = auth.uid()
+    )
+  );
