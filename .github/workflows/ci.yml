@@ -32,8 +32,9 @@ jobs:
       - run: pip install -r requirements.txt -r requirements-dev.txt -r requirements-features.txt
       # The stream-lock hashes and SSIM baselines are float-sensitive: CI must
       # run the exact numerics stack they were captured on (fixture 07
-      # diverged by SSIM 0.0006 on a newer build before these pins).
-      - run: pip install 'opencv-python-headless==5.0.0' 'numpy==2.4.6'
+      # diverged by SSIM 0.0006 on a newer build before these pins). The pip
+      # distribution is 5.0.0.93 even though cv2.__version__ reports 5.0.0.
+      - run: pip install 'opencv-python-headless==5.0.0.93' 'numpy==2.4.6'
       # rembg fetches its U2-Net weights (~170MB) on first use; cache them so
       # every run after the first is warm.
       - uses: actions/cache@v4
