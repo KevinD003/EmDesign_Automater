@@ -15,6 +15,7 @@ Neural digitizing / path-RL / learned quality would slot in behind the same API.
 
 from __future__ import annotations
 
+import itertools
 import math
 
 from app.models.design import (
@@ -201,6 +202,141 @@ def _hoop_fit(design: Design) -> tuple[bool | None, QualityFinding | None]:
     return True, None
 
 
+# ── CTO A9/C11: real rejection criteria ──────────────────────────────────────
+# The pre-A9 scorer checked only long/tiny stitches, jump count and color
+# count, and certified broken output: 8mm lettering with jump-crossed counters
+# and no ties scored 98/A. A trusted-but-wrong grade is worse than none. The
+# checks below are the criteria a commercial digitizer is actually rejected
+# on. Each one self-gates on assessability (toy streams have no room for
+# locks; imported designs carry no contours), skipping rather than guessing.
+
+_LOCK_WINDOW = 6          # stitches inspected around each thread end
+_LOCK_SEG_MM = 1.0        # a lock = >=2 consecutive segments this short
+_MIN_LOCKABLE_BLOCK = 12  # smaller blocks can't be judged for locks
+_OPEN_FABRIC_MARGIN_MM = 1.5   # how far outside every region counts as open fabric
+_SATIN_WIDTH_LIMIT_MM = 7.0    # SATIN_MAX_W_MM (4.5) + pull comp + real-world slack
+_TRIMS_PER_1000_WARN = 50.0
+_ZIGZAG_RATIO = 0.5
+
+
+def _thread_blocks(stitches):
+    """Consecutive STITCH runs split at TRIM / COLOR_CHANGE (thread cuts)."""
+    block: list = []
+    for s in stitches:
+        c = str(s.command)
+        if c == "STITCH":
+            block.append((s.x, s.y))
+        elif c in ("TRIM", "COLOR_CHANGE", "END"):
+            if block:
+                yield block
+            block = []
+    if block:
+        yield block
+
+
+def _has_lock(pts) -> bool:
+    return sum(1 for a, b in itertools.pairwise(pts)
+               if _dist(a[0], a[1], b[0], b[1]) <= _LOCK_SEG_MM) >= 2
+
+
+def _unlocked_thread_ends(stitches) -> tuple[int, int]:
+    """(unlocked, assessable) thread ends — every cut end should carry a tie."""
+    unlocked = total = 0
+    for block in _thread_blocks(stitches):
+        if len(block) < _MIN_LOCKABLE_BLOCK:
+            continue
+        total += 2
+        if not _has_lock(block[:_LOCK_WINDOW]):
+            unlocked += 1
+        if not _has_lock(block[-_LOCK_WINDOW:]):
+            unlocked += 1
+    return unlocked, total
+
+
+def _object_polys(design):
+    """Object contours (+holes) as float arrays in mm, or None if any missing."""
+    import numpy as np
+
+    if not design.objects or any(not o.contour for o in design.objects):
+        return None
+    polys = []
+    for o in design.objects:
+        polys.append((np.array([[p.x, p.y] for p in o.contour], np.float32), False))
+        for h in o.holes or []:
+            polys.append((np.array([[p.x, p.y] for p in h], np.float32), True))
+    return polys
+
+
+def _outside_all(x: float, y: float, polys) -> bool:
+    import cv2
+
+    inside_any = False
+    for poly, is_hole in polys:
+        d = cv2.pointPolygonTest(poly, (float(x), float(y)), True)
+        if is_hole:
+            if d > _OPEN_FABRIC_MARGIN_MM:
+                return True      # deep inside a knocked-out counter = open fabric
+        elif d >= -_OPEN_FABRIC_MARGIN_MM:
+            inside_any = True
+    return not inside_any
+
+
+def _attached_open_fabric_segments(design) -> int | None:
+    """Thread-attached segments (STITCH, or JUMP with no TRIM before it) that
+    cross open fabric — the whisker/counter-crossing defect (C2). None when the
+    design carries no contours to judge against (imported machine files)."""
+    polys = _object_polys(design)
+    if polys is None:
+        return None
+    count = 0
+    attached = True
+    prev = None
+    for s in design.stitches:
+        c = str(s.command)
+        if c in ("TRIM", "COLOR_CHANGE"):
+            attached = False
+            prev = (s.x, s.y)
+            continue
+        if c not in ("STITCH", "JUMP"):
+            prev = (s.x, s.y)
+            continue
+        if prev is not None and attached:
+            length = _dist(prev[0], prev[1], s.x, s.y)
+            if length > 2.0:
+                n = max(2, int(length / 1.0))
+                if any(_outside_all(prev[0] + (s.x - prev[0]) * i / n,
+                                    prev[1] + (s.y - prev[1]) * i / n, polys)
+                       for i in range(1, n)):
+                    count += 1
+        if c == "STITCH":
+            attached = True
+        prev = (s.x, s.y)
+    return count
+
+
+def _satin_width_violations(stitches) -> int:
+    """Zigzag crossings wider than any real satin column should be."""
+    count = 0
+    for block in _thread_blocks(stitches):
+        for a, b, c in zip(block, block[1:], block[2:]):
+            ab = _dist(a[0], a[1], b[0], b[1])
+            bc = _dist(b[0], b[1], c[0], c[1])
+            gap = _dist(a[0], a[1], c[0], c[1])
+            if (min(ab, bc) > _SATIN_WIDTH_LIMIT_MM
+                    and gap < _ZIGZAG_RATIO * min(ab, bc)):
+                count += 1
+    return count
+
+
+def _uniform_fill_angles(design) -> int:
+    """Number of fills sharing one angle when >=3 fills exist (else 0)."""
+    angles = [round(float(o.stitch_angle), 1) for o in design.objects
+              if str(o.stitch_type) == "TATAMI"]
+    if len(angles) >= 3 and len(set(angles)) == 1:
+        return len(angles)
+    return 0
+
+
 def _penalty_findings(design: Design, metrics, long_ct: int, tiny_ct: int) -> tuple[list[QualityFinding], int]:
     """Score-affecting findings + total penalty. Thresholds unchanged from v1."""
     findings: list[QualityFinding] = []
@@ -229,6 +365,49 @@ def _penalty_findings(design: Design, metrics, long_ct: int, tiny_ct: int) -> tu
             message=f"{metrics.jump_count} jumps ({metrics.travel_mm}mm travel) — try Optimize to cut trims.",
         ))
         penalty += 10
+
+    # ── Real rejection criteria (CTO A9/C11) ────────────────────────────────
+    unlocked, assessable = _unlocked_thread_ends(design.stitches)
+    if unlocked:
+        findings.append(QualityFinding(
+            severity="error", code="unlocked_ends", count=unlocked,
+            message=(f"{unlocked} of {assessable} thread ends have no tie-in/tie-off lock "
+                     f"— the design unravels at first wash or pulls out mid-run."),
+        ))
+        penalty += min(35, 10 + 2 * unlocked)
+    open_jumps = _attached_open_fabric_segments(design)
+    if open_jumps:
+        findings.append(QualityFinding(
+            severity="error", code="open_fabric_travel", count=open_jumps,
+            message=(f"{open_jumps} thread-attached segment(s) cross open fabric — "
+                     f"visible whiskers over bare cloth (or across knocked-out counters)."),
+        ))
+        penalty += min(35, 10 + 2 * open_jumps)
+    wide = _satin_width_violations(design.stitches)
+    if wide:
+        findings.append(QualityFinding(
+            severity="error", code="satin_too_wide", count=wide,
+            message=(f"{wide} satin crossing(s) wider than {_SATIN_WIDTH_LIMIT_MM}mm — "
+                     f"loose floats that snag and collapse."),
+        ))
+        penalty += min(25, 5 + wide)
+    uniform = _uniform_fill_angles(design)
+    if uniform:
+        findings.append(QualityFinding(
+            severity="warn", code="uniform_fill_angles", count=uniform,
+            message=(f"All {uniform} fills sew at one angle — push/pull accumulates in "
+                     f"one direction and the result reads visually flat."),
+        ))
+        penalty += 5
+    if design.stitches:
+        trims_per_1000 = metrics.trims / max(metrics.stitch_count, 1) * 1000
+        if trims_per_1000 > _TRIMS_PER_1000_WARN:
+            findings.append(QualityFinding(
+                severity="warn", code="high_trim_rate", count=metrics.trims,
+                message=(f"{trims_per_1000:.0f} trims per 1,000 stitches — each costs "
+                         f"~{TRIM_COST_S}s of machine time plus two untied tails."),
+            ))
+            penalty += 10
     return findings, penalty
 
 

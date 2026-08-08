@@ -172,3 +172,112 @@ def test_quality_report_model_defaults_keep_old_payloads_valid():
     wire = q.model_dump(by_alias=True)
     for key in ("maxStitchMm", "meanStitchMm", "jumpsPer1000", "hoopFit"):
         assert key in wire
+
+
+# ── CTO A9/C11: real rejection criteria ───────────────────────────────────────
+# The pre-A9 scorer certified broken output (8mm lettering with jump-crossed
+# counters and no ties scored 98/A). Each detector is pinned on constructed
+# bad input AND on its clean twin, so neither false negatives nor false
+# positives can drift back in.
+
+
+def _lockish_tail(x, y):
+    """Three sub-mm penetrations — the shape of a tie."""
+    return [_st(x, y), _st(x + 0.5, y), _st(x, y + 0.5), _st(x, y)]
+
+
+def _run_pts(x0, n, pitch=2.0, y=0.0):
+    return [_st(x0 + i * pitch, y) for i in range(n)]
+
+
+def test_quality_flags_unlocked_thread_ends():
+    d = _stitch_design([*_run_pts(0, 20), _st(38, 0, "TRIM"), _st(60, 0, "JUMP"),
+                        *_run_pts(60, 20), _st(98, 0, "END")])
+    q = optimizer.analyze_quality(d)
+    f = next(f for f in q.findings if f.code == "unlocked_ends")
+    assert f.severity == "error" and f.count == 4  # both ends of both blocks
+    assert q.score < 90
+
+
+def test_quality_accepts_locked_thread_ends():
+    block = [*_lockish_tail(0, 0), *_run_pts(0, 20), *_lockish_tail(38, 0)]
+    d = _stitch_design([*block, _st(38, 0, "TRIM"), _st(38, 0, "END")])
+    q = optimizer.analyze_quality(d)
+    assert not any(f.code == "unlocked_ends" for f in q.findings)
+
+
+def test_quality_flags_attached_travel_over_open_fabric():
+    from app.models.design import (
+        ColorStop,
+        ConnectMethod,
+        DesignObject,
+        Point,
+        StitchType,
+        UnderlayType,
+    )
+
+    def _obj(seq, x0):
+        return DesignObject(
+            sequence_order=seq, name=f"o{seq}", stitch_type=StitchType.TATAMI,
+            color_stop=1, density=2.5, stitch_angle=0.0,
+            underlay_type=UnderlayType.NONE, pull_compensation=0.0,
+            connect_method=ConnectMethod.TRIM, stitch_count=0,
+            contour=[Point(x=x0, y=0), Point(x=x0 + 10, y=0),
+                     Point(x=x0 + 10, y=10), Point(x=x0, y=10)],
+        )
+
+    stops = [ColorStop(stop_number=1, thread_brand="M", catalog_number="1",
+                       thread_name="a", hex="#112233", stitch_count=0)]
+    # attached stitch straight across the 30mm void between the squares
+    crossing = [_st(5, 5), _st(45, 5)]
+    d = _stitch_design(crossing)
+    d = d.model_copy(update={"objects": [_obj(1, 0), _obj(2, 40)], "color_stops": stops})
+    q = optimizer.analyze_quality(d)
+    assert any(f.code == "open_fabric_travel" and f.severity == "error" for f in q.findings)
+
+    # the same jump AFTER a trim is detached thread — normal, not a whisker
+    trimmed = [_st(5, 5), _st(5, 5, "TRIM"), _st(45, 5, "JUMP"), _st(45, 5), _st(46, 5)]
+    d2 = _stitch_design(trimmed)
+    d2 = d2.model_copy(update={"objects": [_obj(1, 0), _obj(2, 40)], "color_stops": stops})
+    q2 = optimizer.analyze_quality(d2)
+    assert not any(f.code == "open_fabric_travel" for f in q2.findings)
+
+
+def test_quality_flags_satin_wider_than_any_real_column():
+    zig = []
+    for i in range(12):  # 10mm-wide zigzag — twice any legitimate satin column
+        zig.append(_st(i * 0.7, 0.0 if i % 2 else 10.0))
+    q = optimizer.analyze_quality(_stitch_design(zig))
+    assert any(f.code == "satin_too_wide" and f.severity == "error" for f in q.findings)
+
+
+def test_quality_flags_uniform_fill_angles_but_not_varied():
+    from app.models.design import ConnectMethod, DesignObject, Point, StitchType, UnderlayType
+
+    def _fill(seq, angle):
+        return DesignObject(
+            sequence_order=seq, name=f"f{seq}", stitch_type=StitchType.TATAMI,
+            color_stop=1, density=2.5, stitch_angle=angle,
+            underlay_type=UnderlayType.NONE, pull_compensation=0.0,
+            connect_method=ConnectMethod.TRIM, stitch_count=0,
+            contour=[Point(x=0, y=0), Point(x=10, y=0), Point(x=10, y=10), Point(x=0, y=10)],
+        )
+
+    flat = _stitch_design(_run_pts(0, 4)).model_copy(
+        update={"objects": [_fill(1, 0.0), _fill(2, 0.0), _fill(3, 0.0)]})
+    q = optimizer.analyze_quality(flat)
+    assert any(f.code == "uniform_fill_angles" for f in q.findings)
+
+    varied = _stitch_design(_run_pts(0, 4)).model_copy(
+        update={"objects": [_fill(1, 0.0), _fill(2, 45.0), _fill(3, 90.0)]})
+    assert not any(f.code == "uniform_fill_angles"
+                   for f in optimizer.analyze_quality(varied).findings)
+
+
+def test_quality_flags_high_trim_rate():
+    pts = []
+    for k in range(10):  # 10 trims over ~40 stitches = 250/1000
+        pts.extend(_run_pts(k * 12, 4))
+        pts.append(_st(k * 12 + 6, 0, "TRIM"))
+    q = optimizer.analyze_quality(_stitch_design(pts))
+    assert any(f.code == "high_trim_rate" for f in q.findings)
