@@ -14,6 +14,7 @@ from app.services.digitizer.columns import (
     _raycast_columns,
 )
 from app.services.digitizer.constants import (
+    FILL_BORDER_MM,
     FILL_STAGGER_ROWS,
     HIRES_CROP_PAD_PX,
     SATIN_MAX_W_MM,
@@ -289,6 +290,19 @@ def _satin_border(poly_px, width_px: float, step_px: int, connect_px: float,
     return out
 
 
+def fill_border_width_px(mm_per_px: float) -> float:
+    """Sweep width of a fill's satin border, in pixels.
+
+    Owned here and called from both paths (CTO verdict STEP 0). It was derived
+    inline in `digitize_image` and again in `rebuild_fill_border` with the same
+    expression — the same duplication that let `route_pad` drift 8px against
+    2px between those two functions. `travel_route_pad_px` must stay in step
+    with this: the routing pad is exactly half this width plus pull comp,
+    because that is how far outside the region a border stitch can land.
+    """
+    return max(2.0, FILL_BORDER_MM / mm_per_px)
+
+
 def _fill_border(contour, hole_contours, width_px: float, step_px: int,
                  connect_px: float, last_pt, floor_px: float = 0.0):
     """Satin border around a fill's outline and its kept holes (v2 Part 15).
@@ -331,7 +345,6 @@ def rebuild_fill_border(poly, hole_polys, mask, mm_per_px: float, connect_px: fl
 
     from app.services.digitizer.constants import (
         FILL_BORDER_MIN_MM2,
-        FILL_BORDER_MM,
         SATIN_SPACING_MM,
     )
 
@@ -340,7 +353,7 @@ def rebuild_fill_border(poly, hole_polys, mask, mm_per_px: float, connect_px: fl
         return []
     return _fill_border(
         poly, hole_polys,
-        max(2.0, FILL_BORDER_MM / mm_per_px),
+        fill_border_width_px(mm_per_px),
         max(1, round(SATIN_SPACING_MM / mm_per_px)),
         connect_px, last_pt,
         (constants._PENETRATION_FLOOR_MM / mm_per_px)

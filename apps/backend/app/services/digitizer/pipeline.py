@@ -40,8 +40,6 @@ from app.services.digitizer.constants import (
     DETAIL_EMBED_SHARE,
     DROPPED_SHARE_WARN,
     FILL_BORDER_MIN_MM2,
-    FILL_BORDER_MM,
-    FILL_ROW_CONNECT_KEEP,
     FILL_UNDERLAY_ANGLE_OFFSET_DEG,
     FILL_UNDERLAY_MIN_MM2,
     FILL_UNDERLAY_PITCH_MULT,
@@ -107,11 +105,14 @@ from app.services.digitizer.routing import (
     _merge_adjacent_same_hex,
     _nearest_neighbour_order,
     _route_travel,
+    coalesce_params,
+    travel_route_pad_px,
 )
 from app.services.digitizer.satin import (
     _fill_border,
     _satin_axis_deg,
     _skeleton_satin_hires,
+    fill_border_width_px,
 )
 from app.services.digitizer.underlay import (
     _edge_walk,
@@ -790,7 +791,7 @@ def digitize_image(
                 # Satin border on top of the fill (v2 Part 15) — the pro finish.
                 # Area-gated: bordering specks doubles them for nothing.
                 if net_area * mm_per_px * mm_per_px >= FILL_BORDER_MIN_MM2:
-                    border_w = max(2.0, FILL_BORDER_MM / mm_per_px)
+                    border_w = fill_border_width_px(mm_per_px)
                     fill_pts = fill_pts + _fill_border(
                         contour, hole_contours, border_w, sat_step, connect_px,
                         fill_pts[-1][:2] if fill_pts else None,
@@ -829,13 +830,11 @@ def digitize_image(
             # edges the replacement diagonal hugged the edge and hid it; on
             # fixture 02's sun the diagonals cut the arc and opened a visible
             # crescent, found by painting the emitted rows over the region.
-            min_px = MIN_STITCH_MM / mm_per_px
-            if not is_satin:
-                min_px = min(min_px, row_px * FILL_ROW_CONNECT_KEEP)
-            pts = _coalesce_short(
-                pts, min_px,
-                (constants._PENETRATION_FLOOR_MM / mm_per_px) if (is_satin and constants._PENETRATION_FLOOR_MM) else 0.0,
+            min_px, coalesce_floor_px = coalesce_params(
+                mm_per_px, is_satin=is_satin,
+                fill_row_px=None if is_satin else row_px,
             )
+            pts = _coalesce_short(pts, min_px, coalesce_floor_px)
             # Floor BACKSTOP at the last transform (v2 Part 13). Every upstream
             # repair (_axis_underlay, _edge_walk, _restore_for_floor) runs before
             # coalescing, and coalescing can manufacture a fresh sub-floor
@@ -860,11 +859,9 @@ def digitize_image(
             # half-width OUTSIDE the region, so with the default 2px pad 77 of
             # the ring probe's 109 jump connections had "outside" endpoints
             # and were never routed — they shipped as trimmed jumps straight
-            # across the counter (CTO review C2/A3). pad_px lets ENDPOINTS
-            # overhang by that much; path interiors still must stay inside
-            # the tight region (see _route_travel on why the whole-mask
-            # dilation version bridged the gaps between letters).
-            route_pad = max(2, round((FILL_BORDER_MM / 2 + pull_mm) / mm_per_px))
+            # across the counter (CTO review C2/A3). Shared with rebuild since
+            # STEP 0 — see `travel_route_pad_px`.
+            route_pad = travel_route_pad_px(pull_mm, mm_per_px)
             pts = _route_travel(pts, region, TRAVEL_STEP_MM / mm_per_px,
                                 pad_px=route_pad,
                                 min_pitch_px=MIN_STITCH_MM / mm_per_px)

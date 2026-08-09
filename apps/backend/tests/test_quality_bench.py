@@ -130,15 +130,27 @@ def test_baseline_results_are_committed():
 # The band is set to catch a REGRESSION (the pixel floor reads 29.9% here),
 # not to certify the badge as good — it is not, and it is called out as
 # outstanding work rather than papered over by a loose number.
+#
+# THE SECOND COLUMN IS THE ONE THAT MEANS DAMAGE (added at STEP 0). The 0.5mm
+# line is quality and machine time; the 0.3mm line — MIN_PENETRATION_MM — is
+# where the needle re-enters a hole it just made. A tatami's row-to-row
+# connection is one row pitch and sits under 0.5mm BY CONSTRUCTION, so a
+# fill-heavy fixture reads several percent there while being perfectly
+# sewable. Measured: the badge is 14.9% under 0.5mm but only 1.2% under 0.3mm
+# — its sub-floor reading is mostly row connections, not perforation. Grading
+# on the loose number alone nearly rejected STEP 0, which was correct.
+#
+# (fixture stem, max sub-0.5mm share, max sub-0.3mm share, max machine-minutes)
 SEWABILITY_BANDS = [
-    ("01_flat_2color_logo", 0.10, 17.0),
-    ("07_circular_badge", 0.20, 52.0),
-    ("05_wordmark_caps", 0.05, 3.1),
+    ("01_flat_2color_logo", 0.10, 0.03, 17.0),
+    ("07_circular_badge", 0.20, 0.04, 52.0),
+    ("05_wordmark_caps", 0.05, 0.02, 3.1),
 ]
 
 
-@pytest.mark.parametrize(("stem", "max_sub_floor", "max_minutes"), SEWABILITY_BANDS)
-def test_fixture_output_is_sewable(tmp_path, stem, max_sub_floor, max_minutes):
+@pytest.mark.parametrize(("stem", "max_sub_floor", "max_sub_pen", "max_minutes"),
+                         SEWABILITY_BANDS)
+def test_fixture_output_is_sewable(tmp_path, stem, max_sub_floor, max_sub_pen, max_minutes):
     harness = _load_harness()
     path = FIXTURE_DIR / f"{stem}.png"
     assert path.is_file(), path
@@ -151,6 +163,12 @@ def test_fixture_output_is_sewable(tmp_path, stem, max_sub_floor, max_minutes):
     assert result.sub_floor_share <= max_sub_floor, (
         f"{stem}: {result.sub_floor_share:.1%} of stitches are under the needle-safety "
         f"floor (band {max_sub_floor:.0%}) — is resample_inside back to a pixel floor?"
+    )
+    # The safety line. Measured 0.8% / 1.2% / 0.2% on the three fixtures.
+    assert result.sub_penetration_share <= max_sub_pen, (
+        f"{stem}: {result.sub_penetration_share:.1%} of stitches are under "
+        f"MIN_PENETRATION_MM — the needle is re-entering its own hole "
+        f"(band {max_sub_pen:.0%})"
     )
     # Machine time is the owner's cost centre, and it must include trims:
     # a routing change that trades stitches for trims has to be judged on the

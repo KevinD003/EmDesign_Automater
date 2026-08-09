@@ -7,6 +7,8 @@ from itertools import pairwise
 from app.models.design import Stitch
 from app.services.digitizer.constants import (
     DETOUR_COST_MAX,
+    FILL_BORDER_MM,
+    FILL_ROW_CONNECT_KEEP,
     MIN_PENETRATION_MM,
     MIN_STITCH_MM,
     TIE_ALONG_MM,
@@ -19,6 +21,67 @@ from app.services.digitizer.geometry import (
     _drop_floor_reversals,
     _restore_for_floor,
 )
+
+# ── The finishing chain's parameters, derived ONCE for both paths ────────────
+#
+# CTO verdict 2026-08-09, STEP 0. `digitize_image` and `rebuild_design` each
+# computed these inline, and they had silently drifted apart — the edit path
+# was running the same generators with different numbers. Two measured
+# consequences:
+#
+#   * `route_pad`: digitize 8px, rebuild 2px on the ring fixture. Border satin
+#     and pull comp land stitches OUTSIDE the region, so with a 2px pad their
+#     jump endpoints read "outside" and were never routed. Measured on P1's own
+#     ring, rebuilt after a 1% density nudge: 98 needle paths straight across
+#     the open counter, against 0 for digitize. C2 was closed on digitize and
+#     open on every edit.
+#   * the fill coalesce clamp: a fill's row-to-row connection IS one row pitch
+#     (0.40-0.55mm) by construction, so a flat 0.5mm minimum deletes the first
+#     point of every row and recedes the fill edge. digitize learned this in v2
+#     Part 15; rebuild never did.
+#
+# They live here as FUNCTIONS, not as constants either caller copies, because
+# copying is precisely what caused the drift: a constant can be read in one
+# place and forgotten in the other, whereas a divergence here is a signature
+# change that breaks the other call site loudly.
+
+
+def travel_route_pad_px(pull_mm: float, mm_per_px: float) -> int:
+    """Endpoint overhang allowed when routing a jump as in-region travel.
+
+    `_route_travel` requires a jump's endpoints to be inside the object's own
+    region. Border satin sits astride the outline and pull compensation widens
+    the sewn top layer, so legitimate connection endpoints sit up to
+    ``FILL_BORDER_MM/2 + pull_mm`` outside it. Path INTERIORS still have to stay
+    inside the tight region — see `_route_travel` on why dilating the whole mask
+    instead bridged the gaps between letters and sewed travel over bare fabric.
+    """
+    return max(2, round((FILL_BORDER_MM / 2 + max(float(pull_mm), 0.0)) / mm_per_px))
+
+
+def coalesce_params(mm_per_px: float, *, is_satin: bool,
+                    fill_row_px: float | None = None) -> tuple[float, float]:
+    """``(min_dist_px, floor_px)`` for `_coalesce_short`.
+
+    ``fill_row_px`` is the row pitch of an AREA FILL, or None for anything else.
+    Only a fill gets the row-pitch clamp: its rows are joined by a stitch of
+    exactly one pitch, and a run's ``1/density`` spacing is not a row pitch at
+    all — clamping on it would lower the floor for running stitch, which is the
+    opposite of what this is for.
+
+    ``floor_px`` is the needle-in-one-hole repair threshold, passed for SATIN
+    only. A tatami row advances along a line and never zigzags, so the repair
+    cannot fire there anyway, and not passing it keeps fills on exactly the
+    path they had.
+    """
+    from app.services.digitizer import constants
+
+    min_px = MIN_STITCH_MM / mm_per_px
+    if fill_row_px is not None and fill_row_px > 0:
+        min_px = min(min_px, fill_row_px * FILL_ROW_CONNECT_KEEP)
+    floor_px = ((constants._PENETRATION_FLOOR_MM / mm_per_px)
+                if (is_satin and constants._PENETRATION_FLOOR_MM) else 0.0)
+    return min_px, floor_px
 
 
 def _merge_adjacent_same_hex(stitches, color_stops, objects) -> int:
@@ -470,15 +533,22 @@ def _nearest_neighbour_order(points, start=None):
 
 def _finish_rebuild_segment(seg, mask, mm_per_px: float, route_pad: int,
                             min_stitch_mm: float, travel_step_mm: float,
-                            max_stitch_mm: float):
+                            max_stitch_mm: float, *, is_satin: bool = False,
+                            fill_row_px: float | None = None):
     """Finishing transforms for one rebuilt segment, in the digitizer's order:
     coalesce sub-minimum stitches, route in-region jumps as hidden travel runs
     (v2 Part 25 — without this a rebuilt donut carried 63 hole-crossing trims
-    the fresh digitize had routed away; endpoint pad by pull comp because the
-    sewn top layer overhangs the mask, CTO A3), then the floor backstop."""
+    the fresh digitize had routed away), then the floor backstop.
+
+    Every parameter of the first two steps now comes from `coalesce_params` and
+    `travel_route_pad_px`, the same functions `digitize_image` calls — see their
+    note for what drifted apart and what it cost."""
     from app.services.digitizer import constants
 
-    seg = _coalesce_short(seg, min_stitch_mm / mm_per_px)
+    min_px, coalesce_floor_px = coalesce_params(
+        mm_per_px, is_satin=is_satin, fill_row_px=fill_row_px,
+    )
+    seg = _coalesce_short(seg, min_px, coalesce_floor_px)
     seg = _route_travel(seg, mask, travel_step_mm / mm_per_px, pad_px=route_pad,
                         min_pitch_px=min_stitch_mm / mm_per_px)
     if constants._PENETRATION_FLOOR_MM:

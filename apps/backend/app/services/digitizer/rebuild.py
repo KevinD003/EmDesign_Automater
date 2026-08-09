@@ -55,6 +55,7 @@ from app.services.digitizer.provenance import (
 from app.services.digitizer.routing import (
     _finish_rebuild_segment,
     _lock_stream,
+    travel_route_pad_px,
 )
 from app.services.digitizer.satin import (
     _satin_axis_deg,
@@ -335,12 +336,27 @@ def rebuild_design(design: Design) -> Design:
                 pts = _with_underlay(under, pts, connect_px)
             # Finishing chain shared with the digitizer — see
             # _finish_rebuild_segment (coalesce → travel-route → floor).
-            route_pad = max(2, round(float(o.pull_compensation or 0.0) / mm_per_px))
+            # Both of these used to be computed inline here with values that had
+            # drifted from digitize's — the pad omitted the border half-width
+            # (2px against digitize's 8), and the coalesce clamp ignored the
+            # fill row pitch and never passed the satin floor. Measured on P1's
+            # own ring rebuilt after a 1% density nudge: 98 needle paths across
+            # the open counter, against 0 for digitize. Shared functions now,
+            # not copied constants (CTO verdict STEP 0).
+            route_pad = travel_route_pad_px(float(o.pull_compensation or 0.0), mm_per_px)
+            # APPLIQUE's cover phase is a satin, so it earns the zigzag floor
+            # repair; only true area fills get the row-pitch clamp, because a
+            # run's 1/density spacing is not a row pitch.
+            seg_is_satin = st in ("SATIN", "APPLIQUE")
+            seg_row_px = (float(spacing_px)
+                          if st in ("TATAMI", "CONTOUR_FILL", "SPIRAL_FILL", "RADIAL_FILL")
+                          else None)
 
             def _finish(seg):
                 return _finish_rebuild_segment(
                     seg, mask, mm_per_px, route_pad,  # noqa: B023
                     MIN_STITCH_MM, TRAVEL_STEP_MM, MAX_STITCH_MM,
+                    is_satin=seg_is_satin, fill_row_px=seg_row_px,  # noqa: B023
                 )
 
             if applique_phases is not None:

@@ -101,6 +101,7 @@ class FixtureResult:
     # fixture's stitches — 59.6% of them under the floor — while every gate in
     # the suite stayed green against a stale exact-hash baseline.
     sub_floor_share: float = 0.0
+    sub_penetration_share: float = 0.0
     machine_minutes: float = 0.0
 
     jump_count: int = 0
@@ -285,9 +286,31 @@ def run_fixture(path: Path, out_dir: Path) -> FixtureResult:
 
     lengths = _stitch_lengths(design)
     from app.services.digitizer import MIN_STITCH_MM
+    from app.services.digitizer.constants import MIN_PENETRATION_MM
 
     res.sub_floor_share = (round(sum(1 for x in lengths if x < MIN_STITCH_MM) / len(lengths), 4)
                            if lengths else 0.0)
+    # TWO thresholds, because they mean different things and STEP -1 shipped
+    # with only the looser one — which then mis-read STEP 0 as a regression.
+    #
+    #   MIN_STITCH_MM (0.5)      quality/efficiency: thread and machine time
+    #                            spent on stitches too short to be doing work.
+    #   MIN_PENETRATION_MM (0.3) SAFETY: at this range the needle is going back
+    #                            into a hole it just made — thread break and
+    #                            deflection.
+    #
+    # A tatami's row-to-row connection is one row pitch, 0.40-0.45mm on cotton
+    # and industry-standard at that length (see FILL_ROW_CONNECT_KEEP), so it
+    # sits under the 0.5 line by construction and a fill-heavy design reads a
+    # few percent there while being perfectly sewable. Measured on fixture 01,
+    # digitize vs rebuild-after-a-1%-edit: 5.0% vs 9.6% under 0.5mm, but 0.8%
+    # vs 1.0% under 0.3mm — the whole difference was row connections, not
+    # perforation. Grading only on the 0.5 number would have rejected a correct
+    # change.
+    res.sub_penetration_share = (
+        round(sum(1 for x in lengths if x < MIN_PENETRATION_MM) / len(lengths), 4)
+        if lengths else 0.0
+    )
     # Trims stop the machine for about TRIM_SECONDS each; a routing change that
     # trades stitches for trims must be judged on the total, not on either half.
     res.machine_minutes = round(res.est_minutes + res.trim_count * TRIM_SECONDS / 60.0, 2)

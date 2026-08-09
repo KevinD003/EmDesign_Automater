@@ -206,6 +206,8 @@ from app.services.digitizer.routing import (
     _nearest_neighbour_order,
     _route_travel,
     _tie_triangle,
+    coalesce_params,
+    travel_route_pad_px,
 )
 from app.services.digitizer.satin import (
     _fill_border,
@@ -215,6 +217,7 @@ from app.services.digitizer.satin import (
     _satin_zigzag,
     _skeleton_satin,
     _skeleton_satin_hires,
+    fill_border_width_px,
     rebuild_fill_border,
 )
 from app.services.digitizer.skeleton import (
@@ -474,7 +477,9 @@ __all__ = [
     "_zhang_suen_thin",
     "_zigzag_underlay",
     "add_to_seed",
+    "coalesce_params",
     "digitize_image",
+    "fill_border_width_px",
     "is_unedited",
     "last_classification_log",
     "last_field_artifact",
@@ -485,4 +490,5 @@ __all__ = [
     "rebuild_is_a_noop",
     "remember",
     "set_penetration_floor",
+    "travel_route_pad_px",
 ]
