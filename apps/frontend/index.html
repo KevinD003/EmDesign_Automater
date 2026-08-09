@@ -67,6 +67,22 @@
       }
     </script>
 
+    <!--
+      Atelier type (design handoff, docs/design/ATELIER-HANDOFF.md): Instrument
+      Serif for display, Archivo for UI, Archivo Narrow for labels, JetBrains
+      Mono for every measured value. `display=swap` so a slow font never blocks
+      first paint, and each family has a real fallback in atelier.css.
+
+      These are Google-hosted. The handoff notes they should be self-hosted for
+      the app to work offline; that is a follow-up, not a blocker.
+    -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Archivo:wght@400;500;600;700&family=Archivo+Narrow:wght@500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+
     <link rel="manifest" href="/manifest.webmanifest" />
     <link
       rel="icon"

@@ -1,16 +1,21 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { type ReactNode } from 'react';
 import { navigate } from '../../lib/routes';
-import { initialTheme, saveTheme, type Theme } from '../../lib/theme';
+import { useTheme } from '../../lib/useTheme';
 import { useAuthStore } from '../../store/authStore';
 import { useAccount } from './useAccount';
 
 /**
  * Dashboard shell (v2 Part 35) — sidebar nav + themed surface.
  *
- * The dashboard is the one part of the app that follows the viewer's theme
- * (light/dark): tokens live on .dz-root, the toggle stamps data-theme on
- * <html>, and prefers-color-scheme supplies the default. The Studio stays
- * deliberately dark — it is a canvas tool, like every pro editor.
+ * THE THEME IS NO LONGER THE DASHBOARD'S ALONE (Atelier handoff). `data-theme`
+ * used to be stamped on `.dz-root`, which themed this subtree and nothing else:
+ * the Studio was hard-dark, and overlays portalled outside the dashboard — the
+ * command palette, dialogs, toasts — never received the attribute at all.
+ * `useTheme()` stamps <html> instead, so one attribute themes every surface.
+ *
+ * The Studio keeps dark as its DEFAULT (it is a canvas tool, and bright chrome
+ * around artwork misleads the eye) but the toggle can now override it, which
+ * was an explicit request in the handoff.
  */
 
 export function DashShell({
@@ -22,11 +27,8 @@ export function DashShell({
 }) {
   const session = useAuthStore((s) => s.session);
   const { account } = useAccount();
-  const [theme, setTheme] = useState<Theme>(initialTheme);
-
-  // The tokens live on .dz-root's own data-theme (below), so nothing needs to
-  // be stamped on <html>; this only remembers the choice across visits.
-  useEffect(() => saveTheme(theme), [theme]);
+  // Stamps <html> and persists the choice — see lib/useTheme.ts.
+  const { theme, toggle } = useTheme();
 
   const nav = [
     { key: 'overview', label: 'Overview', hash: '#/dashboard', icon: '◫' },
@@ -40,7 +42,7 @@ export function DashShell({
   const who = account?.username ?? session?.username ?? session?.email ?? 'Guest';
 
   return (
-    <div className="dz-root" data-theme={theme}>
+    <div className="dz-root">
       <aside className="dz-side" aria-label="Dashboard navigation">
         <button type="button" className="dz-brand" onClick={() => navigate('studio')} title="Back to Studio">
           <span className="dz-brand-mark" aria-hidden>🧵</span>
@@ -62,7 +64,7 @@ export function DashShell({
           <button
             type="button"
             className="dz-theme-btn"
-            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+            onClick={toggle}
             aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
           >
             {theme === 'dark' ? '☀ Light' : '☾ Dark'}

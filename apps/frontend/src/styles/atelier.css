@@ -1,0 +1,333 @@
+/**
+ * STITCHIQ — Atelier theme token layer.
+ *
+ * Import ONCE, after index.css:
+ *     import './styles/atelier.css';
+ *
+ * This file only defines custom properties + the classes used by the new
+ * Atelier components. It deliberately does not restate index.css's layout —
+ * the existing `.app-shell`, `.dz-*`, `.panel-right` rules keep their geometry
+ * and simply read these tokens instead of their hard-coded colours.
+ *
+ * Two surfaces, one palette:
+ *   [data-theme="light"] — warm paper (default for dashboard + auth)
+ *   [data-theme="dark"]  — graphite + copper (default for the Studio)
+ *
+ * Unlike the current build, the Studio is themable too: `initialTheme()` in
+ * lib/theme.ts already resolves a saved choice, it was just never applied
+ * outside .dz-root. See atelierTheme.ts for the widened version.
+ */
+
+:root,
+[data-theme='light'] {
+  /* surfaces */
+  --sq-plane: #f7f4ee;
+  --sq-plane-2: #efeae0;
+  --sq-surface: #fffdf8;
+  --sq-surface-2: #f2eee5;
+
+  /* text */
+  --sq-ink: #26221c;
+  --sq-ink-2: #4c463b;
+  --sq-muted: #625b4c;
+  --sq-faint: #8b8271;
+
+  /* lines */
+  --sq-line: #e2dcd0;
+  --sq-line-2: #efe9dd;
+
+  /* accent — antique brass */
+  --sq-accent: #a8702a;
+  --sq-accent-text: #7d5017;
+  --sq-accent-soft: #f6ecdc;
+  --sq-accent-line: #dcc39a;
+
+  /* buttons */
+  --sq-btn-bg: #26221c;
+  --sq-btn-ink: #fffdf8;
+
+  /* status */
+  --sq-good: #2f6b3f;
+  --sq-good-soft: #e6f0e6;
+  --sq-warn: #8a6210;
+  --sq-warn-soft: #f7ecd6;
+  --sq-bad: #8f2f24;
+  --sq-bad-soft: #f8e6e3;
+
+  /* elevation */
+  --sq-shadow: 0 1px 2px rgba(38, 34, 28, 0.05), 0 1.2vh 3vh rgba(38, 34, 28, 0.07);
+  --sq-shadow-lg: 0 2vh 6vh rgba(38, 34, 28, 0.16);
+
+  /* canvas */
+  --sq-canvas-bg: #fffdf8;
+  --sq-canvas-guide: rgba(38, 34, 28, 0.22);
+  --sq-canvas-grid: rgba(38, 34, 28, 0.05);
+
+  color-scheme: light;
+}
+
+[data-theme='dark'] {
+  --sq-plane: #131211;
+  --sq-plane-2: #0d0c0b;
+  --sq-surface: #1c1a18;
+  --sq-surface-2: #242120;
+
+  --sq-ink: #f4f0ea;
+  --sq-ink-2: #d5cdc2;
+  --sq-muted: #a89f92;
+  --sq-faint: #8d8478;
+
+  --sq-line: #312d29;
+  --sq-line-2: #241f1d;
+
+  --sq-accent: #d08b4d;
+  --sq-accent-text: #e0a066;
+  --sq-accent-soft: rgba(208, 139, 77, 0.14);
+  --sq-accent-line: #5c452e;
+
+  --sq-btn-bg: #d08b4d;
+  --sq-btn-ink: #131211;
+
+  --sq-good: #8fd08f;
+  --sq-good-soft: rgba(143, 208, 143, 0.12);
+  --sq-warn: #e8bb62;
+  --sq-warn-soft: rgba(232, 187, 98, 0.12);
+  --sq-bad: #ef8b7c;
+  --sq-bad-soft: rgba(239, 139, 124, 0.12);
+
+  --sq-shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 1.2vh 3vh rgba(0, 0, 0, 0.4);
+  --sq-shadow-lg: 0 2vh 6vh rgba(0, 0, 0, 0.55);
+
+  --sq-canvas-bg: #0d0c0b;
+  --sq-canvas-guide: rgba(244, 240, 234, 0.18);
+  --sq-canvas-grid: rgba(244, 240, 234, 0.045);
+
+  color-scheme: dark;
+}
+
+/* ── type ───────────────────────────────────────────────────────────────
+   Three families, each with one job. Load in index.html:
+
+   <link rel="preconnect" href="https://fonts.googleapis.com" />
+   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+   <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Archivo:wght@400;500;600;700&family=Archivo+Narrow:wght@500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+*/
+:root {
+  --sq-font-display: 'Instrument Serif', Georgia, 'Times New Roman', serif;
+  --sq-font-ui: Archivo, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --sq-font-label: 'Archivo Narrow', Archivo, sans-serif;
+  --sq-font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Fluid base: 13.1px at 360w → 15.2px at 1600w. Nothing in the UI is
+     below 12px at any viewport, which is what carries the AAA target. */
+  --sq-text: clamp(0.82rem, 0.95vw, 0.95rem);
+
+  --sq-r-sm: 0.3rem;
+  --sq-r: 0.45rem;
+  --sq-r-lg: 0.9rem;
+  --sq-r-xl: 1.2rem;
+}
+
+/* ── primitives ─────────────────────────────────────────────────────── */
+
+.sq-label {
+  font-family: var(--sq-font-label);
+  font-size: 0.8em;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--sq-faint);
+  margin: 0 0 0.7rem;
+}
+
+.sq-num {
+  font-family: var(--sq-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.sq-display {
+  font-family: var(--sq-font-display);
+  font-weight: 400;
+  letter-spacing: -0.01em;
+}
+
+.sq-card {
+  background: var(--sq-surface);
+  border: 1px solid var(--sq-line);
+  border-radius: var(--sq-r-lg);
+}
+
+.sq-btn {
+  font: inherit;
+  padding: 0.5rem 1rem;
+  min-height: 2.75rem; /* 44px hit target — iOS/Android guidance */
+  border: 1px solid var(--sq-line);
+  border-radius: var(--sq-r);
+  background: var(--sq-plane);
+  color: var(--sq-ink);
+  cursor: pointer;
+}
+.sq-btn:hover {
+  border-color: var(--sq-accent);
+}
+.sq-btn-primary {
+  border: 0;
+  background: var(--sq-btn-bg);
+  color: var(--sq-btn-ink);
+  font-weight: 600;
+}
+.sq-btn-primary:hover {
+  background: var(--sq-accent);
+  color: var(--sq-btn-ink);
+}
+.sq-btn-quiet {
+  border-color: var(--sq-accent-line);
+  background: var(--sq-accent-soft);
+  color: var(--sq-accent-text);
+  font-weight: 600;
+}
+
+/* One focus ring for the whole app. Never remove it — keyboard-only
+   operation is a stated requirement. */
+:focus-visible {
+  outline: 0.18rem solid var(--sq-accent);
+  outline-offset: 0.12rem;
+  border-radius: 0.2rem;
+}
+
+/* ── command palette ────────────────────────────────────────────────── */
+
+.sq-cmd-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 8vh 4% 4%;
+  background: color-mix(in srgb, var(--sq-plane-2) 68%, transparent);
+  backdrop-filter: blur(0.3rem);
+  animation: sq-fade 0.15s ease-out;
+}
+.sq-cmd {
+  width: 100%;
+  max-width: 38rem;
+  overflow: hidden;
+  box-shadow: var(--sq-shadow-lg);
+  animation: sq-rise 0.18s ease-out;
+}
+.sq-cmd-input {
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid var(--sq-line);
+  background: transparent;
+  color: var(--sq-ink);
+  padding: 1.1rem 1.2rem;
+  font: inherit;
+  font-size: 1.05em;
+}
+.sq-cmd-list {
+  list-style: none;
+  margin: 0;
+  padding: 0.5rem;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+.sq-cmd-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  text-align: left;
+  background: none;
+  border: 0;
+  padding: 0.65rem 0.75rem;
+  border-radius: 0.5rem;
+  color: var(--sq-ink);
+  cursor: pointer;
+  font: inherit;
+}
+.sq-cmd-item[aria-selected='true'],
+.sq-cmd-item:hover {
+  background: var(--sq-accent-soft);
+}
+.sq-cmd-group {
+  font-family: var(--sq-font-mono);
+  font-size: 0.72em;
+  letter-spacing: 0.08em;
+  color: var(--sq-accent-text);
+  min-width: 4.5rem;
+}
+.sq-cmd-hint {
+  font-family: var(--sq-font-mono);
+  font-size: 0.75em;
+  color: var(--sq-faint);
+}
+
+/* ── responsive: the studio collapses to one column ─────────────────── */
+
+@media (max-width: 64rem) {
+  .app-body {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+  .app-body > .panel-left,
+  .app-body > .panel-right {
+    display: none;
+  }
+  .sq-tabbar {
+    display: flex;
+  }
+}
+
+.sq-tabbar {
+  display: none;
+  gap: 0.2rem;
+  padding: 0.5rem 2% calc(0.5rem + env(safe-area-inset-bottom));
+  background: var(--sq-surface);
+  border-top: 1px solid var(--sq-line);
+}
+.sq-tabbar button {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  min-height: 3rem;
+  padding: 0.4rem 0.2rem;
+  border: 0;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: var(--sq-muted);
+  cursor: pointer;
+  font: inherit;
+}
+.sq-tabbar button[aria-current='page'] {
+  background: var(--sq-accent-soft);
+  color: var(--sq-accent-text);
+}
+
+@keyframes sq-rise {
+  from {
+    opacity: 0;
+    transform: translateY(1.2vh);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes sq-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sq-cmd,
+  .sq-cmd-scrim {
+    animation: none;
+  }
+}

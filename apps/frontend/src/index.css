@@ -1,13 +1,25 @@
+/* THE STUDIO'S TOKENS ARE NOW ALIASES ONTO THE ATELIER PALETTE.
+ *
+ * These were eight hard-coded literals — a violet-on-near-black scheme the
+ * handoff describes as "generic" and replaces with warm paper / graphite and
+ * an antique-brass accent. Every rule below still reads `var(--bg)`,
+ * `var(--panel)` and so on, so repointing the DEFINITIONS restyles the whole
+ * Studio without touching a single consumer or any markup. That is the
+ * handoff's "restyle, don't rewrite" in one block.
+ *
+ * `color-scheme` is deliberately NOT set here: atelier.css sets it per theme,
+ * and pinning it dark would keep form controls and scrollbars dark on a light
+ * surface. See docs/design/ATELIER-HANDOFF.md.
+ */
 :root {
-  --bg: #0f1115;
-  --panel: #171a21;
-  --panel-2: #1d212b;
-  --line: #2a2f3a;
-  --text: #e6e8ee;
-  --muted: #8b93a7;
-  --accent: #7c5cff;
-  --accent-2: #1e90ff;
-  color-scheme: dark;
+  --bg: var(--sq-plane);
+  --panel: var(--sq-surface);
+  --panel-2: var(--sq-surface-2);
+  --line: var(--sq-line);
+  --text: var(--sq-ink);
+  --muted: var(--sq-muted);
+  --accent: var(--sq-accent);
+  --accent-2: var(--sq-accent-text);
 }
 
 * {
@@ -141,7 +153,7 @@ code {
   cursor: default;
 }
 .auth-err {
-  color: #ff6b6b;
+  color: var(--sq-bad);
   font-size: 12px;
 }
 .auth-hint {
@@ -270,7 +282,7 @@ code {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: radial-gradient(circle at 50% 40%, #14171f, #0c0e12);
+  background: var(--sq-plane-2);
   min-height: 0;
   overflow: auto;
 }
@@ -312,8 +324,8 @@ code {
 }
 
 .stitch-stage {
-  background: #0a0c10;
-  border: 1px dashed var(--line);
+  background: var(--sq-canvas-bg);
+  border: 1px dashed var(--sq-canvas-guide);
   border-radius: 8px;
 }
 
@@ -417,7 +429,7 @@ code {
 }
 
 .validation-report.has-issues {
-  border-left-color: #f87171;
+  border-left-color: var(--sq-bad);
 }
 
 .validation-report strong {
@@ -437,15 +449,15 @@ code {
 }
 
 .vr-issue {
-  color: #fca5a5;
+  color: var(--sq-bad);
 }
 
 .vr-warn {
-  color: #fcd34d;
+  color: var(--sq-warn);
 }
 
 .vr-ok {
-  color: #86efac;
+  color: var(--sq-good);
 }
 
 .saved-panel {
@@ -495,11 +507,11 @@ code {
 }
 
 .saved-del {
-  color: #fca5a5;
+  color: var(--sq-bad);
 }
 
 .toolbar-err {
-  color: #fca5a5;
+  color: var(--sq-bad);
   font-size: 12px;
   max-width: 320px;
   overflow: hidden;
@@ -667,13 +679,13 @@ code {
 
 /* Score tones: ≥90 green, ≥70 amber, else red (same palette as the report rows). */
 .q-good {
-  color: #86efac;
+  color: var(--sq-good);
 }
 .q-warn {
-  color: #fcd34d;
+  color: var(--sq-warn);
 }
 .q-bad {
-  color: #fca5a5;
+  color: var(--sq-bad);
 }
 
 .quality-grid {
@@ -849,19 +861,19 @@ code {
 
 /* Kind tints reuse the validation-report palette (.vr-issue / .vr-ok). */
 .toast-error {
-  border-left-color: #f87171;
+  border-left-color: var(--sq-bad);
 }
 .toast-error .toast-icon,
 .toast-error .toast-message {
-  color: #fca5a5;
+  color: var(--sq-bad);
 }
 
 .toast-success {
-  border-left-color: #86efac;
+  border-left-color: var(--sq-good);
 }
 .toast-success .toast-icon,
 .toast-success .toast-message {
-  color: #86efac;
+  color: var(--sq-good);
 }
 
 .toast-info {
@@ -991,10 +1003,10 @@ code {
 .design-warnings {
   margin: 4px 8px 0;
   padding: 6px 10px;
-  border: 1px solid #d9a514;
+  border: 1px solid var(--sq-warn);
   border-radius: 6px;
   background: rgba(217, 165, 20, 0.12);
-  color: #8a6d00;
+  color: var(--sq-warn);
   font-size: 12px;
   line-height: 1.5;
 }
@@ -1006,14 +1018,19 @@ code {
    reserved for state and never reused as "series 4". Text always wears
    text tokens, never a series colour. */
 :root {
-  --series-1: #3987e5; /* blue — the single-series default */
+  /* Series marks keep their own hues — a categorical scale has to stay
+     distinguishable and cannot all be brass — but the SINGLE-series default
+     is the accent, so an unlabelled chart reads as part of the palette. The
+     status trio and the grid line are Atelier's, so they retheme with
+     everything else. */
+  --series-1: var(--sq-accent);
   --series-2: #d95926; /* orange */
-  --series-3: #199e70; /* aqua */
-  --series-4: #c98500; /* yellow */
-  --status-good: #199e70;
-  --status-warn: #c98500;
-  --status-serious: #e66767;
-  --grid-line: #262b35;  /* recessive: quieter than --line */
+  --series-3: var(--sq-good); /* aqua */
+  --series-4: var(--sq-warn); /* yellow */
+  --status-good: var(--sq-good);
+  --status-warn: var(--sq-warn);
+  --status-serious: var(--sq-bad);
+  --grid-line: var(--sq-line-2);  /* recessive: quieter than --line */
 }
 
 /* ── Design polish pass (v2 Part 26) ────────────────────────── */
@@ -1031,47 +1048,36 @@ button:focus-visible, select:focus-visible, input:focus-visible, summary:focus-v
    reference palette: single-series charts carry --dz-series-1 and no legend;
    text always wears ink tokens, never the series colour. */
 
+/* The dashboard's tokens are aliases too, for the same reason as the Studio's.
+ *
+ * The light variant that used to live here — `.dz-root[data-theme='light']` —
+ * IS DELETED, and deleting it was mandatory rather than tidy: `data-theme`
+ * moved to <html> (see lib/useTheme.ts), so a selector scoped to `.dz-root`
+ * could never match again and the dashboard would have been stuck dark
+ * forever. atelier.css now supplies both surfaces at :root / [data-theme],
+ * and these aliases follow whichever is active. */
 .dz-root {
-  /* dark is the default (matches the studio when first opened) */
-  color-scheme: dark;
-  --dz-plane: #0d0d0d;
-  --dz-surface: #1a1a19;
-  --dz-ink: #ffffff;
-  --dz-ink-2: #c3c2b7;
-  --dz-muted: #898781;
-  --dz-grid: #2c2c2a;
-  --dz-baseline: #383835;
-  --dz-border: rgba(255, 255, 255, 0.1);
-  --dz-series-1: #3987e5;
-  --dz-good: #0ca30c;
-  --dz-warn: #fab219;
-  --dz-serious: #ec835a;
-  --dz-critical: #d03b3b;
-  --dz-violet: #9085e9;
+  --dz-plane: var(--sq-plane);
+  --dz-surface: var(--sq-surface);
+  --dz-ink: var(--sq-ink);
+  --dz-ink-2: var(--sq-ink-2);
+  --dz-muted: var(--sq-muted);
+  --dz-grid: var(--sq-line-2);
+  --dz-baseline: var(--sq-line);
+  --dz-border: var(--sq-line);
+  --dz-series-1: var(--sq-accent);
+  --dz-good: var(--sq-good);
+  --dz-warn: var(--sq-warn);
+  --dz-serious: var(--sq-warn);
+  --dz-critical: var(--sq-bad);
+  --dz-violet: var(--sq-accent-text);
 
   display: grid;
   grid-template-columns: 232px minmax(0, 1fr);
   min-height: 100vh;
   background: var(--dz-plane);
   color: var(--dz-ink);
-  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
-}
-.dz-root[data-theme='light'] {
-  color-scheme: light;
-  --dz-plane: #f9f9f7;
-  --dz-surface: #fcfcfb;
-  --dz-ink: #0b0b0b;
-  --dz-ink-2: #52514e;
-  --dz-muted: #898781;
-  --dz-grid: #e1e0d9;
-  --dz-baseline: #c3c2b7;
-  --dz-border: rgba(11, 11, 11, 0.1);
-  --dz-series-1: #2a78d6;
-  --dz-good: #0ca30c;
-  --dz-warn: #fab219;
-  --dz-serious: #ec835a;
-  --dz-critical: #d03b3b;
-  --dz-violet: #4a3aa7;
+  font-family: var(--sq-font-ui, system-ui, -apple-system, 'Segoe UI', sans-serif);
 }
 
 /* ── shell ── */
@@ -1431,7 +1437,7 @@ button:focus-visible, select:focus-visible, input:focus-visible, summary:focus-v
 .ie-row { display: flex; gap: 14px; }
 .ie-analysis { margin-top: 8px; font-size: 12px; }
 .ie-analysis ul { margin: 0 0 8px; padding-left: 16px; display: flex; flex-direction: column; gap: 4px; }
-.ie-err { color: #ff6b6b; font-size: 12px; }
+.ie-err { color: var(--sq-bad); font-size: 12px; }
 
 /* Thread editor */
 .te-panel { display: flex; flex-direction: column; gap: 8px; }
@@ -1449,10 +1455,10 @@ button:focus-visible, select:focus-visible, input:focus-visible, summary:focus-v
 }
 .te-apply:hover { color: var(--accent-2); text-decoration: underline; }
 .te-del { background: none; border: 0; color: var(--muted); cursor: pointer; }
-.te-del:hover { color: #ff6b6b; }
+.te-del:hover { color: var(--sq-bad); }
 .te-sub { font-size: 12px; color: var(--muted); margin: 6px 0 0; text-transform: uppercase; letter-spacing: .06em; }
-.te-ok { color: #86efac; font-size: 12px; margin: 0; }
-.te-err { color: #ff6b6b; font-size: 12px; margin: 0; }
+.te-ok { color: var(--sq-good); font-size: 12px; margin: 0; }
+.te-err { color: var(--sq-bad); font-size: 12px; margin: 0; }
 
 /* Stitch (DST) editor */
 .se-panel { display: flex; flex-direction: column; gap: 8px; }
@@ -1464,8 +1470,8 @@ button:focus-visible, select:focus-visible, input:focus-visible, summary:focus-v
 .se-transform { display: flex; flex-direction: column; gap: 6px; }
 .se-transform label { display: flex; flex-direction: column; font-size: 11px; color: var(--muted); gap: 2px; }
 .se-transform em { font-style: normal; color: var(--text); }
-.se-notes { font-size: 11px; color: #86efac; display: flex; flex-direction: column; gap: 2px; }
-.se-err { color: #ff6b6b; font-size: 12px; margin: 0; }
+.se-notes { font-size: 11px; color: var(--sq-good); display: flex; flex-direction: column; gap: 2px; }
+.se-err { color: var(--sq-bad); font-size: 12px; margin: 0; }
 
 /* ── Studio right rail + canvas warnings (v2 Part 36) ──────────────────
    The rail was a 3-row grid sized for exactly three panels; the thread and
@@ -1496,5 +1502,5 @@ button:focus-visible, select:focus-visible, input:focus-visible, summary:focus-v
   max-height: 30%;
   overflow-y: auto;
   background: rgba(20, 16, 0, 0.92);
-  color: #f2c94c;
+  color: var(--sq-warn);
 }

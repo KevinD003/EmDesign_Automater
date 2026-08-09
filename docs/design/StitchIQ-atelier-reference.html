@@ -1,0 +1,1535 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#f7f4ee" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Archivo:wght@400;500;600;700&family=Archivo+Narrow:wght@500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --plane:#f7f4ee; --plane-2:#efeae0; --surface:#fffdf8; --surface-2:#f2eee5;
+    --ink:#26221c; --ink-2:#4c463b; --muted:#625b4c; --faint:#8b8271;
+    --line:#e2dcd0; --line-2:#efe9dd;
+    --accent:#a8702a; --accent-text:#7d5017; --accent-soft:#f6ecdc; --accent-line:#dcc39a;
+    --btn-bg:#26221c; --btn-ink:#fffdf8;
+    --good:#2f6b3f; --good-soft:#e6f0e6; --warn:#8a6210; --warn-soft:#f7ecd6; --bad:#8f2f24; --bad-soft:#f8e6e3;
+    --shadow:0 1px 2px rgba(38,34,28,.05), 0 1.2vh 3vh rgba(38,34,28,.07);
+    --shadow-lg:0 2vh 6vh rgba(38,34,28,.16);
+    --canvas-bg:#fffdf8; --canvas-guide:rgba(38,34,28,.22); --canvas-grid:rgba(38,34,28,.05);
+    --studio-cols:18% minmax(0,1fr) 22%;
+    --dash-cols:15rem minmax(0,1fr);
+    --side-display:flex; --rail-display:flex; --mobile-nav:none; --desk-only:flex;
+    --pad-x:1.4%;
+    color-scheme:light;
+  }
+  [data-theme='dark'] {
+    --plane:#131211; --plane-2:#0d0c0b; --surface:#1c1a18; --surface-2:#242120;
+    --ink:#f4f0ea; --ink-2:#d5cdc2; --muted:#a89f92; --faint:#8d8478;
+    --line:#312d29; --line-2:#241f1d;
+    --accent:#d08b4d; --accent-text:#e0a066; --accent-soft:rgba(208,139,77,.14); --accent-line:#5c452e;
+    --btn-bg:#d08b4d; --btn-ink:#131211;
+    --good:#8fd08f; --good-soft:rgba(143,208,143,.12); --warn:#e8bb62; --warn-soft:rgba(232,187,98,.12); --bad:#ef8b7c; --bad-soft:rgba(239,139,124,.12);
+    --shadow:0 1px 2px rgba(0,0,0,.5), 0 1.2vh 3vh rgba(0,0,0,.4);
+    --shadow-lg:0 2vh 6vh rgba(0,0,0,.55);
+    --canvas-bg:#0d0c0b; --canvas-guide:rgba(244,240,234,.18); --canvas-grid:rgba(244,240,234,.045);
+    color-scheme:dark;
+  }
+  @media (max-width:64rem) {
+    :root { --studio-cols:minmax(0,1fr); --dash-cols:minmax(0,1fr); --side-display:none; --rail-display:none; --mobile-nav:flex; --desk-only:none; --pad-x:4%; }
+  }
+  html, body { margin:0; height:100%; background:var(--plane); }
+  * { box-sizing:border-box; }
+  body { -webkit-text-size-adjust:100%; }
+  a { color:var(--accent-text); text-decoration:none; }
+  a:hover { text-decoration:underline; }
+  button, input, select, textarea { font:inherit; }
+  input[type=range] { accent-color:var(--accent); height:1.4rem; }
+  :focus-visible { outline:0.18rem solid var(--accent); outline-offset:0.12rem; border-radius:0.2rem; }
+  ::selection { background:var(--accent); color:var(--btn-ink); }
+  ::-webkit-scrollbar { width:0.55rem; height:0.55rem; }
+  ::-webkit-scrollbar-thumb { background:var(--line); border-radius:99rem; }
+  @keyframes riseIn { from { opacity:0; transform:translateY(1.2vh); } to { opacity:1; transform:none; } }
+  @keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  @media (prefers-reduced-motion:reduce) { * { animation-duration:0.01ms !important; transition-duration:0.01ms !important; } }
+</style>
+</helmet>
+
+<div data-theme="{{ theme }}" style="height:100vh; width:100%; background:var(--plane); color:var(--ink); font-family:Archivo,system-ui,-apple-system,sans-serif; font-size:clamp(0.82rem,0.95vw,0.95rem); line-height:1.5; display:flex; flex-direction:column; overflow:hidden;">
+
+  <a href="#main" style="position:absolute; left:-100vw; top:0; z-index:99; background:var(--btn-bg); color:var(--btn-ink); padding:0.6rem 1rem; border-radius:0 0 0.5rem 0;" style-focus="left:0;">Skip to content</a>
+
+  <!-- ══ LANDING ══ -->
+  <sc-if value="{{ isLanding }}" hint-placeholder-val="{{ true }}">
+    <div data-screen-label="Landing" style="flex:1; min-height:0; overflow-y:auto; background:var(--plane);">
+      <header style="display:flex; align-items:center; justify-content:space-between; gap:4%; padding:1.2rem var(--pad-x); position:sticky; top:0; background:color-mix(in srgb, var(--plane) 88%, transparent); backdrop-filter:blur(0.8rem); z-index:10; border-bottom:1px solid var(--line-2);">
+        <div style="display:flex; align-items:baseline; gap:0.45rem;">
+          <span style="font-family:'Instrument Serif',Georgia,serif; font-size:1.6em; letter-spacing:-0.01em;">Stitch</span>
+          <span style="font-family:'Archivo Narrow',sans-serif; font-size:0.9em; letter-spacing:0.22em; color:var(--accent-text); font-weight:700;">IQ</span>
+        </div>
+        <nav style="display:var(--desk-only); gap:2rem; font-size:0.95em; color:var(--muted);">
+          <a href="#" style="color:inherit;">How it works</a>
+          <a href="#" style="color:inherit;">Formats</a>
+          <a href="#" style="color:inherit;">Pricing</a>
+          <a href="#" style="color:inherit;">Docs</a>
+        </nav>
+        <div style="display:flex; align-items:center; gap:0.6rem;">
+          <button type="button" onClick="{{ toggleTheme }}" title="{{ themeLabel }}" aria-label="{{ themeLabel }}" style="width:2.4rem; height:2.4rem; border:1px solid var(--line); background:var(--surface); color:var(--muted); border-radius:0.5rem; cursor:pointer;" style-hover="color:var(--ink); border-color:var(--accent);">{{ themeIcon }}</button>
+          <button type="button" onClick="{{ goSignin }}" style="padding:0.55rem 1rem; border:1px solid var(--line); background:var(--surface); color:var(--ink); border-radius:0.5rem; cursor:pointer; white-space:nowrap;" style-hover="border-color:var(--accent);">Sign in</button>
+          <button type="button" onClick="{{ goStudio }}" style="padding:0.55rem 1.15rem; border:0; background:var(--btn-bg); color:var(--btn-ink); border-radius:0.5rem; cursor:pointer; font-weight:600; white-space:nowrap;" style-hover="background:var(--accent); color:var(--btn-ink);">Open the Studio</button>
+        </div>
+      </header>
+
+      <section style="max-width:78rem; margin:0 auto; padding:6% var(--pad-x) 4%;">
+        <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(20rem,1fr)); gap:6%; align-items:center;">
+          <div style="animation:riseIn .5s ease-out;">
+            <span style="display:inline-block; font-family:'Archivo Narrow',sans-serif; font-size:0.85em; letter-spacing:0.18em; text-transform:uppercase; color:var(--accent-text); border:1px solid var(--accent-line); background:var(--accent-soft); border-radius:99rem; padding:0.3rem 0.85rem;">Classical CV · deterministic</span>
+            <h1 style="font-family:'Instrument Serif',Georgia,serif; font-size:clamp(2.6rem,5.2vw,4.4rem); line-height:1.04; letter-spacing:-0.015em; margin:1.2rem 0 0; text-wrap:balance;">Turn any image into<br /><em style="color:var(--accent-text);">machine-ready</em> embroidery.</h1>
+            <p style="color:var(--muted); font-size:1.1em; max-width:34rem; margin:1.2rem 0 0; text-wrap:pretty;">Colour separation, tatami fills, satin columns, underlay and pull compensation — every object stays re-editable, then exports to DST, PES, JEF, EXP and VP3.</p>
+            <div style="display:flex; gap:0.7rem; flex-wrap:wrap; margin-top:2rem;">
+              <button type="button" onClick="{{ goStudio }}" style="padding:0.8rem 1.6rem; border:0; background:var(--btn-bg); color:var(--btn-ink); border-radius:0.6rem; cursor:pointer; font-weight:600; font-size:1.05em;" style-hover="background:var(--accent);">Digitize an image</button>
+              <button type="button" onClick="{{ goDash }}" style="padding:0.8rem 1.5rem; border:1px solid var(--line); background:var(--surface); color:var(--ink); border-radius:0.6rem; cursor:pointer; font-size:1.05em;" style-hover="border-color:var(--accent);">See the dashboard</button>
+            </div>
+            <div style="display:flex; gap:1.6rem; flex-wrap:wrap; margin-top:2.4rem; font-family:'JetBrains Mono',monospace; font-size:0.82em; color:var(--faint);">
+              <span>45+ FORMATS</span><span>1,000+ TESTS GREEN</span><span>NO GPU REQUIRED</span>
+            </div>
+          </div>
+          <div style="background:var(--surface); border:1px solid var(--line); border-radius:1.2rem; box-shadow:var(--shadow); padding:4%; aspect-ratio:1/1; min-height:20rem; display:flex; animation:riseIn .6s ease-out .1s backwards;">
+            <canvas ref="{{ heroRef }}" style="width:100%; height:100%; display:block; border-radius:0.6rem;"></canvas>
+          </div>
+        </div>
+      </section>
+
+      <section style="max-width:78rem; margin:0 auto; padding:2% var(--pad-x) 8%;">
+        <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(15rem,1fr)); gap:1.2rem;">
+          <sc-for list="{{ features }}" as="f" hint-placeholder-count="4">
+            <article style="background:var(--surface); border:1px solid var(--line); border-radius:1rem; padding:1.6rem 1.4rem;">
+              <div style="font-family:'JetBrains Mono',monospace; font-size:0.78em; letter-spacing:0.12em; color:var(--accent-text);">{{ f.no }}</div>
+              <h3 style="font-family:'Instrument Serif',Georgia,serif; font-size:1.5em; font-weight:400; margin:0.5rem 0 0.5rem;">{{ f.title }}</h3>
+              <p style="color:var(--muted); margin:0; font-size:0.95em; text-wrap:pretty;">{{ f.body }}</p>
+            </article>
+          </sc-for>
+        </div>
+      </section>
+    </div>
+  </sc-if>
+
+  <!-- ══ AUTH ══ -->
+  <sc-if value="{{ isAuth }}" hint-placeholder-val="{{ false }}">
+    <div data-screen-label="Auth" style="flex:1; min-height:0; display:flex; align-items:center; justify-content:center; padding:6% var(--pad-x); background:var(--plane); overflow-y:auto;">
+      <div style="width:100%; max-width:26rem; background:var(--surface); border:1px solid var(--line); border-radius:1.2rem; box-shadow:var(--shadow); padding:2.4rem 2.2rem; animation:riseIn .35s ease-out;">
+        <button type="button" onClick="{{ goLanding }}" style="display:flex; align-items:baseline; gap:0.4rem; background:none; border:0; padding:0; cursor:pointer; color:var(--ink);">
+          <span style="font-family:'Instrument Serif',Georgia,serif; font-size:1.5em;">Stitch</span>
+          <span style="font-family:'Archivo Narrow',sans-serif; font-size:0.85em; letter-spacing:0.22em; color:var(--accent-text); font-weight:700;">IQ</span>
+        </button>
+        <h1 style="font-family:'Instrument Serif',Georgia,serif; font-weight:400; font-size:1.9em; margin:1.2rem 0 0.3rem;">{{ authTitle }}</h1>
+        <p style="color:var(--muted); margin:0 0 1.6rem; font-size:0.95em;">{{ authBlurb }}</p>
+        <form onSubmit="{{ onAuthSubmit }}" style="display:flex; flex-direction:column; gap:1rem;">
+          <sc-for list="{{ authFields }}" as="a" hint-placeholder-count="2">
+            <label style="display:flex; flex-direction:column; gap:0.4rem; font-size:0.9em; color:var(--ink-2);">
+              <span>{{ a.label }} <span style="color:var(--faint);">{{ a.note }}</span></span>
+              <input type="{{ a.type }}" autoComplete="{{ a.auto }}" placeholder="{{ a.placeholder }}" style="background:var(--plane); border:1px solid var(--line); color:var(--ink); border-radius:0.55rem; padding:0.7rem 0.85rem; width:100%;" />
+            </label>
+          </sc-for>
+          <button type="submit" style="margin-top:0.4rem; padding:0.75rem; border:0; background:var(--btn-bg); color:var(--btn-ink); border-radius:0.55rem; cursor:pointer; font-weight:600;" style-hover="background:var(--accent);">{{ authCta }}</button>
+        </form>
+        <div style="margin-top:1.4rem; display:flex; flex-direction:column; gap:0.5rem; font-size:0.9em; color:var(--muted);">
+          <sc-for list="{{ authLinks }}" as="l" hint-placeholder-count="2">
+            <button type="button" onClick="{{ l.onClick }}" style="background:none; border:0; padding:0; text-align:left; color:var(--accent-text); cursor:pointer; text-decoration:underline;">{{ l.label }}</button>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- ══ STUDIO ══ -->
+  <sc-if value="{{ isStudio }}" hint-placeholder-val="{{ false }}">
+    <div data-screen-label="Studio" style="flex:1; min-height:0; display:flex; flex-direction:column;">
+
+      <header style="display:flex; align-items:center; gap:2.5%; padding:0.65rem var(--pad-x); background:var(--surface); border-bottom:1px solid var(--line); flex-wrap:wrap; row-gap:0.5rem;">
+        <button type="button" onClick="{{ goDash }}" title="Back to dashboard" style="display:flex; align-items:baseline; gap:0.4rem; background:none; border:0; padding:0; cursor:pointer; color:var(--ink); flex:none;">
+          <span style="font-family:'Instrument Serif',Georgia,serif; font-size:1.45em;">Stitch</span>
+          <span style="font-family:'Archivo Narrow',sans-serif; font-size:0.82em; letter-spacing:0.2em; color:var(--accent-text); font-weight:700;">IQ</span>
+        </button>
+
+        <div style="display:flex; gap:0.3rem; flex:none;">
+          <button type="button" onClick="{{ undo }}" disabled="{{ noUndo }}" title="Undo — ⌘Z" aria-label="Undo" style="width:2.2rem; height:2.2rem; border:1px solid var(--line); background:var(--plane); color:var(--muted); border-radius:0.45rem; cursor:pointer;" style-hover="border-color:var(--accent); color:var(--ink);">↶</button>
+          <button type="button" onClick="{{ redo }}" disabled="{{ noRedo }}" title="Redo — ⇧⌘Z" aria-label="Redo" style="width:2.2rem; height:2.2rem; border:1px solid var(--line); background:var(--plane); color:var(--muted); border-radius:0.45rem; cursor:pointer;" style-hover="border-color:var(--accent); color:var(--ink);">↷</button>
+        </div>
+
+        <nav aria-label="Digitizing tools" style="display:flex; gap:0.2rem; flex:1 1 18rem; min-width:0; padding:0.2rem; background:var(--surface-2); border:1px solid var(--line-2); border-radius:0.6rem; overflow-x:auto;">
+          <sc-for list="{{ tools }}" as="t" hint-placeholder-count="6">
+            <button type="button" onClick="{{ t.onClick }}" title="{{ t.hint }}" aria-pressed="{{ t.pressed }}" style="{{ t.style }}">{{ t.label }}</button>
+          </sc-for>
+        </nav>
+
+        <div style="display:flex; gap:0.4rem; align-items:center; flex-wrap:wrap; justify-content:flex-end;">
+          <button type="button" onClick="{{ openCmd }}" title="Command palette — ⌘K" style="display:var(--desk-only); align-items:center; gap:0.5rem; padding:0.45rem 0.7rem 0.45rem 0.85rem; border:1px solid var(--line); background:var(--plane); color:var(--muted); border-radius:0.45rem; cursor:pointer; font-size:0.9em;" style-hover="border-color:var(--accent); color:var(--ink);">Search<span style="font-family:'JetBrains Mono',monospace; font-size:0.85em; border:1px solid var(--line); border-radius:0.25rem; padding:0.05rem 0.35rem;">⌘K</span></button>
+          <button type="button" onClick="{{ openDigitize }}" style="padding:0.5rem 1rem; border:0; background:var(--btn-bg); color:var(--btn-ink); border-radius:0.45rem; cursor:pointer; font-weight:600;" style-hover="background:var(--accent);">Digitize</button>
+          <button type="button" onClick="{{ openLettering }}" style="padding:0.5rem 0.85rem; border:1px solid var(--line); background:var(--plane); color:var(--ink); border-radius:0.45rem; cursor:pointer;" style-hover="border-color:var(--accent);">Text</button>
+          <div style="display:flex; align-items:stretch; border:1px solid var(--line); border-radius:0.45rem; overflow:hidden; background:var(--plane);">
+            <select value="{{ format }}" onChange="{{ onFormat }}" aria-label="Export format" style="border:0; background:transparent; color:var(--ink); padding:0.5rem 0.5rem; font-family:'JetBrains Mono',monospace; font-size:0.85em;">
+              <sc-for list="{{ formats }}" as="f" hint-placeholder-count="5"><option value="{{ f.v }}">{{ f.label }}</option></sc-for>
+            </select>
+            <button type="button" onClick="{{ onExport }}" style="padding:0.5rem 1rem; border:0; border-left:1px solid var(--line); background:var(--accent); color:var(--btn-ink); cursor:pointer; font-weight:600;" style-hover="filter:brightness(1.08);">Export</button>
+          </div>
+          <button type="button" onClick="{{ toggleNotif }}" title="Notifications" aria-label="Notifications" style="position:relative; width:2.2rem; height:2.2rem; border:1px solid var(--line); background:var(--plane); color:var(--muted); border-radius:0.45rem; cursor:pointer;" style-hover="border-color:var(--accent); color:var(--ink);">◔<span style="position:absolute; top:-0.25rem; right:-0.25rem; min-width:1.05rem; height:1.05rem; border-radius:99rem; background:var(--accent); color:var(--btn-ink); font-family:'JetBrains Mono',monospace; font-size:0.62rem; display:flex; align-items:center; justify-content:center; padding:0 0.2rem;">{{ notifCount }}</span></button>
+          <button type="button" onClick="{{ toggleTheme }}" title="{{ themeLabel }}" aria-label="{{ themeLabel }}" style="width:2.2rem; height:2.2rem; border:1px solid var(--line); background:var(--plane); color:var(--muted); border-radius:0.45rem; cursor:pointer;" style-hover="border-color:var(--accent); color:var(--ink);">{{ themeIcon }}</button>
+        </div>
+      </header>
+
+      <div id="main" style="flex:1; min-height:0; display:grid; grid-template-columns:var(--studio-cols);">
+
+        <aside aria-label="Design structure" style="display:var(--side-display); flex-direction:column; gap:1.4rem; background:var(--surface); border-right:1px solid var(--line); overflow-y:auto; padding:1.1rem 1rem;">
+          <div>
+            <div style="display:flex; align-items:baseline; justify-content:space-between; margin-bottom:0.7rem;">
+              <h2 style="margin:0; font-family:'Archivo Narrow',sans-serif; font-size:0.8em; letter-spacing:0.16em; text-transform:uppercase; color:var(--faint); font-weight:700;">Colour sequence</h2>
+              <span style="font-family:'JetBrains Mono',monospace; font-size:0.75em; color:var(--faint);">{{ stopCount }}</span>
+            </div>
+            <ul style="list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:0.3rem;">
+              <sc-for list="{{ stops }}" as="s" hint-placeholder-count="3">
+                <li>
+                  <button type="button" onClick="{{ s.onClick }}" aria-pressed="{{ s.on }}" style="{{ s.style }}">
+                    <span style="font-family:'JetBrains Mono',monospace; color:var(--accent-text); font-size:0.8em; min-width:1.3rem;">{{ s.seq }}</span>
+                    <span style="width:1rem; height:1rem; border-radius:0.22rem; border:1px solid var(--line); flex:none; background:{{ s.hex }};"></span>
+                    <span style="flex:1; text-align:left; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ s.name }}</span>
+                    <span style="font-family:'JetBrains Mono',monospace; color:var(--faint); font-size:0.78em;">{{ s.count }}</span>
+                  </button>
+                </li>
+              </sc-for>
+            </ul>
+          </div>
+
+          <div>
+            <h2 style="margin:0 0 0.7rem; font-family:'Archivo Narrow',sans-serif; font-size:0.8em; letter-spacing:0.16em; text-transform:uppercase; color:var(--faint); font-weight:700;">Objects</h2>
+            <ul style="list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:0.25rem; font-size:0.92em;">
+              <sc-for list="{{ objects }}" as="o" hint-placeholder-count="4">
+                <li style="display:flex; align-items:center; gap:0.55rem; padding:0.4rem 0.5rem; border-radius:0.4rem; background:var(--plane); color:var(--ink-2);">
+                  <span style="font-family:'JetBrains Mono',monospace; color:var(--faint); font-size:0.78em; min-width:2.4rem;">{{ o.kind }}</span>
+                  <span style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ o.name }}</span>
+                  <span style="font-family:'JetBrains Mono',monospace; color:var(--faint); font-size:0.78em;">{{ o.angle }}</span>
+                </li>
+              </sc-for>
+            </ul>
+          </div>
+
+          <div>
+            <h2 style="margin:0 0 0.7rem; font-family:'Archivo Narrow',sans-serif; font-size:0.8em; letter-spacing:0.16em; text-transform:uppercase; color:var(--faint); font-weight:700;">Version history</h2>
+            <ul style="list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:0.25rem; font-size:0.9em;">
+              <sc-for list="{{ versions }}" as="v" hint-placeholder-count="3">
+                <li style="display:flex; align-items:center; gap:0.6rem; padding:0.4rem 0.5rem; border-radius:0.4rem; border-left:0.15rem solid {{ v.tone }}; background:var(--plane);">
+                  <span style="flex:1; min-width:0;">
+                    <span style="display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ v.label }}</span>
+                    <span style="display:block; font-family:'JetBrains Mono',monospace; font-size:0.75em; color:var(--faint);">{{ v.when }}</span>
+                  </span>
+                  <button type="button" onClick="{{ v.onRestore }}" style="border:1px solid var(--line); background:var(--surface); color:var(--ink-2); border-radius:0.35rem; padding:0.2rem 0.5rem; font-size:0.8em; cursor:pointer;" style-hover="border-color:var(--accent); color:var(--ink);">Restore</button>
+                </li>
+              </sc-for>
+            </ul>
+          </div>
+
+          <div style="margin-top:auto; padding-top:1rem; border-top:1px solid var(--line-2);">
+            <div style="font-family:'Archivo Narrow',sans-serif; font-size:0.8em; letter-spacing:0.16em; text-transform:uppercase; color:var(--faint); margin-bottom:0.4rem;">Hoop</div>
+            <div style="display:flex; justify-content:space-between; align-items:baseline;">
+              <span style="font-family:'Instrument Serif',Georgia,serif; font-size:1.45em;">{{ hoop }}</span>
+              <span style="color:var(--faint); font-size:0.85em;">mm</span>
+            </div>
+          </div>
+        </aside>
+
+        <main style="position:relative; display:flex; align-items:center; justify-content:center; background:var(--plane-2); min-height:0; overflow:hidden;">
+          <div style="position:absolute; inset:0; background-image:linear-gradient(var(--canvas-grid) 1px, transparent 1px), linear-gradient(90deg, var(--canvas-grid) 1px, transparent 1px); background-size:5% 8%;"></div>
+
+          <div style="position:relative; width:78%; height:84%; background:var(--canvas-bg); border:1px solid var(--line); border-radius:0.7rem; box-shadow:var(--shadow); overflow:hidden;">
+            <canvas ref="{{ canvasRef }}" style="width:100%; height:100%; display:block;"></canvas>
+          </div>
+
+          <div style="position:absolute; top:3%; right:2%; display:flex; gap:0.15rem; padding:0.2rem; background:color-mix(in srgb, var(--surface) 92%, transparent); border:1px solid var(--line); border-radius:0.55rem; backdrop-filter:blur(0.5rem);">
+            <button type="button" onClick="{{ show2d }}" aria-pressed="{{ is2d }}" style="{{ tab2dStyle }}">2D</button>
+            <button type="button" onClick="{{ show3d }}" aria-pressed="{{ is3d }}" style="{{ tab3dStyle }}">TrueView 3D</button>
+          </div>
+
+          <sc-if value="{{ hasWarning }}" hint-placeholder-val="{{ false }}">
+            <div role="status" style="position:absolute; top:3%; left:2%; max-width:44%; padding:0.55rem 0.9rem; border:1px solid var(--accent-line); background:var(--warn-soft); color:var(--warn); border-radius:0.5rem; font-size:0.85em;">{{ warningText }}</div>
+          </sc-if>
+
+          <div style="position:absolute; left:2%; bottom:3.5%; padding:0.35rem 0.85rem; background:color-mix(in srgb, var(--surface) 92%, transparent); border:1px solid var(--line); border-radius:0.45rem; font-family:'JetBrains Mono',monospace; font-size:0.78em; color:var(--muted);">{{ badge }}</div>
+
+          <div style="position:absolute; right:2%; bottom:3.5%; display:flex; align-items:center; gap:0.15rem; padding:0.2rem; background:color-mix(in srgb, var(--surface) 92%, transparent); border:1px solid var(--line); border-radius:0.55rem;">
+            <button type="button" onClick="{{ zoomOut }}" aria-label="Zoom out" style="border:0; background:none; color:var(--muted); padding:0.3rem 0.7rem; cursor:pointer; border-radius:0.35rem;">−</button>
+            <span style="min-width:3.2rem; text-align:center; font-family:'JetBrains Mono',monospace; font-size:0.78em; color:var(--muted);">{{ zoomLabel }}</span>
+            <button type="button" onClick="{{ zoomIn }}" aria-label="Zoom in" style="border:0; background:none; color:var(--muted); padding:0.3rem 0.7rem; cursor:pointer; border-radius:0.35rem;">+</button>
+          </div>
+        </main>
+
+        <aside aria-label="Design properties" style="display:var(--rail-display); flex-direction:column; background:var(--surface); border-left:1px solid var(--line); overflow-y:auto;">
+          <section style="padding:1.1rem 1rem; border-bottom:1px solid var(--line-2);">
+            <h2 style="margin:0 0 0.55rem; font-family:'Archivo Narrow',sans-serif; font-size:0.8em; letter-spacing:0.16em; text-transform:uppercase; color:var(--faint); font-weight:700;">Quality</h2>
+            <div style="display:flex; align-items:baseline; gap:0.55rem;">
+              <span style="font-family:'Instrument Serif',Georgia,serif; font-size:2.7em; line-height:1;">{{ score }}</span>
+              <span style="font-family:'Archivo Narrow',sans-serif; letter-spacing:0.12em; text-transform:uppercase; font-size:0.88em; color:{{ scoreTone }};">{{ scoreGrade }}</span>
+            </div>
+            <div style="height:0.35rem; width:100%; background:var(--plane); border-radius:99rem; margin-top:0.7rem; overflow:hidden;">
+              <div style="height:100%; border-radius:99rem; width:{{ scorePct }}; background:{{ scoreTone }}; transition:width .3s ease;"></div>
+            </div>
+            <dl style="display:grid; grid-template-columns:1fr 1fr; gap:0.6rem 0.8rem; margin:0.9rem 0 0; font-size:0.9em;">
+              <sc-for list="{{ metrics }}" as="m" hint-placeholder-count="4">
+                <div><dt style="color:var(--faint); font-size:0.85em;">{{ m.label }}</dt><dd style="margin:0; font-family:'JetBrains Mono',monospace; color:{{ m.tone }};">{{ m.value }}</dd></div>
+              </sc-for>
+            </dl>
+          </section>
+
+          <section style="padding:1.1rem 1rem; border-bottom:1px solid var(--line-2);">
+            <h2 style="margin:0 0 0.75rem; font-family:'Archivo Narrow',sans-serif; font-size:0.8em; letter-spacing:0.16em; text-transform:uppercase; color:var(--faint); font-weight:700;">Properties · {{ selectedName }}</h2>
+            <div style="display:flex; flex-direction:column; gap:0.75rem;">
+              <label style="display:flex; align-items:center; justify-content:space-between; gap:0.6rem;">
+                <span style="color:var(--ink-2);">Stitch type</span>
+                <select value="{{ stitchType }}" onChange="{{ onStitchType }}" style="border:1px solid var(--line); background:var(--plane); color:var(--ink); border-radius:0.4rem; padding:0.35rem 0.5rem; font-size:0.9em;">
+                  <sc-for list="{{ stitchTypes }}" as="st" hint-placeholder-count="4"><option value="{{ st.v }}">{{ st.label }}</option></sc-for>
+                </select>
+              </label>
+              <label style="display:flex; align-items:center; justify-content:space-between; gap:0.6rem;">
+                <span style="color:var(--ink-2);">Density</span>
+                <span style="display:flex; align-items:center; gap:0.5rem; flex:1; max-width:56%;">
+                  <input type="range" min="25" max="80" value="{{ density }}" onInput="{{ onDensity }}" aria-label="Stitch density" style="flex:1; min-width:0;" />
+                  <em style="font-style:normal; font-family:'JetBrains Mono',monospace; color:var(--muted); font-size:0.85em; min-width:3.4rem; text-align:right;">{{ densityLabel }}</em>
+                </span>
+              </label>
+              <label style="display:flex; align-items:center; justify-content:space-between; gap:0.6rem;">
+                <span style="color:var(--ink-2);">Fill angle</span>
+                <span style="display:flex; align-items:center; gap:0.5rem; flex:1; max-width:56%;">
+                  <input type="range" min="0" max="180" value="{{ angle }}" onInput="{{ onAngle }}" aria-label="Fill angle" style="flex:1; min-width:0;" />
+                  <em style="font-style:normal; font-family:'JetBrains Mono',monospace; color:var(--muted); font-size:0.85em; min-width:3.4rem; text-align:right;">{{ angleLabel }}</em>
+                </span>
+              </label>
+              <label style="display:flex; align-items:center; justify-content:space-between; gap:0.6rem;">
+                <span style="color:var(--ink-2);">Pull comp.</span>
+                <span style="display:flex; align-items:center; gap:0.5rem; flex:1; max-width:56%;">
+                  <input type="range" min="0" max="60" value="{{ pull }}" onInput="{{ onPull }}" aria-label="Pull compensation" style="flex:1; min-width:0;" />
+                  <em style="font-style:normal; font-family:'JetBrains Mono',monospace; color:var(--muted); font-size:0.85em; min-width:3.4rem; text-align:right;">{{ pullLabel }}</em>
+                </span>
+              </label>
+              <label style="display:flex; align-items:center; justify-content:space-between; gap:0.6rem; cursor:pointer;">
+                <span style="color:var(--ink-2);">Edge-walk underlay</span>
+                <input type="checkbox" checked="{{ underlay }}" onChange="{{ onUnderlay }}" style="width:1.1rem; height:1.1rem; accent-color:var(--accent);" />
+              </label>
+              <button type="button" onClick="{{ onRebuild }}" style="margin-top:0.2rem; padding:0.6rem; border:0; background:var(--btn-bg); color:var(--btn-ink); border-radius:0.45rem; cursor:pointer; font-weight:600;" style-hover="background:var(--accent);">{{ rebuildLabel }}</button>
+            </div>
+          </section>
+
+          <section style="padding:1.1rem 1rem; border-bottom:1px solid var(--line-2);">
+            <h2 style="margin:0 0 0.7rem; font-family:'Archivo Narrow',sans-serif; font-size:0.8em; letter-spacing:0.16em; text-transform:uppercase; color:var(--faint); font-weight:700;">Thread palette · Madeira</h2>
+            <div style="display:grid; grid-template-columns:repeat(6,1fr); gap:0.35rem;">
+              <sc-for list="{{ palette }}" as="p" hint-placeholder-count="24">
+                <button type="button" onClick="{{ p.onClick }}" title="{{ p.name }}" aria-label="{{ p.name }}" style="width:100%; aspect-ratio:1; border-radius:0.3rem; border:1px solid var(--line); cursor:pointer; padding:0; background:{{ p.hex }};" style-hover="transform:scale(1.12);"></button>
+              </sc-for>
+            </div>
+          </section>
+
+          <section style="padding:1.1rem 1rem; display:flex; flex-direction:column; gap:0.6rem;">
+            <h2 style="margin:0; font-family:'Archivo Narrow',sans-serif; font-size:0.8em; letter-spacing:0.16em; text-transform:uppercase; color:var(--faint); font-weight:700;">Stitch-GPT</h2>
+            <div style="display:flex; flex-direction:column; gap:0.5rem; max-height:16rem; overflow-y:auto;">
+              <sc-for list="{{ chat }}" as="c" hint-placeholder-count="2">
+                <div style="{{ c.style }}">{{ c.text }}</div>
+              </sc-for>
+            </div>
+            <form onSubmit="{{ onAsk }}" style="display:flex; gap:0.4rem;">
+              <input value="{{ ask }}" onInput="{{ onAskInput }}" placeholder="Ask about this design…" aria-label="Ask Stitch-GPT" style="flex:1; min-width:0; background:var(--plane); border:1px solid var(--line); color:var(--ink); border-radius:0.45rem; padding:0.5rem 0.65rem; font-size:0.9em;" />
+              <button type="submit" style="border:1px solid var(--accent); background:var(--accent-soft); color:var(--accent-text); border-radius:0.45rem; padding:0.5rem 0.8rem; cursor:pointer; font-weight:600;">Ask</button>
+            </form>
+          </section>
+        </aside>
+      </div>
+
+      <footer style="display:flex; align-items:center; gap:1.1rem; padding:0.6rem var(--pad-x); background:var(--surface); border-top:1px solid var(--line); flex-wrap:wrap; row-gap:0.5rem;">
+        <button type="button" onClick="{{ togglePlay }}" aria-label="{{ playAria }}" style="width:2.4rem; height:2.4rem; border:0; border-radius:99rem; background:var(--accent); color:var(--btn-ink); cursor:pointer; flex:none;">{{ playIcon }}</button>
+        <input type="range" min="0" max="100" step="0.5" value="{{ playPct }}" onInput="{{ onScrub }}" aria-label="Stitch playhead" style="flex:1 1 12rem; min-width:0;" />
+        <span style="font-family:'JetBrains Mono',monospace; color:var(--muted); font-size:0.8em; white-space:nowrap;">{{ playLabel }}</span>
+        <span style="display:var(--desk-only); width:1px; height:1.3rem; background:var(--line);"></span>
+        <span style="display:var(--desk-only); font-size:0.85em; color:var(--muted); white-space:nowrap;">Est. sew <strong style="color:var(--ink); font-family:'JetBrains Mono',monospace;">{{ sewTime }}</strong></span>
+        <button type="button" onClick="{{ openShare }}" style="padding:0.4rem 0.85rem; border:1px solid var(--line); background:var(--plane); color:var(--ink); border-radius:0.45rem; cursor:pointer; font-size:0.9em;" style-hover="border-color:var(--accent);">Share</button>
+      </footer>
+    </div>
+  </sc-if>
+
+  <!-- ══ DASHBOARD ══ -->
+  <sc-if value="{{ isDash }}" hint-placeholder-val="{{ false }}">
+    <div data-screen-label="Dashboard" style="flex:1; min-height:0; display:grid; grid-template-columns:var(--dash-cols);">
+
+      <aside aria-label="Dashboard navigation" style="display:var(--side-display); flex-direction:column; gap:1.2rem; background:var(--surface); border-right:1px solid var(--line); padding:1.2rem 0.9rem; overflow-y:auto;">
+        <button type="button" onClick="{{ goLanding }}" style="display:flex; align-items:baseline; gap:0.4rem; background:none; border:0; padding:0.2rem 0.5rem; cursor:pointer; color:var(--ink);">
+          <span style="font-family:'Instrument Serif',Georgia,serif; font-size:1.5em;">Stitch</span>
+          <span style="font-family:'Archivo Narrow',sans-serif; font-size:0.85em; letter-spacing:0.22em; color:var(--accent-text); font-weight:700;">IQ</span>
+        </button>
+        <nav style="display:flex; flex-direction:column; gap:0.15rem;">
+          <sc-for list="{{ dashNav }}" as="n" hint-placeholder-count="8">
+            <button type="button" onClick="{{ n.onClick }}" aria-current="{{ n.on }}" style="{{ n.style }}">
+              <span style="width:1.2rem; text-align:center; opacity:0.85;">{{ n.icon }}</span>
+              <span style="flex:1; text-align:left;">{{ n.label }}</span>
+              <span style="font-family:'JetBrains Mono',monospace; font-size:0.72em; color:var(--faint);">{{ n.count }}</span>
+            </button>
+          </sc-for>
+        </nav>
+        <div style="margin-top:auto; display:flex; flex-direction:column; gap:0.5rem;">
+          <button type="button" onClick="{{ goStudio }}" style="display:flex; align-items:center; gap:0.7rem; padding:0.6rem 0.7rem; border:1px solid var(--accent-line); background:var(--accent-soft); color:var(--accent-text); border-radius:0.5rem; cursor:pointer; font-weight:600;">
+            <span>✎</span><span>Open the Studio</span>
+          </button>
+          <button type="button" onClick="{{ toggleTheme }}" style="display:flex; align-items:center; gap:0.7rem; padding:0.55rem 0.7rem; border:1px solid var(--line); background:var(--plane); color:var(--muted); border-radius:0.5rem; cursor:pointer;" style-hover="color:var(--ink); border-color:var(--accent);">
+            <span style="width:1.2rem; text-align:center;">{{ themeIcon }}</span><span>{{ themeShort }}</span>
+          </button>
+        </div>
+      </aside>
+
+      <div style="min-width:0; display:flex; flex-direction:column; min-height:0;">
+        <header style="display:flex; align-items:center; justify-content:space-between; gap:2%; padding:1rem var(--pad-x); border-bottom:1px solid var(--line); background:var(--surface); flex-wrap:wrap; row-gap:0.6rem;">
+          <h1 style="font-family:'Instrument Serif',Georgia,serif; font-weight:400; font-size:1.6em; margin:0;">{{ dashTitle }}</h1>
+          <div style="display:flex; align-items:center; gap:0.6rem;">
+            <button type="button" onClick="{{ openCmd }}" style="display:flex; align-items:center; gap:0.5rem; padding:0.45rem 0.7rem 0.45rem 0.85rem; border:1px solid var(--line); background:var(--plane); color:var(--muted); border-radius:0.45rem; cursor:pointer; font-size:0.9em;" style-hover="border-color:var(--accent); color:var(--ink);">Search<span style="font-family:'JetBrains Mono',monospace; font-size:0.85em; border:1px solid var(--line); border-radius:0.25rem; padding:0.05rem 0.35rem;">⌘K</span></button>
+            <button type="button" onClick="{{ toggleNotif }}" aria-label="Notifications" style="position:relative; width:2.2rem; height:2.2rem; border:1px solid var(--line); background:var(--plane); color:var(--muted); border-radius:0.45rem; cursor:pointer;" style-hover="border-color:var(--accent); color:var(--ink);">◔<span style="position:absolute; top:-0.25rem; right:-0.25rem; min-width:1.05rem; height:1.05rem; border-radius:99rem; background:var(--accent); color:var(--btn-ink); font-family:'JetBrains Mono',monospace; font-size:0.62rem; display:flex; align-items:center; justify-content:center; padding:0 0.2rem;">{{ notifCount }}</span></button>
+            <span style="font-family:'Archivo Narrow',sans-serif; font-size:0.78em; letter-spacing:0.14em; text-transform:uppercase; border:1px solid var(--accent-line); color:var(--accent-text); background:var(--accent-soft); border-radius:0.3rem; padding:0.2rem 0.55rem; font-weight:700;">Studio</span>
+            <span style="display:var(--desk-only); color:var(--muted); font-size:0.9em;">kevin@stitchiq</span>
+          </div>
+        </header>
+
+        <main style="flex:1; min-height:0; overflow-y:auto; padding:1.6rem var(--pad-x) 3rem; display:flex; flex-direction:column; gap:1.2rem;">
+
+          <sc-if value="{{ secOverview }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex; flex-direction:column; gap:1.2rem;">
+              <section aria-label="Library statistics" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(11rem,1fr)); gap:0.9rem;">
+                <sc-for list="{{ tiles }}" as="t" hint-placeholder-count="4">
+                  <div style="background:var(--surface); border:1px solid var(--line); border-radius:0.9rem; padding:1.1rem 1.2rem;">
+                    <div style="font-size:0.85em; color:var(--muted);">{{ t.label }}</div>
+                    <div style="font-family:'Instrument Serif',Georgia,serif; font-size:2.1em; line-height:1.15; margin-top:0.15rem;">{{ t.value }}</div>
+                    <div style="font-size:0.82em; color:var(--faint);">{{ t.hint }}</div>
+                  </div>
+                </sc-for>
+              </section>
+
+              <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(20rem,1fr)); gap:1.2rem; align-items:start;">
+                <section style="background:var(--surface); border:1px solid var(--line); border-radius:0.9rem; padding:1.3rem;">
+                  <h2 style="font-family:'Archivo Narrow',sans-serif; font-size:0.82em; letter-spacing:0.16em; text-transform:uppercase; color:var(--faint); font-weight:700; margin:0 0 0.9rem;">In the Studio now</h2>
+                  <div style="font-family:'Instrument Serif',Georgia,serif; font-size:1.7em;">Alpine Crest badge</div>
+                  <p style="color:var(--muted); margin:0.3rem 0 1.1rem; font-size:0.92em;">{{ currentMeta }}</p>
+                  <div style="display:flex; gap:0.6rem; flex-wrap:wrap;">
+                    <button type="button" onClick="{{ goStudio }}" style="padding:0.6rem 1.1rem; border:0; background:var(--btn-bg); color:var(--btn-ink); border-radius:0.45rem; cursor:pointer; font-weight:600;" style-hover="background:var(--accent);">Continue editing</button>
+                    <button type="button" onClick="{{ goAnalytics }}" style="padding:0.6rem 1.1rem; border:1px solid var(--line); background:var(--plane); color:var(--ink); border-radius:0.45rem; cursor:pointer;" style-hover="border-color:var(--accent);">Full analytics</button>
+                  </div>
+                </section>
+
+                <section style="background:var(--surface); border:1px solid var(--line); border-radius:0.9rem; padding:1.3rem;">
+                  <h2 style="font-family:'Archivo Narrow',sans-serif; font-size:0.82em; letter-spacing:0.16em; text-transform:uppercase; color:var(--faint); font-weight:700; margin:0 0 0.6rem;">Recent activity</h2>
+                  <ul style="list-style:none; margin:0; padding:0;">
+                    <sc-for list="{{ activity }}" as="a" hint-placeholder-count="5">
+                      <li style="display:flex; justify-content:space-between; gap:1rem; padding:0.6rem 0; border-bottom:1px solid var(--line-2); font-size:0.92em;">
+                        <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ a.name }}</span>
+                        <span style="font-family:'JetBrains Mono',monospace; color:var(--faint); font-size:0.85em; white-space:nowrap;">{{ a.meta }}</span>
+                      </li>
+                    </sc-for>
+                  </ul>
+                </section>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ secLibrary }}" hint-placeholder-val="{{ false }}">
+            <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(14rem,1fr)); gap:1.1rem;">
+              <sc-for list="{{ library }}" as="d" hint-placeholder-count="8">
+                <article style="background:var(--surface); border:1px solid var(--line); border-radius:0.9rem; overflow:hidden; display:flex; flex-direction:column;">
+                  <button type="button" onClick="{{ d.onOpen }}" aria-label="{{ d.name }}" style="border:0; padding:0; cursor:pointer; display:block; width:100%; aspect-ratio:4/3; background-color:var(--plane-2); overflow:hidden;">{{ d.img }}</button>
+                  <div style="padding:0.9rem 1rem; display:flex; flex-direction:column; gap:0.25rem;">
+                    <span style="font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ d.name }}</span>
+                    <span style="font-family:'JetBrains Mono',monospace; font-size:0.76em; color:var(--faint);">{{ d.meta }}</span>
+                  </div>
+                </article>
+              </sc-for>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ secAnalytics }}" hint-placeholder-val="{{ false }}">
+            <section aria-label="Design statistics" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(10rem,1fr)); gap:0.9rem; margin-bottom:1.2rem;">
+              <sc-for list="{{ anTiles }}" as="t" hint-placeholder-count="6">
+                <div style="background:var(--surface); border:1px solid var(--line); border-radius:0.9rem; padding:1.1rem 1.2rem;">
+                  <div style="font-size:0.85em; color:var(--muted);">{{ t.label }}</div>
+                  <div style="font-family:'Instrument Serif',Georgia,serif; font-size:1.9em; line-height:1.15; margin-top:0.15rem;">{{ t.value }}</div>
+                  <div style="font-size:0.8em; color:var(--faint);">{{ t.hint }}</div>
+                </div>
+              </sc-for>
+            </section>
+            <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(20rem,1fr)); gap:1.2rem; align-items:start;">
+              <section style="background:var(--surface); border:1px solid var(--line); border-radius:0.9rem; padding:1.3rem;">
+                <h2 style="font-family:'Archivo Narrow',sans-serif; font-size:0.82em; letter-spacing:0.16em; text-transform:uppercase; color:var(--faint); font-weight:700; margin:0 0 1.2rem;">Stitch length distribution <span style="text-transform:none; letter-spacing:0; font-family:Archivo,sans-serif; font-weight:400;">(mm — machine cap 12.7)</span></h2>
+                <div style="display:flex; align-items:flex-end; gap:2%; height:11rem;">
+                  <sc-for list="{{ bars }}" as="b" hint-placeholder-count="9">
+                    <div style="flex:1; display:flex; flex-direction:column; align-items:center; gap:0.4rem; height:100%; justify-content:flex-end;">
+                      <span style="font-family:'JetBrains Mono',monospace; font-size:0.68em; color:var(--faint);">{{ b.value }}</span>
+                      <div style="width:100%; background:var(--accent); border-radius:0.25rem 0.25rem 0 0; height:{{ b.pct }};" title="{{ b.label }}"></div>
+                      <span style="font-family:'JetBrains Mono',monospace; font-size:0.66em; color:var(--faint);">{{ b.label }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </section>
+
+              <section style="background:var(--surface); border:1px solid var(--line); border-radius:0.9rem; padding:1.3rem;">
+                <h2 style="font-family:'Archivo Narrow',sans-serif; font-size:0.82em; letter-spacing:0.16em; text-transform:uppercase; color:var(--faint); font-weight:700; margin:0 0 1rem;">Thread usage by colour <span style="text-transform:none; letter-spacing:0; font-family:Archivo,sans-serif; font-weight:400;">(sewn path)</span></h2>
+                <div style="display:flex; flex-direction:column; gap:0.7rem;">
+                  <sc-for list="{{ usage }}" as="u" hint-placeholder-count="3">
+                    <div style="display:grid; grid-template-columns:1rem minmax(5rem,8rem) 1fr 4rem; align-items:center; gap:0.7rem; font-size:0.9em;">
+                      <span style="width:0.9rem; height:0.9rem; border-radius:0.25rem; border:1px solid var(--line); background:{{ u.hex }};"></span>
+                      <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ u.name }}</span>
+                      <span style="background:var(--plane); border-radius:0.25rem; height:0.7rem; overflow:hidden; display:block;">
+                        <span style="display:block; height:100%; border-radius:0.25rem; width:{{ u.pct }}; background:{{ u.hex }};"></span>
+                      </span>
+                      <span style="text-align:right; font-family:'JetBrains Mono',monospace; font-size:0.82em; color:var(--muted);">{{ u.len }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+                <h2 style="font-family:'Archivo Narrow',sans-serif; font-size:0.82em; letter-spacing:0.16em; text-transform:uppercase; color:var(--faint); font-weight:700; margin:1.6rem 0 0.7rem;">Needle-down vs travel <span style="text-transform:none; letter-spacing:0; font-family:Archivo,sans-serif; font-weight:400;">(path length)</span></h2>
+                <div style="display:flex; gap:2px; height:0.9rem; border-radius:0.4rem; overflow:hidden;">
+                  <span style="background:var(--accent); width:{{ sewPct }}; border-radius:0.35rem 0 0 0.35rem;"></span>
+                  <span style="background:var(--line); flex:1; border-radius:0 0.35rem 0.35rem 0;"></span>
+                </div>
+                <div style="display:flex; gap:1.4rem; margin-top:0.6rem; font-size:0.85em; color:var(--muted);">
+                  <span><span style="display:inline-block; width:0.6rem; height:0.6rem; border-radius:0.2rem; background:var(--accent); margin-right:0.4rem;"></span>Sewing {{ sewPct }}</span>
+                  <span><span style="display:inline-block; width:0.6rem; height:0.6rem; border-radius:0.2rem; background:var(--line); margin-right:0.4rem;"></span>Travel {{ travelPct }}</span>
+                </div>
+              </section>
+            </div>
+            <section style="background:var(--surface); border:1px solid var(--line); border-radius:0.9rem; padding:1.3rem; margin-top:1.2rem;">
+              <h2 style="font-family:'Archivo Narrow',sans-serif; font-size:0.82em; letter-spacing:0.16em; text-transform:uppercase; color:var(--faint); font-weight:700; margin:0 0 1rem;">Capabilities vs desktop suites</h2>
+              <div style="overflow-x:auto;">
+                <table style="width:100%; border-collapse:collapse; font-size:0.9em;">
+                  <thead>
+                    <tr>
+                      <th style="text-align:left; color:var(--faint); font-weight:600; padding:0.6rem 0.8rem 0.6rem 0; border-bottom:1px solid var(--line);">Feature</th>
+                      <th style="text-align:left; color:var(--faint); font-weight:600; padding:0.6rem 0.8rem; border-bottom:1px solid var(--line);">STITCHIQ</th>
+                      <th style="text-align:left; color:var(--faint); font-weight:600; padding:0.6rem 0; border-bottom:1px solid var(--line); white-space:nowrap;">Wilcom / Hatch / Embird</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <sc-for list="{{ capabilities }}" as="c" hint-placeholder-count="5">
+                      <tr>
+                        <td style="padding:0.6rem 0.8rem 0.6rem 0; border-bottom:1px solid var(--line-2);">{{ c.feature }}</td>
+                        <td style="padding:0.6rem 0.8rem; border-bottom:1px solid var(--line-2);">
+                          <span style="font-family:'Archivo Narrow',sans-serif; letter-spacing:0.1em; text-transform:uppercase; font-size:0.85em; font-weight:700; color:{{ c.tone }};">{{ c.us }}</span>
+                          <span style="color:var(--muted); font-size:0.9em;"> — {{ c.note }}</span>
+                        </td>
+                        <td style="padding:0.6rem 0; border-bottom:1px solid var(--line-2); font-family:'Archivo Narrow',sans-serif; letter-spacing:0.1em; text-transform:uppercase; font-size:0.85em; font-weight:700; color:var(--muted);">{{ c.them }}</td>
+                      </tr>
+                    </sc-for>
+                  </tbody>
+                </table>
+              </div>
+              <p style="color:var(--faint); font-size:0.85em; margin:1rem 0 0;">Every row traces to a measured audit in docs/ — “yes” means generated and tested, not declared.</p>
+            </section>
+          </sc-if>
+
+          <sc-if value="{{ secJobs }}" hint-placeholder-val="{{ false }}">
+            <section style="background:var(--surface); border:1px solid var(--line); border-radius:0.9rem; overflow:hidden;">
+              <div style="display:flex; align-items:center; justify-content:space-between; padding:1.1rem 1.3rem; border-bottom:1px solid var(--line-2);">
+                <h2 style="font-family:'Archivo Narrow',sans-serif; font-size:0.82em; letter-spacing:0.16em; text-transform:uppercase; color:var(--faint); font-weight:700; margin:0;">Production queue</h2>
+                <button type="button" onClick="{{ onNewJob }}" style="padding:0.5rem 1rem; border:0; background:var(--btn-bg); color:var(--btn-ink); border-radius:0.45rem; cursor:pointer; font-weight:600; font-size:0.9em;" style-hover="background:var(--accent);">Queue a run</button>
+              </div>
+              <ul style="list-style:none; margin:0; padding:0;">
+                <sc-for list="{{ jobs }}" as="j" hint-placeholder-count="4">
+                  <li style="display:grid; grid-template-columns:minmax(8rem,1.4fr) minmax(6rem,1fr) 1fr auto; align-items:center; gap:1rem; padding:1rem 1.3rem; border-bottom:1px solid var(--line-2); font-size:0.92em;">
+                    <span style="min-width:0;">
+                      <span style="display:block; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ j.name }}</span>
+                      <span style="display:block; font-family:'JetBrains Mono',monospace; font-size:0.76em; color:var(--faint);">{{ j.machine }}</span>
+                    </span>
+                    <span style="font-family:'Archivo Narrow',sans-serif; font-size:0.8em; letter-spacing:0.12em; text-transform:uppercase; font-weight:700; color:{{ j.tone }};">{{ j.status }}</span>
+                    <span style="background:var(--plane); border-radius:0.3rem; height:0.55rem; overflow:hidden; display:block;">
+                      <span style="display:block; height:100%; border-radius:0.3rem; background:{{ j.tone }}; width:{{ j.pct }};"></span>
+                    </span>
+                    <span style="font-family:'JetBrains Mono',monospace; font-size:0.82em; color:var(--muted); white-space:nowrap;">{{ j.eta }}</span>
+                  </li>
+                </sc-for>
+              </ul>
+            </section>
+          </sc-if>
+
+          <sc-if value="{{ secThreads }}" hint-placeholder-val="{{ false }}">
+            <section style="background:var(--surface); border:1px solid var(--line); border-radius:0.9rem; overflow:hidden;">
+              <div style="padding:1.1rem 1.3rem; border-bottom:1px solid var(--line-2); display:flex; align-items:baseline; justify-content:space-between; gap:1rem; flex-wrap:wrap;">
+                <h2 style="font-family:'Archivo Narrow',sans-serif; font-size:0.82em; letter-spacing:0.16em; text-transform:uppercase; color:var(--faint); font-weight:700; margin:0;">Thread inventory</h2>
+                <span style="font-size:0.9em; color:var(--muted);">Thread needed for this design <strong style="font-family:'JetBrains Mono',monospace; color:var(--ink);">{{ threadTotal }}</strong></span>
+              </div>
+              <div style="overflow-x:auto;">
+                <table style="width:100%; border-collapse:collapse; font-size:0.9em;">
+                  <thead>
+                    <tr>
+                      <th style="text-align:left; color:var(--faint); font-weight:600; padding:0.7rem 1.3rem; border-bottom:1px solid var(--line); white-space:nowrap;">Thread</th>
+                      <th style="text-align:left; color:var(--faint); font-weight:600; padding:0.7rem 1rem; border-bottom:1px solid var(--line); white-space:nowrap;">Code</th>
+                      <th style="text-align:right; color:var(--faint); font-weight:600; padding:0.7rem 1rem; border-bottom:1px solid var(--line); white-space:nowrap;">Cones</th>
+                      <th style="text-align:left; color:var(--faint); font-weight:600; padding:0.7rem 1rem; border-bottom:1px solid var(--line); white-space:nowrap;">Level</th>
+                      <th style="text-align:right; color:var(--faint); font-weight:600; padding:0.7rem 1.3rem; border-bottom:1px solid var(--line); white-space:nowrap;">Used in this design</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <sc-for list="{{ inventory }}" as="i" hint-placeholder-count="6">
+                      <tr>
+                        <td style="padding:0.7rem 1.3rem; border-bottom:1px solid var(--line-2);">
+                          <span style="display:flex; align-items:center; gap:0.6rem;">
+                            <span style="width:0.9rem; height:0.9rem; border-radius:0.25rem; border:1px solid var(--line); background:{{ i.hex }};"></span>{{ i.name }}
+                          </span>
+                        </td>
+                        <td style="padding:0.7rem 1rem; border-bottom:1px solid var(--line-2); font-family:'JetBrains Mono',monospace; color:var(--muted);">{{ i.code }}</td>
+                        <td style="padding:0.7rem 1rem; border-bottom:1px solid var(--line-2); text-align:right; font-family:'JetBrains Mono',monospace;">{{ i.cones }}</td>
+                        <td style="padding:0.7rem 1rem; border-bottom:1px solid var(--line-2); font-family:'Archivo Narrow',sans-serif; letter-spacing:0.1em; text-transform:uppercase; font-size:0.85em; font-weight:700; color:{{ i.tone }};">{{ i.level }}</td>
+                        <td style="padding:0.7rem 1.3rem; border-bottom:1px solid var(--line-2); text-align:right; font-family:'JetBrains Mono',monospace; color:var(--muted);">{{ i.used }}</td>
+                      </tr>
+                    </sc-for>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </sc-if>
+
+          <sc-if value="{{ secTemplates }}" hint-placeholder-val="{{ false }}">
+            <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(13rem,1fr)); gap:1.1rem;">
+              <sc-for list="{{ templates }}" as="t" hint-placeholder-count="8">
+                <button type="button" onClick="{{ t.onUse }}" style="text-align:left; background:var(--surface); border:1px solid var(--line); border-radius:0.9rem; overflow:hidden; cursor:pointer; padding:0; color:var(--ink); display:flex; flex-direction:column;" style-hover="border-color:var(--accent);">
+                  <span style="display:block; width:100%; aspect-ratio:4/3; background-color:var(--plane-2); overflow:hidden;">{{ t.img }}</span>
+                  <span style="padding:0.85rem 1rem; display:flex; flex-direction:column; gap:0.2rem;">
+                    <span style="font-weight:600;">{{ t.name }}</span>
+                    <span style="font-family:'Archivo Narrow',sans-serif; font-size:0.78em; letter-spacing:0.12em; text-transform:uppercase; color:var(--accent-text);">{{ t.cat }}</span>
+                  </span>
+                </button>
+              </sc-for>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ secAccount }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex; flex-direction:column; gap:1.2rem;">
+              <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(18rem,1fr)); gap:1.2rem; align-items:start;">
+                <section aria-label="Profile" style="background:var(--surface); border:1px solid var(--line); border-radius:0.9rem; padding:1.4rem;">
+                  <h2 style="font-family:'Archivo Narrow',sans-serif; font-size:0.82em; letter-spacing:0.16em; text-transform:uppercase; color:var(--faint); font-weight:700; margin:0 0 1rem;">Profile</h2>
+                  <dl style="display:grid; grid-template-columns:auto 1fr; gap:0.6rem 1.6rem; margin:0 0 1.2rem; font-size:0.95em;">
+                    <sc-for list="{{ profile }}" as="p" hint-placeholder-count="4">
+                      <dt style="color:var(--muted);">{{ p.k }}</dt><dd style="margin:0; color:{{ p.tone }};">{{ p.v }}</dd>
+                    </sc-for>
+                  </dl>
+                  <form onSubmit="{{ onSaveEmail }}" style="display:flex; gap:0.6rem; align-items:center;">
+                    <input type="email" required placeholder="you@example.com" aria-label="Recovery email" style="flex:1; min-width:0; background:var(--plane); border:1px solid var(--line); color:var(--ink); border-radius:0.5rem; padding:0.6rem 0.8rem;" />
+                    <button type="submit" style="padding:0.6rem 1rem; border:0; background:var(--btn-bg); color:var(--btn-ink); border-radius:0.45rem; cursor:pointer; font-weight:600; white-space:nowrap;" style-hover="background:var(--accent);">Save email</button>
+                  </form>
+                  <p style="color:var(--faint); font-size:0.85em; margin:0.7rem 0 1.2rem;">Password resets go to this address.</p>
+                  <button type="button" onClick="{{ onSignOut }}" style="white-space:nowrap; padding:0.6rem 1.1rem; border:1px solid var(--line); background:var(--plane); color:var(--ink); border-radius:0.45rem; cursor:pointer;" style-hover="border-color:var(--accent);">Sign out</button>
+                </section>
+
+                <section aria-label="Your plan" style="background:var(--surface); border:1px solid var(--line); border-radius:0.9rem; padding:1.4rem;">
+                  <h2 style="font-family:'Archivo Narrow',sans-serif; font-size:0.82em; letter-spacing:0.16em; text-transform:uppercase; color:var(--faint); font-weight:700; margin:0 0 1rem;">Your plan</h2>
+                  <span style="display:inline-block; font-family:'Archivo Narrow',sans-serif; font-size:0.82em; letter-spacing:0.14em; text-transform:uppercase; font-weight:700; border:1px solid var(--accent-line); background:var(--accent-soft); color:var(--accent-text); border-radius:0.35rem; padding:0.25rem 0.7rem;">{{ planName }}</span>
+                  <p style="color:var(--muted); margin:1rem 0 0; font-size:0.93em; text-wrap:pretty;">Plans are assigned by your workspace admin — ask them to upgrade you from the Admin panel. Billing integration is deliberately not wired yet; the gate and the ladder are.</p>
+                </section>
+              </div>
+
+              <section aria-label="Plan ladder" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(15rem,1fr)); gap:1.1rem;">
+                <sc-for list="{{ tiers }}" as="p" hint-placeholder-count="3">
+                  <div style="{{ p.style }}">
+                    <div style="display:flex; align-items:center; justify-content:space-between; gap:0.6rem;">
+                      <span style="font-family:'Instrument Serif',Georgia,serif; font-size:1.5em;">{{ p.name }}</span>
+                      <span style="{{ p.badgeStyle }}">{{ p.badge }}</span>
+                    </div>
+                    <p style="color:var(--muted); margin:0.35rem 0 0; font-size:0.92em;">{{ p.blurb }}</p>
+                    <ul style="list-style:none; padding:0; margin:1rem 0 0; display:flex; flex-direction:column; gap:0.45rem; font-size:0.9em; color:var(--ink-2);">
+                      <sc-for list="{{ p.perks }}" as="k" hint-placeholder-count="4">
+                        <li style="display:flex; gap:0.5rem;"><span style="color:var(--accent-text);">✓</span>{{ k }}</li>
+                      </sc-for>
+                    </ul>
+                  </div>
+                </sc-for>
+              </section>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ secAdmin }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex; flex-direction:column; gap:1.2rem;">
+              <section aria-label="Platform statistics" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(10rem,1fr)); gap:0.9rem;">
+                <sc-for list="{{ adminTiles }}" as="t" hint-placeholder-count="5">
+                  <div style="background:var(--surface); border:1px solid var(--line); border-radius:0.9rem; padding:1.1rem 1.2rem;">
+                    <div style="font-size:0.85em; color:var(--muted);">{{ t.label }}</div>
+                    <div style="font-family:'Instrument Serif',Georgia,serif; font-size:1.9em; line-height:1.15;">{{ t.value }}</div>
+                    <div style="font-size:0.8em; color:var(--faint);">{{ t.hint }}</div>
+                  </div>
+                </sc-for>
+              </section>
+
+              <section aria-label="User management" style="background:var(--surface); border:1px solid var(--line); border-radius:0.9rem; overflow:hidden;">
+                <div style="padding:1.1rem 1.3rem; border-bottom:1px solid var(--line-2); font-family:'Archivo Narrow',sans-serif; font-size:0.82em; letter-spacing:0.16em; text-transform:uppercase; color:var(--faint); font-weight:700;">Users</div>
+                <div style="overflow-x:auto;">
+                  <table style="width:100%; border-collapse:collapse; font-size:0.9em;">
+                    <thead>
+                      <tr>
+                        <th style="text-align:left; color:var(--faint); font-weight:600; padding:0.7rem 1.3rem; border-bottom:1px solid var(--line);">User</th>
+                        <th style="text-align:left; color:var(--faint); font-weight:600; padding:0.7rem 1rem; border-bottom:1px solid var(--line);">Email</th>
+                        <th style="text-align:left; color:var(--faint); font-weight:600; padding:0.7rem 1rem; border-bottom:1px solid var(--line); white-space:nowrap;">Created</th>
+                        <th style="text-align:left; color:var(--faint); font-weight:600; padding:0.7rem 1rem; border-bottom:1px solid var(--line);">Plan</th>
+                        <th style="text-align:left; color:var(--faint); font-weight:600; padding:0.7rem 1.3rem; border-bottom:1px solid var(--line);">Role</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <sc-for list="{{ members }}" as="m" hint-placeholder-count="1">
+                        <tr>
+                          <td style="padding:0.7rem 1.3rem; border-bottom:1px solid var(--line-2);">{{ m.name }}</td>
+                          <td style="padding:0.7rem 1rem; border-bottom:1px solid var(--line-2); color:{{ m.emailTone }};">{{ m.email }}</td>
+                          <td style="padding:0.7rem 1rem; border-bottom:1px solid var(--line-2); color:var(--muted); font-family:'JetBrains Mono',monospace; font-size:0.85em;">{{ m.created }}</td>
+                          <td style="padding:0.7rem 1rem; border-bottom:1px solid var(--line-2);">
+                            <select defaultValue="{{ m.plan }}" onChange="{{ m.onPlan }}" aria-label="{{ m.planAria }}" style="border:1px solid var(--line); background:var(--plane); color:var(--ink); border-radius:0.35rem; padding:0.3rem 0.5rem; font-size:0.9em;">
+                              <option value="free">free</option><option value="pro">pro</option><option value="studio">studio</option>
+                            </select>
+                          </td>
+                          <td style="padding:0.7rem 1.3rem; border-bottom:1px solid var(--line-2);">
+                            <select defaultValue="{{ m.role }}" onChange="{{ m.onRole }}" aria-label="{{ m.roleAria }}" style="border:1px solid var(--line); background:var(--plane); color:var(--ink); border-radius:0.35rem; padding:0.3rem 0.5rem; font-size:0.9em;">
+                              <option value="user">user</option><option value="admin">admin</option>
+                            </select>
+                          </td>
+                        </tr>
+                      </sc-for>
+                    </tbody>
+                  </table>
+                </div>
+                <p style="color:var(--faint); font-size:0.85em; margin:0; padding:0.9rem 1.3rem;">The first profile created on a fresh install is the admin; admins can promote others from here.</p>
+              </section>
+
+              <section aria-label="Feature matrix" style="background:var(--surface); border:1px solid var(--line); border-radius:0.9rem; overflow:hidden;">
+                <div style="padding:1.1rem 1.3rem; border-bottom:1px solid var(--line-2); font-family:'Archivo Narrow',sans-serif; font-size:0.82em; letter-spacing:0.16em; text-transform:uppercase; color:var(--faint); font-weight:700;">Premium feature matrix</div>
+                <div style="overflow-x:auto;">
+                  <table style="width:100%; border-collapse:collapse; font-size:0.9em;">
+                    <thead>
+                      <tr>
+                        <th style="text-align:left; color:var(--faint); font-weight:600; padding:0.7rem 1.3rem; border-bottom:1px solid var(--line);">Feature</th>
+                        <th style="text-align:left; color:var(--faint); font-weight:600; padding:0.7rem 1.3rem; border-bottom:1px solid var(--line);">Minimum plan</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <sc-for list="{{ featureMatrix }}" as="x" hint-placeholder-count="6">
+                        <tr>
+                          <td style="padding:0.7rem 1.3rem; border-bottom:1px solid var(--line-2);">{{ x.feature }}</td>
+                          <td style="padding:0.7rem 1.3rem; border-bottom:1px solid var(--line-2);">
+                            <span style="font-family:'Archivo Narrow',sans-serif; font-size:0.8em; letter-spacing:0.14em; text-transform:uppercase; font-weight:700; border:1px solid var(--line); border-radius:0.3rem; padding:0.15rem 0.5rem; color:{{ x.tone }};">{{ x.plan }}</span>
+                          </td>
+                        </tr>
+                      </sc-for>
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            </div>
+          </sc-if>
+
+        </main>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- ══ MOBILE TAB BAR ══ -->
+  <nav aria-label="Sections" style="display:var(--mobile-nav); gap:0.2rem; padding:0.5rem 2% calc(0.5rem + env(safe-area-inset-bottom)); background:var(--surface); border-top:1px solid var(--line);">
+    <sc-for list="{{ mobileNav }}" as="m" hint-placeholder-count="4">
+      <button type="button" onClick="{{ m.onClick }}" aria-current="{{ m.on }}" style="{{ m.style }}">
+        <span style="font-size:1.1em; line-height:1;">{{ m.icon }}</span>
+        <span style="font-size:0.72rem;">{{ m.label }}</span>
+      </button>
+    </sc-for>
+  </nav>
+
+  <!-- ══ COMMAND PALETTE ══ -->
+  <sc-if value="{{ cmdOpen }}" hint-placeholder-val="{{ false }}">
+    <div role="dialog" aria-modal="true" aria-label="Command palette" onClick="{{ closeCmd }}" style="position:fixed; inset:0; z-index:60; background:color-mix(in srgb, var(--plane-2) 68%, transparent); backdrop-filter:blur(0.3rem); display:flex; align-items:flex-start; justify-content:center; padding:8vh 4% 4%; animation:fadeIn .15s ease-out;">
+      <div onClick="{{ stop }}" style="width:100%; max-width:38rem; background:var(--surface); border:1px solid var(--line); border-radius:0.9rem; box-shadow:var(--shadow-lg); overflow:hidden; animation:riseIn .18s ease-out;">
+        <input ref="{{ cmdRef }}" value="{{ cmdQuery }}" onInput="{{ onCmdInput }}" placeholder="Search commands, designs, threads…" aria-label="Search commands" style="width:100%; border:0; border-bottom:1px solid var(--line); background:transparent; color:var(--ink); padding:1.1rem 1.2rem; font-size:1.05em;" />
+        <ul style="list-style:none; margin:0; padding:0.5rem; max-height:50vh; overflow-y:auto;">
+          <sc-for list="{{ cmdResults }}" as="c" hint-placeholder-count="6">
+            <li>
+              <button type="button" onClick="{{ c.onClick }}" style="width:100%; display:flex; align-items:center; gap:0.8rem; text-align:left; background:none; border:0; padding:0.65rem 0.75rem; border-radius:0.5rem; color:var(--ink); cursor:pointer;" style-hover="background:var(--accent-soft);">
+                <span style="font-family:'JetBrains Mono',monospace; font-size:0.72em; color:var(--accent-text); min-width:4.5rem; letter-spacing:0.08em;">{{ c.group }}</span>
+                <span style="flex:1;">{{ c.label }}</span>
+                <span style="font-family:'JetBrains Mono',monospace; font-size:0.75em; color:var(--faint);">{{ c.hint }}</span>
+              </button>
+            </li>
+          </sc-for>
+        </ul>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- ══ DIALOGS ══ -->
+  <sc-if value="{{ dialogOpen }}" hint-placeholder-val="{{ false }}">
+    <div role="dialog" aria-modal="true" aria-label="{{ dialogTitle }}" onClick="{{ closeDialog }}" style="position:fixed; inset:0; z-index:55; background:color-mix(in srgb, var(--plane-2) 66%, transparent); display:flex; align-items:center; justify-content:center; padding:4%; animation:fadeIn .15s ease-out;">
+      <div onClick="{{ stop }}" style="width:100%; max-width:30rem; background:var(--surface); border:1px solid var(--line); border-radius:1rem; box-shadow:var(--shadow-lg); padding:1.8rem; animation:riseIn .2s ease-out;">
+        <h2 style="font-family:'Instrument Serif',Georgia,serif; font-weight:400; font-size:1.7em; margin:0 0 0.3rem;">{{ dialogTitle }}</h2>
+        <p style="color:var(--muted); margin:0 0 1.4rem; font-size:0.95em;">{{ dialogBlurb }}</p>
+        <div style="display:flex; flex-direction:column; gap:0.9rem;">
+          <sc-for list="{{ dialogFields }}" as="d" hint-placeholder-count="3">
+            <label style="display:flex; align-items:center; justify-content:space-between; gap:1rem; font-size:0.95em;">
+              <span style="color:var(--ink-2);">{{ d.label }}</span>
+              <select value="{{ d.value }}" onChange="{{ d.onChange }}" style="border:1px solid var(--line); background:var(--plane); color:var(--ink); border-radius:0.45rem; padding:0.45rem 0.6rem; min-width:10rem;">
+                <sc-for list="{{ d.options }}" as="o" hint-placeholder-count="3"><option value="{{ o }}">{{ o }}</option></sc-for>
+              </select>
+            </label>
+          </sc-for>
+          <sc-if value="{{ dialogHasText }}" hint-placeholder-val="{{ false }}">
+            <label style="display:flex; flex-direction:column; gap:0.4rem; font-size:0.95em; color:var(--ink-2);">
+              Text to stitch
+              <input value="{{ letterText }}" onInput="{{ onLetterText }}" placeholder="e.g. STITCHIQ" style="background:var(--plane); border:1px solid var(--line); color:var(--ink); border-radius:0.45rem; padding:0.6rem 0.8rem; width:100%;" />
+            </label>
+          </sc-if>
+          <sc-if value="{{ dialogHasLink }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex; gap:0.5rem;">
+              <input readOnly value="{{ shareLink }}" aria-label="Share link" style="flex:1; min-width:0; background:var(--plane); border:1px solid var(--line); color:var(--muted); border-radius:0.45rem; padding:0.6rem 0.8rem; font-family:'JetBrains Mono',monospace; font-size:0.82em;" />
+              <button type="button" onClick="{{ onCopyLink }}" style="border:1px solid var(--accent); background:var(--accent-soft); color:var(--accent-text); border-radius:0.45rem; padding:0 0.9rem; cursor:pointer; font-weight:600; white-space:nowrap;">{{ copyLabel }}</button>
+            </div>
+          </sc-if>
+        </div>
+        <div style="display:flex; justify-content:flex-end; gap:0.6rem; margin-top:1.6rem;">
+          <button type="button" onClick="{{ closeDialog }}" style="padding:0.6rem 1.1rem; border:1px solid var(--line); background:var(--plane); color:var(--ink); border-radius:0.45rem; cursor:pointer;" style-hover="border-color:var(--accent);">Cancel</button>
+          <button type="button" onClick="{{ confirmDialog }}" style="padding:0.6rem 1.3rem; border:0; background:var(--btn-bg); color:var(--btn-ink); border-radius:0.45rem; cursor:pointer; font-weight:600;" style-hover="background:var(--accent);">{{ dialogCta }}</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- ══ PROGRESS ══ -->
+  <sc-if value="{{ busy }}" hint-placeholder-val="{{ false }}">
+    <div role="status" aria-live="polite" style="position:fixed; inset:0; z-index:58; background:color-mix(in srgb, var(--plane-2) 70%, transparent); display:flex; align-items:center; justify-content:center; padding:4%;">
+      <div style="width:100%; max-width:24rem; background:var(--surface); border:1px solid var(--line); border-radius:0.9rem; box-shadow:var(--shadow-lg); padding:1.6rem;">
+        <div style="font-family:'Instrument Serif',Georgia,serif; font-size:1.4em; margin-bottom:0.2rem;">{{ busyTitle }}</div>
+        <div style="font-family:'JetBrains Mono',monospace; font-size:0.8em; color:var(--muted); margin-bottom:0.9rem;">{{ busyStage }}</div>
+        <div style="height:0.4rem; background:var(--plane); border-radius:99rem; overflow:hidden;">
+          <div style="height:100%; background:var(--accent); border-radius:99rem; transition:width .2s linear; width:{{ busyPct }};"></div>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- ══ NOTIFICATIONS ══ -->
+  <sc-if value="{{ notifOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeNotif }}" style="position:fixed; inset:0; z-index:57;">
+      <div onClick="{{ stop }}" style="position:absolute; top:4.2rem; right:var(--pad-x); width:min(22rem,90vw); background:var(--surface); border:1px solid var(--line); border-radius:0.8rem; box-shadow:var(--shadow-lg); overflow:hidden; animation:riseIn .18s ease-out;">
+        <div style="padding:0.9rem 1.1rem; border-bottom:1px solid var(--line-2); font-family:'Archivo Narrow',sans-serif; font-size:0.82em; letter-spacing:0.16em; text-transform:uppercase; color:var(--faint); font-weight:700;">Notifications</div>
+        <ul style="list-style:none; margin:0; padding:0.4rem; max-height:60vh; overflow-y:auto;">
+          <sc-for list="{{ notifications }}" as="n" hint-placeholder-count="3">
+            <li style="display:flex; gap:0.7rem; padding:0.7rem 0.75rem; border-radius:0.5rem;">
+              <span style="width:0.5rem; height:0.5rem; border-radius:99rem; margin-top:0.45rem; flex:none; background:{{ n.tone }};"></span>
+              <span style="flex:1; min-width:0;">
+                <span style="display:block; font-size:0.92em;">{{ n.text }}</span>
+                <span style="display:block; font-family:'JetBrains Mono',monospace; font-size:0.74em; color:var(--faint); margin-top:0.15rem;">{{ n.when }}</span>
+              </span>
+            </li>
+          </sc-for>
+        </ul>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- ══ SHORTCUTS ══ -->
+  <sc-if value="{{ shortcutsOpen }}" hint-placeholder-val="{{ false }}">
+    <div role="dialog" aria-modal="true" aria-label="Keyboard shortcuts" onClick="{{ closeShortcuts }}" style="position:fixed; inset:0; z-index:59; background:color-mix(in srgb, var(--plane-2) 70%, transparent); display:flex; align-items:center; justify-content:center; padding:4%; animation:fadeIn .15s ease-out;">
+      <div onClick="{{ stop }}" style="width:100%; max-width:34rem; background:var(--surface); border:1px solid var(--line); border-radius:1rem; box-shadow:var(--shadow-lg); padding:1.8rem; animation:riseIn .2s ease-out;">
+        <h2 style="font-family:'Instrument Serif',Georgia,serif; font-weight:400; font-size:1.7em; margin:0 0 1.2rem;">Keyboard</h2>
+        <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(14rem,1fr)); gap:0.6rem 2rem;">
+          <sc-for list="{{ shortcuts }}" as="k" hint-placeholder-count="8">
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:1rem; padding:0.35rem 0; border-bottom:1px solid var(--line-2); font-size:0.92em;">
+              <span style="color:var(--ink-2);">{{ k.label }}</span>
+              <kbd style="font-family:'JetBrains Mono',monospace; font-size:0.8em; border:1px solid var(--line); background:var(--plane); border-radius:0.3rem; padding:0.1rem 0.45rem; color:var(--muted);">{{ k.keys }}</kbd>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- ══ ONBOARDING ══ -->
+  <sc-if value="{{ tourOpen }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed; right:var(--pad-x); bottom:5rem; z-index:56; width:min(21rem,88vw); background:var(--surface); border:1px solid var(--accent-line); border-radius:0.9rem; box-shadow:var(--shadow-lg); padding:1.3rem; animation:riseIn .3s ease-out;">
+      <div style="font-family:'JetBrains Mono',monospace; font-size:0.72em; letter-spacing:0.12em; color:var(--accent-text);">{{ tourStepLabel }}</div>
+      <h2 style="font-family:'Instrument Serif',Georgia,serif; font-weight:400; font-size:1.45em; margin:0.35rem 0 0.4rem;">{{ tourTitle }}</h2>
+      <p style="color:var(--muted); font-size:0.92em; margin:0 0 1.1rem; text-wrap:pretty;">{{ tourBody }}</p>
+      <div style="display:flex; gap:0.5rem; justify-content:flex-end;">
+        <button type="button" onClick="{{ endTour }}" style="padding:0.5rem 0.9rem; border:1px solid var(--line); background:var(--plane); color:var(--muted); border-radius:0.45rem; cursor:pointer; font-size:0.9em;">Skip</button>
+        <button type="button" onClick="{{ nextTour }}" style="padding:0.5rem 1.1rem; border:0; background:var(--btn-bg); color:var(--btn-ink); border-radius:0.45rem; cursor:pointer; font-weight:600; font-size:0.9em;">{{ tourCta }}</button>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- ══ TOASTS ══ -->
+  <div aria-live="polite" style="position:fixed; right:var(--pad-x); bottom:1.2rem; z-index:70; display:flex; flex-direction:column; gap:0.5rem; width:min(21rem,88vw); pointer-events:none;">
+    <sc-for list="{{ toasts }}" as="t" hint-placeholder-count="0">
+      <div style="{{ t.style }}">{{ t.text }}</div>
+    </sc-for>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900}}">
+class Component extends DCLogic {
+  state = {
+    route: 'landing', section: 'overview', theme: 'light',
+    tool: 'select', stop: -1, view: '2d', zoom: 100,
+    density: 42, angle: 45, pull: 20, underlay: true, stitchType: 'tatami',
+    play: 100, playing: false,
+    cmdOpen: false, cmdQuery: '', notifOpen: false, shortcutsOpen: false,
+    dialog: null, fabric: 'Cotton', hoop: '130 × 180', maxColors: '6', letterText: 'STITCHIQ', copied: false,
+    busy: null, busyPct: 0, busyStage: '',
+    tourStep: 0, chat: [{ role: 'ai', text: 'Ask me about density, underlay or hoop fit for this design.' }], ask: '',
+    toasts: [], versionN: 3, rebuilding: false,
+  };
+
+  constructor(p) {
+    super(p);
+    this.canvasRef = React.createRef();
+    this.heroRef = React.createRef();
+    this.cmdRef = React.createRef();
+    this._key = '';
+  }
+
+  // ── design generation ─────────────────────────────────────────
+  design() {
+    const { density, angle, underlay, stitchType } = this.state;
+    const key = [density, angle, underlay, stitchType].join('|');
+    if (this._key === key && this._design) return this._design;
+    this._key = key;
+    const step = 0.0045 + (80 - density) * 0.00022;
+    const rad = (angle * Math.PI) / 180;
+    const cos = Math.cos(rad), sin = Math.sin(rad);
+    const cx = 0.5, cy = 0.5, R = 0.30;
+    const S = [[], [], []];
+    if (underlay) {
+      for (let t = 0; t <= Math.PI * 2 + 0.05; t += 0.12) S[0].push([cx + Math.cos(t) * (R - 0.02), cy + Math.sin(t) * (R - 0.02)]);
+    }
+    if (stitchType === 'satin') {
+      for (let u = -R; u <= R; u += step * 1.6) {
+        const half = Math.sqrt(Math.max(0, R * R - u * u));
+        for (const v of [-half, half]) S[0].push([cx + u * cos - v * sin, cy + u * sin + v * cos]);
+      }
+    } else {
+      const spiral = stitchType === 'contour';
+      for (let i = 0, u = -R; u <= R; u += step, i++) {
+        const half = Math.sqrt(Math.max(0, R * R - u * u));
+        if (half < 0.005) continue;
+        const [a, b] = i % 2 ? [half, -half] : [-half, half];
+        const n = Math.max(2, Math.round(Math.abs(b - a) / 0.012));
+        for (let k = 0; k <= n; k++) {
+          const v = a + (b - a) * (k / n);
+          const r = spiral ? 1 - 0.14 * Math.sin(k / n * Math.PI) : 1;
+          S[0].push([cx + u * cos * r - v * sin * r, cy + u * sin * r + v * cos * r]);
+        }
+      }
+    }
+    const grow = this.state.pull / 4000;
+    for (let t = 0; t <= Math.PI * 2 + 0.02; t += 0.03) {
+      const r = (t / 0.03) % 2 < 1 ? R + 0.03 + grow : R + 0.008;
+      S[1].push([cx + Math.cos(t) * r, cy + Math.sin(t) * r]);
+    }
+    for (let s = 0; s <= 1.0001; s += 0.018) {
+      const px = cx - 0.17 + s * 0.34;
+      const py = cy + 0.10 - Math.abs(s - 0.5) * 0.30;
+      const w = 0.034;
+      S[2].push([px, py - ((s / 0.018) % 2 < 1 ? w : 0)]);
+      S[2].push([px, py + ((s / 0.018) % 2 < 1 ? 0 : w)]);
+    }
+    const names = [
+      { name: 'Ink navy', hex: '#1f3a5f' },
+      { name: 'Antique brass', hex: '#b8863b' },
+      { name: 'Bone white', hex: '#d9cfbb' },
+    ];
+    let n = 0;
+    const colorStops = names.map((c, i) => { const start = n; n += S[i].length; return { ...c, start, count: S[i].length }; });
+    this._design = { runs: S, colorStops, total: n };
+    return this._design;
+  }
+
+  // ── lifecycle ─────────────────────────────────────────────────
+  componentDidMount() {
+    document.documentElement.setAttribute('data-theme', this.state.theme);
+    this.drawAll();
+    this._ro = new ResizeObserver(() => this.drawAll());
+    [this.canvasRef, this.heroRef].forEach((r) => r.current && this._ro.observe(r.current));
+    this._tick = setInterval(() => {
+      if (this.state.playing) this.setState((s) => (s.play >= 100 ? { play: 0 } : { play: Math.min(100, s.play + 1.2) }));
+      if (this.state.busy) this.setState((s) => {
+        const pct = Math.min(100, s.busyPct + 7);
+        const stages = s.busy === 'digitize'
+          ? ['Reading image', 'k-means colour separation', 'Tracing contours', 'Building tatami fills', 'Satin columns + underlay', 'Pull compensation']
+          : ['Rendering glyphs', 'Tracing outlines', 'Satin columns', 'Underlay'];
+        if (pct >= 100) { this.finishBusy(); return { busy: null, busyPct: 0 }; }
+        return { busyPct: pct, busyStage: stages[Math.min(stages.length - 1, Math.floor(pct / (100 / stages.length)))] };
+      });
+    }, 90);
+    this._onKey = (e) => {
+      const k = e.key.toLowerCase();
+      if ((e.metaKey || e.ctrlKey) && k === 'k') { e.preventDefault(); this.setState((s) => ({ cmdOpen: !s.cmdOpen, cmdQuery: '' })); return; }
+      if (e.key === 'Escape') { this.setState({ cmdOpen: false, dialog: null, shortcutsOpen: false, notifOpen: false }); return; }
+      if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+      if (k === '?') this.setState((s) => ({ shortcutsOpen: !s.shortcutsOpen }));
+      if (k === ' ' && this.state.route === 'studio') { e.preventDefault(); this.setState((s) => ({ playing: !s.playing })); }
+      if (k === 'd' && this.state.route === 'studio') this.setState({ dialog: 'digitize' });
+      if (k === 't' && this.state.route === 'studio') this.setState({ dialog: 'lettering' });
+    };
+    window.addEventListener('keydown', this._onKey);
+  }
+  setTheme(next) {
+    document.documentElement.setAttribute('data-theme', next);
+    this._thumbs = null;
+    this.setState({ theme: next });
+  }
+
+  componentDidUpdate() {
+    if (document.documentElement.getAttribute('data-theme') !== this.state.theme) {
+      document.documentElement.setAttribute('data-theme', this.state.theme);
+    }
+    if (this.state.cmdOpen && !prev.cmdOpen && this.cmdRef.current) this.cmdRef.current.focus();
+    this.drawAll();
+  }
+  componentWillUnmount() { this._ro && this._ro.disconnect(); clearInterval(this._tick); window.removeEventListener('keydown', this._onKey); }
+
+  finishBusy() {
+    this.toast(this.state.busy === 'digitize' ? 'Digitized — quality scored 94' : 'Lettering generated');
+    this.setState((s) => ({ versionN: s.versionN + 1, play: 100 }));
+  }
+  toast(text, tone) {
+    const id = Math.random();
+    this.setState((s) => ({ toasts: [...s.toasts, { id, text, tone: tone || 'ok' }] }));
+    setTimeout(() => this.setState((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })), 3200);
+  }
+
+  // ── drawing ───────────────────────────────────────────────────
+  drawAll() { this.paint(this.canvasRef.current, this.state.view === '3d', this.state.play); this.paint(this.heroRef.current, true, 100); }
+
+  paint(c, lit, playPct) {
+    if (!c) return;
+    const dpr = window.devicePixelRatio || 1;
+    const w = c.clientWidth, h = c.clientHeight;
+    if (!w || !h) return;
+    if (c.width !== Math.round(w * dpr) || c.height !== Math.round(h * dpr)) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); }
+    const g = c.getContext('2d');
+    const cs = getComputedStyle(document.documentElement);
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.clearRect(0, 0, w, h);
+    g.fillStyle = cs.getPropertyValue('--canvas-bg').trim() || '#fff';
+    g.fillRect(0, 0, w, h);
+    const D = this.design();
+    const side = Math.min(w, h);
+    const z = (c === this.canvasRef.current ? this.state.zoom / 100 : 1) * side * 0.92;
+    const ox = (w - z) / 2, oy = (h - z) / 2;
+    g.strokeStyle = cs.getPropertyValue('--canvas-guide').trim() || '#ccc';
+    g.setLineDash([4, 5]); g.lineWidth = 1; g.strokeRect(ox, oy, z, z); g.setLineDash([]);
+    const limit = Math.round(D.total * (playPct / 100));
+    let seen = 0;
+    g.lineCap = 'round'; g.lineJoin = 'round';
+    D.runs.forEach((run, i) => {
+      const take = Math.max(0, Math.min(run.length, limit - seen));
+      seen += run.length;
+      if (take < 2) return;
+      const dim = this.state.stop !== -1 && this.state.stop !== i && c === this.canvasRef.current;
+      const hex = D.colorStops[i].hex;
+      const lw = Math.max(0.9, side * (lit ? 0.0062 : 0.0042));
+      if (lit) {
+        g.globalAlpha = dim ? 0.25 : 0.55;
+        g.strokeStyle = '#000'; g.lineWidth = lw * 1.5;
+        this.stroke(g, run, take, ox, oy, z, lw * 0.22, lw * 0.28);
+      }
+      g.globalAlpha = dim ? 0.3 : 1;
+      g.strokeStyle = hex; g.lineWidth = lw;
+      this.stroke(g, run, take, ox, oy, z, 0, 0);
+      if (lit) {
+        g.globalAlpha = dim ? 0.15 : 0.42;
+        g.strokeStyle = '#fff'; g.lineWidth = lw * 0.34;
+        this.stroke(g, run, take, ox, oy, z, -lw * 0.2, -lw * 0.24);
+      }
+    });
+    g.globalAlpha = 1;
+  }
+
+  stroke(g, run, take, ox, oy, z, dx, dy) {
+    g.beginPath();
+    for (let k = 0; k < take; k++) {
+      const p = run[k];
+      const px = ox + p[0] * z + dx, py = oy + p[1] * z + dy;
+      k === 0 ? g.moveTo(px, py) : g.lineTo(px, py);
+    }
+    g.stroke();
+  }
+
+  // ── nav helpers ───────────────────────────────────────────────
+  thumbs() {
+    if (this._thumbs && this._thumbTheme === this.state.theme) return this._thumbs;
+    this._thumbTheme = this.state.theme;
+    const cs = getComputedStyle(document.documentElement);
+    const bg = cs.getPropertyValue('--canvas-bg').trim() || '#fff';
+    const sets = [
+      { name: 'Alpine Crest badge', cols: ['#1f3a5f', '#b8863b', '#d9cfbb'], shape: 0 },
+      { name: 'Harbour Co. left chest', cols: ['#2b5580', '#d9cfbb'], shape: 1 },
+      { name: 'Ridgeline cap front', cols: ['#4a5c46', '#d4a857'], shape: 2 },
+      { name: 'Towel monogram KD', cols: ['#8a5a2b', '#efe7d8'], shape: 3 },
+      { name: 'Fleece beanie cuff', cols: ['#5a5248', '#b0a89c'], shape: 1 },
+      { name: 'Patch — Summit 79', cols: ['#a33b32', '#e8c98a', '#2f2a24'], shape: 0 },
+      { name: 'Script name tape', cols: ['#3d6e6a', '#d9cfbb'], shape: 3 },
+      { name: 'Circle crest v2', cols: ['#1f3a5f', '#c9564a', '#d4a857'], shape: 2 },
+    ];
+    this._thumbs = sets.map((set, idx) => {
+      const c = document.createElement('canvas');
+      c.width = 400; c.height = 300;
+      const g = c.getContext('2d');
+      g.fillStyle = bg; g.fillRect(0, 0, 400, 300);
+      const cx = 200, cy = 150, R = 95;
+      g.lineCap = 'round'; g.lineWidth = 1.6;
+      set.cols.forEach((hex, ci) => {
+        g.strokeStyle = hex;
+        g.beginPath();
+        if (set.shape === 0 || set.shape === 2) {
+          const rr = R - ci * 22;
+          for (let i = 0, y = cy - rr; y <= cy + rr; y += 3.2, i++) {
+            const dx = Math.sqrt(Math.max(0, rr * rr - (y - cy) ** 2));
+            if (dx < 2) continue;
+            const ab = i % 2 ? [cx + dx, cx - dx] : [cx - dx, cx + dx];
+            g.moveTo(ab[0], y); g.lineTo(ab[1], y);
+          }
+          if (set.shape === 2 && ci === 0) {
+            for (let t = 0; t <= Math.PI * 2; t += 0.05) {
+              const r = (t / 0.05) % 2 < 1 ? R + 8 : R + 2;
+              const x = cx + Math.cos(t) * r, y = cy + Math.sin(t) * r;
+              t === 0 ? g.moveTo(x, y) : g.lineTo(x, y);
+            }
+          }
+        } else if (set.shape === 1) {
+          const h = 46 - ci * 16;
+          for (let i = 0, y = cy - h; y <= cy + h; y += 3.2, i++) {
+            const w = 130 - ci * 40;
+            const ab = i % 2 ? [cx + w, cx - w] : [cx - w, cx + w];
+            g.moveTo(ab[0], y); g.lineTo(ab[1], y);
+          }
+        } else {
+          for (let t = 0; t <= 1; t += 0.006) {
+            const x = 60 + t * 280;
+            const y = cy + Math.sin(t * Math.PI * 3) * (44 - ci * 16);
+            const o = (t / 0.006) % 2 < 1 ? -9 + ci * 3 : 9 - ci * 3;
+            g.moveTo(x, y + o); g.lineTo(x, y - o);
+          }
+        }
+        g.stroke();
+      });
+      const stitches = 6000 + idx * 1740;
+      const url = c.toDataURL('image/png');
+      const img = React.createElement('img', { src: url, alt: '', style: { width: '100%', height: '100%', objectFit: 'cover', display: 'block' } });
+      return { name: set.name, thumb: url, img, stitches, cols: set.cols.length, meta: `${stitches.toLocaleString()} ST · ${set.cols.length} COL` };
+    });
+    return this._thumbs;
+  }
+
+  analytics() {
+    const D = this.design();
+    const MM = 68;
+    const bins = [];
+    for (let i = 0; i < 12; i++) bins.push({ from: i * 0.5, count: 0 });
+    let sewMm = 0, travelMm = 0, longest = 0;
+    D.runs.forEach((run, ri) => {
+      for (let k = 1; k < run.length; k++) {
+        const L = Math.hypot((run[k][0] - run[k - 1][0]) * MM, (run[k][1] - run[k - 1][1]) * MM);
+        sewMm += L;
+        bins[Math.min(bins.length - 1, Math.floor(L / 0.5))].count++;
+      }
+      if (ri > 0 && run.length) {
+        const prev = D.runs[ri - 1], a = prev[prev.length - 1], b = run[0];
+        const L = Math.hypot((b[0] - a[0]) * MM, (b[1] - a[1]) * MM);
+        travelMm += L; longest = Math.max(longest, L);
+      }
+    });
+    const trims = D.colorStops.length - 1;
+    return { bins, sewMm, travelMm, longest, trims, stitches: D.total, estMin: D.total / 650 + trims * 0.5 };
+  }
+
+  go(route, section) { this.setState({ route, section: section || this.state.section, cmdOpen: false, notifOpen: false }); }
+
+  answer(q) {
+    const s = q.toLowerCase();
+    if (s.includes('density')) return `At ${(this.state.density / 100).toFixed(2)} mm this fill is on the dense side for knit. Try 0.45 mm on polo and add edge-walk underlay.`;
+    if (s.includes('underlay')) return 'Edge-walk is on. For a fill this size, centre-walk plus edge-walk would hold the nap down on fleece.';
+    if (s.includes('hoop') || s.includes('fit')) return 'The design clears the 130 × 180 mm hoop by 8 mm on the short axis — safe for a standard frame.';
+    if (s.includes('colour') || s.includes('color')) return 'Three stops: Ink navy, Antique brass, Bone white. Two colour changes — merging the chevron into stop 1 would save one.';
+    return 'The quality score is 94 with 6 long stitches. Optimising the path would cut ~40 mm of travel.';
+  }
+
+  // ── render values ─────────────────────────────────────────────
+  renderVals() {
+    const s = this.state;
+    const D = this.design();
+    const A = this.analytics();
+    const runMm = D.runs.map((run) => { let t = 0; for (let k = 1; k < run.length; k++) t += Math.hypot((run[k][0] - run[k - 1][0]) * 68, (run[k][1] - run[k - 1][1]) * 68); return t; });
+    const usedM = (i) => (runMm[i] >= 1000 ? `${(runMm[i] / 1000).toFixed(2)} m` : `${Math.round(runMm[i])} mm`);
+    const stopBtn = (on) => `width:100%; display:flex; align-items:center; gap:0.55rem; text-align:left; padding:0.45rem 0.55rem; border-radius:0.45rem; cursor:pointer; background:${on ? 'var(--accent-soft)' : 'var(--plane)'}; border:1px solid ${on ? 'var(--accent)' : 'var(--line)'}; color:var(--ink);`;
+    const tabBtn = (on) => `padding:0.4rem 0.9rem; border:0; border-radius:0.4rem; cursor:pointer; font-size:0.9em; white-space:nowrap; background:${on ? 'var(--btn-bg)' : 'transparent'}; color:${on ? 'var(--btn-ink)' : 'var(--muted)'}; font-weight:${on ? 600 : 400};`;
+    const grade = 94 >= 90 ? 'Excellent' : 'Good';
+    const cmds = [
+      { group: 'STUDIO', label: 'Digitize an image', hint: 'D', onClick: () => this.setState({ dialog: 'digitize', cmdOpen: false }) },
+      { group: 'STUDIO', label: 'Text to stitches', hint: 'T', onClick: () => this.setState({ dialog: 'lettering', cmdOpen: false }) },
+      { group: 'STUDIO', label: 'Optimize stitch path', hint: '', onClick: () => { this.toast('Path optimized — 42 mm less travel'); this.setState({ cmdOpen: false }); } },
+      { group: 'STUDIO', label: 'Toggle TrueView 3D', hint: '', onClick: () => this.setState({ view: s.view === '3d' ? '2d' : '3d', cmdOpen: false }) },
+      { group: 'GO', label: 'Dashboard overview', hint: '', onClick: () => this.go('dash', 'overview') },
+      { group: 'GO', label: 'Design library', hint: '', onClick: () => this.go('dash', 'library') },
+      { group: 'GO', label: 'Analytics', hint: '', onClick: () => this.go('dash', 'analytics') },
+      { group: 'GO', label: 'Production jobs', hint: '', onClick: () => this.go('dash', 'jobs') },
+      { group: 'GO', label: 'Thread inventory', hint: '', onClick: () => this.go('dash', 'threads') },
+      { group: 'GO', label: 'Templates gallery', hint: '', onClick: () => this.go('dash', 'templates') },
+      { group: 'GO', label: 'Account & plan', hint: '', onClick: () => this.go('dash', 'account') },
+      { group: 'VIEW', label: `Switch to ${s.theme === 'dark' ? 'light' : 'dark'} theme`, hint: '', onClick: () => { this.setTheme(s.theme === 'dark' ? 'light' : 'dark'); this.setState({ cmdOpen: false }); } },
+      { group: 'HELP', label: 'Keyboard shortcuts', hint: '?', onClick: () => this.setState({ shortcutsOpen: true, cmdOpen: false }) },
+    ];
+    const q = s.cmdQuery.trim().toLowerCase();
+    const tour = [
+      { t: 'Start with an image', b: 'Digitize takes a PNG, JPG or SVG and separates it into colour regions — no tracing by hand.' },
+      { t: 'Everything stays editable', b: 'Objects keep their contours. Change density or angle and the stitches rebuild from the source shape.' },
+      { t: 'Check before you sew', b: 'The quality score flags long stitches, jump rate and hoop fit before a single needle drops.' },
+      { t: 'Press ⌘K anywhere', b: 'The command palette jumps to any design, thread or production job.' },
+    ];
+    const dlg = {
+      digitize: { title: 'Digitize an image', blurb: 'Classical CV separation — deterministic, no model.', cta: 'Digitize' },
+      lettering: { title: 'Text to stitches', blurb: 'A system font rendered through the digitizer.', cta: 'Generate' },
+      share: { title: 'Share this design', blurb: 'Anyone with the link can view the stitch-out and worksheet.', cta: 'Done' },
+    }[s.dialog] || { title: '', blurb: '', cta: '' };
+
+    return {
+      // routing
+      isLanding: s.route === 'landing', isAuth: ['signin', 'signup', 'reset'].includes(s.route),
+      isStudio: s.route === 'studio', isDash: s.route === 'dash',
+      goLanding: () => this.go('landing'), goStudio: () => this.go('studio'), goDash: () => this.go('dash', 'overview'),
+      goSignin: () => this.go('signin'),
+      // theme
+      toggleTheme: () => this.setTheme(s.theme === 'dark' ? 'light' : 'dark'),
+      theme: s.theme,
+      themeIcon: s.theme === 'dark' ? '☀' : '☾', themeLabel: `Switch to ${s.theme === 'dark' ? 'light' : 'dark'} theme`,
+      // landing
+      heroRef: this.heroRef,
+      features: [
+        { no: '01', title: 'Separate', body: 'k-means colour separation with contour tracing gives you regions, not a raster trace.' },
+        { no: '02', title: 'Fill', body: 'Tatami, satin, contour and radial fills with edge-walk underlay and pull compensation.' },
+        { no: '03', title: 'Verify', body: 'A 0–100 quality score with findings on long stitches, jump rate, density and hoop fit.' },
+        { no: '04', title: 'Deliver', body: 'DST, PES, JEF, EXP, VP3 — or the full production package with worksheet and colour card.' },
+      ],
+      // auth (local profiles: username + PIN — AuthPages.tsx)
+      authTitle: { signin: 'Sign in', signup: 'Create your account', reset: 'Reset your PIN' }[s.route] || '',
+      authBlurb: {
+        signin: 'Local profiles. Cloud sign-in stays available from the Studio nav.',
+        signup: 'The first profile created on a fresh install is the admin.',
+        reset: 'Enter your recovery email — we’ll send a one-time reset link.',
+      }[s.route] || '',
+      authCta: { signin: 'Sign in', signup: 'Create account', reset: 'Send reset link' }[s.route] || '',
+      authFields: {
+        signin: [
+          { label: 'Username or email', note: '', type: 'text', auto: 'username', placeholder: '' },
+          { label: 'PIN', note: '', type: 'password', auto: 'current-password', placeholder: 'leave empty if none' },
+        ],
+        signup: [
+          { label: 'Username', note: '', type: 'text', auto: 'username', placeholder: '' },
+          { label: 'Email', note: '(for PIN recovery)', type: 'email', auto: 'email', placeholder: 'you@example.com' },
+          { label: 'PIN', note: '(4+ characters)', type: 'password', auto: 'new-password', placeholder: '' },
+        ],
+        reset: [{ label: 'Email', note: '', type: 'email', auto: 'email', placeholder: 'you@example.com' }],
+      }[s.route] || [],
+      onAuthSubmit: (e) => {
+        e.preventDefault();
+        if (s.route === 'reset') return this.toast('If that account exists, a reset link is on its way — it works once and expires in 30 minutes.');
+        this.toast('Signed in'); this.go('dash', 'overview');
+      },
+      authLinks: s.route === 'signin'
+        ? [{ label: 'Forgot PIN?', onClick: () => this.go('reset') }, { label: 'Create account', onClick: () => this.go('signup') }]
+        : s.route === 'signup'
+          ? [{ label: 'I already have an account', onClick: () => this.go('signin') }]
+          : [{ label: 'Back to sign in', onClick: () => this.go('signin') }],
+      // studio toolbar
+      tools: ['Select', 'Run', 'Satin', 'Fill', 'Lettering', 'Appliqué'].map((label) => {
+        const key = label.toLowerCase();
+        return { label, hint: `${label} tool`, pressed: s.tool === key, style: tabBtn(s.tool === key), onClick: () => this.setState({ tool: key }) };
+      }),
+      undo: () => this.toast('Undid density change'), redo: () => this.toast('Redid density change'),
+      noUndo: false, noRedo: true,
+      formats: ['dst', 'pes', 'jef', 'exp', 'vp3'].map((v) => ({ v, label: `.${v.toUpperCase()}` })),
+      format: 'dst', onFormat: () => {},
+      onExport: () => this.toast('Exported badge.dst'),
+      openDigitize: () => this.setState({ dialog: 'digitize' }),
+      openLettering: () => this.setState({ dialog: 'lettering' }),
+      openShare: () => this.setState({ dialog: 'share', copied: false }),
+      openCmd: () => this.setState({ cmdOpen: true, cmdQuery: '' }),
+      toggleNotif: () => this.setState({ notifOpen: !s.notifOpen }), closeNotif: () => this.setState({ notifOpen: false }),
+      notifOpen: s.notifOpen, notifCount: 3,
+      notifications: [
+        { text: 'Job #2471 finished — 12 caps stitched', when: '4 min ago', tone: 'var(--good)' },
+        { text: 'Madeira 1147 is below reorder level', when: '1 h ago', tone: 'var(--warn)' },
+        { text: 'Priya commented on Alpine Crest v4', when: 'Yesterday', tone: 'var(--accent)' },
+      ],
+      // left rail
+      stopCount: `${D.colorStops.length} stops`,
+      stops: D.colorStops.map((c, i) => ({
+        seq: String(i + 1).padStart(2, '0'), hex: c.hex, name: c.name, count: c.count.toLocaleString(),
+        on: s.stop === i, style: stopBtn(s.stop === i),
+        onClick: () => this.setState({ stop: s.stop === i ? -1 : i }),
+      })),
+      objects: [
+        { kind: 'FILL', name: 'Badge ground', angle: `${s.angle}°` },
+        { kind: 'SAT', name: 'Outer rim', angle: '—' },
+        { kind: 'SAT', name: 'Chevron', angle: '0°' },
+        { kind: 'RUN', name: 'Edge-walk underlay', angle: '—' },
+      ],
+      versions: [
+        { label: `v${s.versionN} · current`, when: 'just now', tone: 'var(--accent)', onRestore: () => this.toast('Already on this version') },
+        { label: `v${s.versionN - 1} · density 0.38`, when: '12 min ago', tone: 'var(--line)', onRestore: () => { this.setState({ density: 38 }); this.toast('Restored v' + (s.versionN - 1)); } },
+        { label: `v${s.versionN - 2} · first digitize`, when: '1 h ago', tone: 'var(--line)', onRestore: () => { this.setState({ density: 42, angle: 45 }); this.toast('Restored v' + (s.versionN - 2)); } },
+      ],
+      hoop: s.hoop,
+      // canvas
+      canvasRef: this.canvasRef,
+      show2d: () => this.setState({ view: '2d' }), show3d: () => this.setState({ view: '3d' }),
+      is2d: s.view === '2d', is3d: s.view === '3d',
+      tab2dStyle: tabBtn(s.view === '2d'), tab3dStyle: tabBtn(s.view === '3d'),
+      zoomIn: () => this.setState({ zoom: Math.min(400, s.zoom + 25) }),
+      zoomOut: () => this.setState({ zoom: Math.max(25, s.zoom - 25) }),
+      zoomLabel: `${s.zoom}%`,
+      badge: `${D.total.toLocaleString()} ST · 68 × 68 MM · 3 COL`,
+      hasWarning: s.density > 62,
+      warningText: 'Dense fill — at this spacing the fabric may pucker on knit. Consider 0.45 mm.',
+      // quality
+      score: 94, scorePct: '94%', scoreGrade: grade, scoreTone: 'var(--good)',
+      metrics: [
+        { label: 'Jump rate', value: '1.4%', tone: 'var(--ink)' },
+        { label: 'Long stitches', value: '6', tone: 'var(--ink)' },
+        { label: 'Density', value: `${(s.density / 100).toFixed(2)} mm`, tone: 'var(--ink)' },
+        { label: 'Hoop fit', value: 'Clears 8 mm', tone: 'var(--good)' },
+      ],
+      // properties
+      selectedName: s.stop === -1 ? 'All objects' : D.colorStops[s.stop].name,
+      stitchTypes: [{ v: 'tatami', label: 'Tatami fill' }, { v: 'satin', label: 'Satin column' }, { v: 'contour', label: 'Contour fill' }, { v: 'applique', label: 'Appliqué' }],
+      stitchType: s.stitchType, onStitchType: (e) => this.setState({ stitchType: e.target.value }),
+      density: s.density, densityLabel: `${(s.density / 100).toFixed(2)} mm`, onDensity: (e) => this.setState({ density: +e.target.value }),
+      angle: s.angle, angleLabel: `${s.angle}°`, onAngle: (e) => this.setState({ angle: +e.target.value }),
+      pull: s.pull, pullLabel: `${(s.pull / 100).toFixed(2)} mm`, onPull: (e) => this.setState({ pull: +e.target.value }),
+      underlay: s.underlay, onUnderlay: (e) => this.setState({ underlay: e.target.checked }),
+      rebuildLabel: 'Rebuild stitches',
+      onRebuild: () => { this.setState((p) => ({ versionN: p.versionN + 1 })); this.toast('Stitches rebuilt from contours'); },
+      palette: ['#1f3a5f','#2b5580','#3d7ab0','#7fa8cd','#b8863b','#d4a857','#e8c98a','#8a5a2b','#5c3a1c','#d9cfbb','#efe7d8','#c9bfae','#7d8471','#4a5c46','#9caf88','#a33b32','#c9564a','#e08b7d','#2f2a24','#5a5248','#8c8478','#b0a89c','#3d6e6a','#6fa5a0']
+        .map((hex) => ({ hex, name: `Madeira ${hex.slice(1).toUpperCase()}`, onClick: () => this.toast(`Snapped to nearest thread ${hex.toUpperCase()}`) })),
+      // ai
+      chat: s.chat.map((m) => ({
+        text: m.text,
+        style: m.role === 'ai'
+          ? 'background:var(--plane); border:1px solid var(--line-2); border-radius:0.55rem; padding:0.6rem 0.75rem; font-size:0.88em; color:var(--ink-2);'
+          : 'background:var(--accent-soft); border:1px solid var(--accent-line); border-radius:0.55rem; padding:0.6rem 0.75rem; font-size:0.88em; color:var(--ink); align-self:flex-end; max-width:90%;',
+      })),
+      ask: s.ask, onAskInput: (e) => this.setState({ ask: e.target.value }),
+      onAsk: (e) => {
+        e.preventDefault();
+        const q = s.ask.trim(); if (!q) return;
+        this.setState({ chat: [...s.chat, { role: 'me', text: q }, { role: 'ai', text: this.answer(q) }], ask: '' });
+      },
+      // player
+      playPct: s.play, onScrub: (e) => this.setState({ play: +e.target.value, playing: false }),
+      togglePlay: () => this.setState({ playing: !s.playing, play: s.play >= 100 ? 0 : s.play }),
+      playIcon: s.playing ? '❚❚' : '▶', playAria: s.playing ? 'Pause stitch-out' : 'Play stitch-out',
+      playLabel: `${Math.round(D.total * s.play / 100).toLocaleString()} / ${D.total.toLocaleString()}`,
+      sewTime: `${Math.floor(A.estMin)}:${String(Math.round((A.estMin % 1) * 60)).padStart(2, '0')}`,
+      // command palette
+      cmdOpen: s.cmdOpen, cmdRef: this.cmdRef, cmdQuery: s.cmdQuery,
+      onCmdInput: (e) => this.setState({ cmdQuery: e.target.value }),
+      closeCmd: () => this.setState({ cmdOpen: false }),
+      cmdResults: cmds.filter((c) => !q || c.label.toLowerCase().includes(q) || c.group.toLowerCase().includes(q)),
+      stop: (e) => e.stopPropagation(),
+      // dialogs
+      dialogOpen: !!s.dialog, dialogTitle: dlg.title, dialogBlurb: dlg.blurb, dialogCta: dlg.cta,
+      closeDialog: () => this.setState({ dialog: null }),
+      dialogHasText: s.dialog === 'lettering', dialogHasLink: s.dialog === 'share',
+      letterText: s.letterText, onLetterText: (e) => this.setState({ letterText: e.target.value }),
+      shareLink: 'stitchiq.app/s/alpine-crest-v4', copyLabel: s.copied ? 'Copied' : 'Copy',
+      onCopyLink: () => { this.setState({ copied: true }); this.toast('Link copied'); },
+      dialogFields: s.dialog === 'digitize'
+        ? [
+            { label: 'Fabric', value: s.fabric, options: ['Cotton', 'Polo / knit', 'Denim', 'Fleece', 'Cap', 'Towel'], onChange: (e) => this.setState({ fabric: e.target.value }) },
+            { label: 'Hoop (mm)', value: s.hoop, options: ['100 × 100', '130 × 180', '200 × 200', '260 × 160'], onChange: (e) => this.setState({ hoop: e.target.value }) },
+            { label: 'Max colours', value: s.maxColors, options: ['2', '3', '4', '5', '6', '7', '8'], onChange: (e) => this.setState({ maxColors: e.target.value }) },
+          ]
+        : s.dialog === 'lettering'
+          ? [{ label: 'Height (mm)', value: '18', options: ['10', '14', '18', '24', '32'], onChange: () => {} }]
+          : [{ label: 'Access', value: 'Anyone with link', options: ['Anyone with link', 'Studio members', 'Off'], onChange: () => {} }],
+      confirmDialog: () => {
+        const d = s.dialog;
+        this.setState({ dialog: null });
+        if (d === 'share') return this.toast('Sharing on');
+        this.setState({ busy: d, busyPct: 0, busyStage: 'Reading image', play: 0 });
+      },
+      busy: !!s.busy, busyPct: `${s.busyPct}%`, busyStage: s.busyStage,
+      busyTitle: s.busy === 'lettering' ? 'Generating lettering' : 'Digitizing image',
+      // shortcuts
+      shortcutsOpen: s.shortcutsOpen, closeShortcuts: () => this.setState({ shortcutsOpen: false }),
+      shortcuts: [
+        { label: 'Command palette', keys: '⌘K' }, { label: 'Undo / redo', keys: '⌘Z / ⇧⌘Z' },
+        { label: 'Play stitch-out', keys: 'Space' }, { label: 'Digitize', keys: 'D' },
+        { label: 'Lettering', keys: 'T' }, { label: 'Zoom', keys: '⌘ + / −' },
+        { label: 'Cancel drawing', keys: 'Esc' }, { label: 'This panel', keys: '?' },
+      ],
+      // tour
+      tourOpen: s.route === 'studio' && s.tourStep >= 0 && s.tourStep < tour.length,
+      tourStepLabel: `STEP ${Math.max(0, s.tourStep) + 1} OF ${tour.length}`,
+      tourTitle: (tour[s.tourStep] || {}).t, tourBody: (tour[s.tourStep] || {}).b,
+      tourCta: s.tourStep >= tour.length - 1 ? 'Get started' : 'Next',
+      nextTour: () => this.setState({ tourStep: s.tourStep + 1 }), endTour: () => this.setState({ tourStep: -1 }),
+      // toasts
+      toasts: s.toasts.map((t) => ({ text: t.text, style: 'pointer-events:auto; background:var(--surface); border:1px solid var(--line); border-left:0.2rem solid var(--good); border-radius:0.55rem; padding:0.7rem 0.9rem; font-size:0.9em; box-shadow:var(--shadow); animation:riseIn .2s ease-out;' })),
+      // ── dashboard ──
+      dashNav: [
+        { key: 'overview', label: 'Overview', icon: '◫', count: '' },
+        { key: 'library', label: 'Library', icon: '▦', count: '8' },
+        { key: 'analytics', label: 'Analytics', icon: '▤', count: '' },
+        { key: 'jobs', label: 'Production', icon: '⧗', count: '4' },
+        { key: 'threads', label: 'Threads', icon: '◍', count: '' },
+        { key: 'templates', label: 'Templates', icon: '❖', count: '' },
+        { key: 'account', label: 'Account & plan', icon: '◉', count: '' },
+        { key: 'admin', label: 'Admin', icon: '⚙', count: '' },
+      ].map((n) => {
+        const on = s.section === n.key;
+        return {
+          ...n, on: on ? 'page' : 'false',
+          onClick: () => this.go('dash', n.key),
+          style: `display:flex; align-items:center; gap:0.7rem; width:100%; padding:0.6rem 0.7rem; border:0; border-radius:0.5rem; cursor:pointer; font:inherit; background:${on ? 'var(--accent-soft)' : 'transparent'}; color:${on ? 'var(--ink)' : 'var(--muted)'}; font-weight:${on ? 600 : 400};`,
+        };
+      }),
+      dashTitle: { overview: 'Overview', library: 'Design library', analytics: 'Design analytics', jobs: 'Production', threads: 'Thread inventory', templates: 'Templates', account: 'Account & plan', admin: 'Admin' }[s.section],
+      themeShort: s.theme === 'dark' ? 'Light theme' : 'Dark theme',
+      secOverview: s.section === 'overview', secLibrary: s.section === 'library', secAnalytics: s.section === 'analytics',
+      secJobs: s.section === 'jobs', secThreads: s.section === 'threads', secTemplates: s.section === 'templates',
+      secAccount: s.section === 'account', secAdmin: s.section === 'admin',
+      goAnalytics: () => this.go('dash', 'analytics'),
+      tiles: (() => {
+        const lib = this.thumbs();
+        const stitches = lib.reduce((n, t) => n + t.stitches, 0);
+        const cols = lib.reduce((n, t) => n + t.cols, 0);
+        return [
+          { label: 'My designs', value: String(lib.length), hint: 'saved in this browser' },
+          { label: 'Total stitches', value: stitches.toLocaleString(), hint: 'across saved designs' },
+          { label: 'Colour stops', value: String(cols), hint: 'sign in for colour totals' },
+          { label: 'Est. sew time', value: `${Math.round(A.estMin)} min`, hint: 'current: Alpine Crest badge' },
+        ];
+      })(),
+      currentMeta: `68 × 68 mm · ${D.total.toLocaleString()} stitches · 3 colours · 2 trims`,
+      activity: [
+        { name: 'Alpine Crest badge', meta: `${D.total.toLocaleString()} st · just now` },
+        { name: 'Harbour Co. left chest', meta: '8,204 st · 2 h ago' },
+        { name: 'Fleece beanie cuff', meta: '3,918 st · yesterday' },
+        { name: 'Cap front — Ridgeline', meta: '11,470 st · 2 days ago' },
+        { name: 'Towel monogram KD', meta: '2,106 st · 3 days ago' },
+      ],
+      library: this.thumbs().map((t, i) => ({ ...t, onOpen: () => this.go('studio') })),
+      templates: this.thumbs().slice(0, 8).map((t, i) => ({
+        img: t.img, name: ['Left chest badge', 'Cap front arc', 'Monogram frame', 'Sleeve stripe', 'Towel border', 'Patch outline', 'Script name', 'Circle crest'][i],
+        cat: ['Apparel', 'Headwear', 'Monogram', 'Apparel', 'Home', 'Patch', 'Lettering', 'Crest'][i],
+        onUse: () => { this.toast('Template loaded into the Studio'); this.go('studio'); },
+      })),
+      anTiles: [
+        { label: 'Quality', value: '94', hint: 'grade A' },
+        { label: 'Stitches', value: A.stitches.toLocaleString(), hint: '68×68 mm' },
+        { label: 'Est. time', value: `${Math.round(A.estMin)} min`, hint: 'incl. trims + re-threads' },
+        { label: 'Colours', value: String(D.colorStops.length), hint: `${A.trims} changes` },
+        { label: 'Trims', value: String(A.trims), hint: `${A.trims} jumps` },
+        { label: 'Travel', value: `${(A.travelMm / (A.sewMm + A.travelMm) * 100).toFixed(1)}%`, hint: `longest jump ${A.longest.toFixed(1)} mm` },
+      ],
+      bars: (() => {
+        const max = Math.max(1, ...A.bins.map((b) => b.count));
+        return A.bins.map((b) => ({
+          label: b.from.toFixed(1),
+          pct: `${Math.max(b.count ? 2 : 0, Math.round((b.count / max) * 100))}%`,
+          value: b.count ? b.count.toLocaleString() : '',
+        }));
+      })(),
+      usage: (() => {
+        const mm = D.runs.map((run) => { let t = 0; for (let k = 1; k < run.length; k++) t += Math.hypot((run[k][0] - run[k - 1][0]) * 68, (run[k][1] - run[k - 1][1]) * 68); return t; });
+        const max = Math.max(1, ...mm);
+        return D.colorStops.map((c, i) => ({
+          name: c.name, hex: c.hex,
+          pct: `${Math.round((mm[i] / max) * 100)}%`,
+          len: mm[i] >= 1000 ? `${(mm[i] / 1000).toFixed(2)} m` : `${Math.round(mm[i])} mm`,
+        }));
+      })(),
+      sewPct: `${(A.sewMm / (A.sewMm + A.travelMm) * 100).toFixed(1)}%`,
+      travelPct: `${(A.travelMm / (A.sewMm + A.travelMm) * 100).toFixed(1)}%`,
+      capabilities: [
+        { feature: 'Image auto-digitizing', us: 'yes', tone: 'var(--good)', note: 'OpenCV k-means + contours, deterministic', them: 'yes' },
+        { feature: 'Lettering / monogramming', us: 'yes', tone: 'var(--good)', note: 'system font through the digitizer', them: 'yes' },
+        { feature: 'TrueView 3D preview', us: 'yes', tone: 'var(--good)', note: 'lit thread render', them: 'yes' },
+        { feature: 'Machine formats', us: 'yes', tone: 'var(--good)', note: '45+ via pyembroidery', them: 'yes' },
+        { feature: 'Neural AI digitizing', us: 'no', tone: 'var(--bad)', note: 'gated — needs GPU + data', them: 'no' },
+        { feature: 'Verified sew-outs', us: 'partial', tone: 'var(--warn)', note: 'format-valid; no machine runs yet', them: 'yes' },
+      ],
+      jobs: [
+        { name: 'Alpine Crest — 24 polos', machine: 'Tajima TMBP · head 1', status: 'Running', tone: 'var(--good)', pct: '62%', eta: '18 min left' },
+        { name: 'Ridgeline caps — 12', machine: 'Brother PR680W', status: 'Queued', tone: 'var(--accent)', pct: '0%', eta: 'starts 14:20' },
+        { name: 'Harbour Co. — 60 tees', machine: 'Tajima TMBP · head 2', status: 'Paused', tone: 'var(--warn)', pct: '31%', eta: 'thread break' },
+        { name: 'Beanie cuffs — 40', machine: 'Brother PR680W', status: 'Done', tone: 'var(--muted)', pct: '100%', eta: 'finished 11:04' },
+      ],
+      onNewJob: () => this.toast('Run queued on Tajima TMBP'),
+      threadTotal: `${(A.sewMm / 1000).toFixed(2)} m`,
+      inventory: [
+        { name: 'Ink navy', code: '1166', hex: '#1f3a5f', cones: '14', level: 'Healthy', tone: 'var(--good)', used: usedM(0) },
+        { name: 'Antique brass', code: '1147', hex: '#b8863b', cones: '2', level: 'Reorder', tone: 'var(--bad)', used: usedM(1) },
+        { name: 'Bone white', code: '1082', hex: '#d9cfbb', cones: '9', level: 'Healthy', tone: 'var(--good)', used: usedM(2) },
+        { name: 'Moss green', code: '1301', hex: '#7d8471', cones: '5', level: 'Low', tone: 'var(--warn)', used: '—' },
+        { name: 'Brick red', code: '1039', hex: '#a33b32', cones: '11', level: 'Healthy', tone: 'var(--good)', used: '—' },
+        { name: 'Slate', code: '1918', hex: '#5a5248', cones: '3', level: 'Low', tone: 'var(--warn)', used: '—' },
+      ],
+      profile: [
+        { k: 'Signed in as', v: 'kevin', tone: 'var(--ink)' },
+        { k: 'Account type', v: 'Local profile', tone: 'var(--ink)' },
+        { k: 'Role', v: 'admin', tone: 'var(--ink)' },
+        { k: 'Recovery email', v: 'not set — add one below', tone: 'var(--muted)' },
+      ],
+      planName: 'Studio',
+      onSaveEmail: (e) => { e.preventDefault(); this.toast('Recovery email saved — password resets go there now.'); },
+      onSignOut: () => { this.toast('Signed out'); this.go('signin'); },
+      tiers: [
+        { name: 'Free', blurb: 'Everything you need to stitch today.', perks: ['Auto-digitizing & lettering', 'All export formats', 'Hoops up to 130×180 mm', 'Quality checks'], current: false },
+        { name: 'Pro', blurb: 'The production toolkit.', perks: ['Everything in Free', 'Production package ZIP', 'Worksheet PDF', 'Path optimizer', 'Format converter'], current: false },
+        { name: 'Studio', blurb: 'For digitizing businesses.', perks: ['Everything in Pro', 'Photo & textured pipeline', 'Large-format hoops', 'Priority features'], current: true },
+      ].map((p) => ({
+        ...p,
+        badge: p.current ? 'current' : '',
+        badgeStyle: p.current
+          ? 'font-family:\'Archivo Narrow\',sans-serif; font-size:0.75em; letter-spacing:0.12em; text-transform:uppercase; font-weight:700; color:var(--accent-text); border:1px solid var(--accent-line); border-radius:0.3rem; padding:0.1rem 0.45rem;'
+          : 'display:none;',
+        style: `background:var(--surface); border:1px solid ${p.current ? 'var(--accent)' : 'var(--line)'}; border-radius:0.9rem; padding:1.3rem; display:flex; flex-direction:column;`,
+      })),
+      adminTiles: [
+        { label: 'Users', value: '1', hint: '1 admin' },
+        { label: 'Free', value: '0', hint: '' },
+        { label: 'Pro', value: '0', hint: '' },
+        { label: 'Studio', value: '1', hint: '' },
+        { label: 'Plan gates', value: 'OPEN', hint: 'set STITCHIQ_ENFORCE_PLANS=1 to enforce' },
+      ],
+      members: [
+        { name: 'kevin', email: 'not set', emailTone: 'var(--muted)', created: '09/08/2026', plan: 'studio', role: 'admin', planAria: 'Plan for kevin', roleAria: 'Role for kevin', onPlan: () => this.toast('Plan updated'), onRole: () => this.toast('Role updated') },
+      ],
+      featureMatrix: [
+        { feature: 'production package', plan: 'PRO', tone: 'var(--accent-text)' },
+        { feature: 'worksheet pdf', plan: 'PRO', tone: 'var(--accent-text)' },
+        { feature: 'path optimizer', plan: 'PRO', tone: 'var(--accent-text)' },
+        { feature: 'format converter', plan: 'PRO', tone: 'var(--accent-text)' },
+        { feature: 'photo pipeline', plan: 'STUDIO', tone: 'var(--ink)' },
+        { feature: 'large format hoops', plan: 'STUDIO', tone: 'var(--ink)' },
+      ],
+      // mobile nav
+      mobileNav: [
+        { key: 'studio', label: 'Studio', icon: '✎', onClick: () => this.go('studio') },
+        { key: 'overview', label: 'Home', icon: '◫', onClick: () => this.go('dash', 'overview') },
+        { key: 'library', label: 'Library', icon: '▦', onClick: () => this.go('dash', 'library') },
+        { key: 'account', label: 'Account', icon: '◉', onClick: () => this.go('dash', 'account') },
+      ].map((m) => {
+        const on = m.key === 'studio' ? s.route === 'studio' : s.route === 'dash' && s.section === m.key;
+        return { ...m, on: on ? 'page' : 'false', style: `flex:1; display:flex; flex-direction:column; align-items:center; gap:0.2rem; min-height:3rem; padding:0.4rem 0.2rem; border:0; border-radius:0.5rem; cursor:pointer; background:${on ? 'var(--accent-soft)' : 'transparent'}; color:${on ? 'var(--accent-text)' : 'var(--muted)'};` };
+      }),
+    };
+  }
+}
+</script>
+</body>
+</html>

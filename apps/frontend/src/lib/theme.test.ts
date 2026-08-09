@@ -25,20 +25,27 @@ describe('initialTheme', () => {
 });
 
 /**
- * The regression this file exists for (v2 Part 44).
+ * THE CONTRACT INVERTED, AND THIS FILE INVERTED WITH IT (Atelier handoff).
  *
- * `.dz-root` carries the light/dark token set, and the tokens are selected by a
- * `data-theme` attribute on that same element. AuthPages rendered `.dz-root`
- * without one, so sign-in / sign-up / forgot always resolved to the dark default
- * — a light-mode user went from a white dashboard to a black sign-in page. Every
- * unit test passed; only a screenshot showed it.
+ * The original regression (v2 Part 44): `.dz-root` carried the token set and
+ * selected it with a `data-theme` attribute on that same element. AuthPages
+ * rendered `.dz-root` without one, so sign-in always resolved to the dark
+ * default — a light-mode user went from a white dashboard to a black sign-in
+ * page. Every unit test passed; only a screenshot showed it. So this file
+ * asserted that EVERY `.dz-root` site carries `data-theme`.
  *
- * A DOM test would be the natural guard, but the frontend has no jsdom and no
- * testing-library, and adding both to catch one missing attribute is a poor
- * trade. Scanning the source for the pairing costs nothing and fails on exactly
- * the mistake that was made.
+ * That rule is now exactly backwards. `data-theme` lives on <html>, stamped
+ * once in main.tsx and owned by useTheme(), because a `.dz-root`-scoped
+ * attribute could only ever theme the dashboard subtree: the Studio was
+ * hard-dark and portalled overlays — command palette, dialogs, toasts — sat
+ * outside it entirely. A `data-theme` on `.dz-root` today would be worse than
+ * redundant; it would pin that subtree to the value resolved at mount and
+ * leave it behind when the viewer toggles.
+ *
+ * Same technique, opposite assertion, and the same defect class either way: a
+ * surface whose theme disagrees with the rest of the app.
  */
-describe('every .dz-root render site sets data-theme', () => {
+describe('data-theme is stamped on <html>, never on .dz-root', () => {
   const SRC = path.resolve(__dirname, '..');
 
   function tsxFiles(dir: string): string[] {
@@ -52,15 +59,29 @@ describe('every .dz-root render site sets data-theme', () => {
   const offenders: string[] = [];
   for (const file of tsxFiles(SRC)) {
     const text = readFileSync(file, 'utf8');
-    // Each JSX opening tag whose className mentions dz-root.
     for (const tag of text.match(/<[a-zA-Z][^>]*className={?["'`][^"'`]*\bdz-root\b[^>]*>/g) ?? []) {
-      if (!tag.includes('data-theme')) {
+      if (tag.includes('data-theme')) {
         offenders.push(`${path.relative(SRC, file)}: ${tag.slice(0, 90)}`);
       }
     }
   }
 
-  it('has no .dz-root without a theme', () => {
+  it('has no .dz-root carrying its own data-theme', () => {
     expect(offenders).toEqual([]);
+  });
+
+  it('stamps the resolved theme on <html> before first paint', () => {
+    // Not in useTheme() alone: that hook only runs while the dashboard is
+    // mounted, so landing straight on the Studio would leave <html> bare and
+    // atelier.css would fall through to its light :root values.
+    const main = readFileSync(path.join(SRC, 'main.tsx'), 'utf8');
+    expect(main).toMatch(/documentElement\.setAttribute\(\s*'data-theme'/);
+    expect(main).toContain('initialTheme()');
+  });
+
+  it('routes every theme change through the one hook', () => {
+    const shell = readFileSync(path.join(SRC, 'components/dash/DashShell.tsx'), 'utf8');
+    expect(shell).toContain('useTheme()');
+    expect(shell).not.toMatch(/useState<Theme>/);
   });
 });
