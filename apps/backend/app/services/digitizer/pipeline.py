@@ -866,7 +866,8 @@ def digitize_image(
             # dilation version bridged the gaps between letters).
             route_pad = max(2, round((FILL_BORDER_MM / 2 + pull_mm) / mm_per_px))
             pts = _route_travel(pts, region, TRAVEL_STEP_MM / mm_per_px,
-                                pad_px=route_pad)
+                                pad_px=route_pad,
+                                min_pitch_px=MIN_STITCH_MM / mm_per_px)
             if constants._PENETRATION_FLOOR_MM:
                 pts = _drop_floor_reversals(
                     pts, constants._PENETRATION_FLOOR_MM / mm_per_px, MAX_STITCH_MM / mm_per_px,

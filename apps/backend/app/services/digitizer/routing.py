@@ -6,9 +6,12 @@ from itertools import pairwise
 
 from app.models.design import Stitch
 from app.services.digitizer.constants import (
+    DETOUR_COST_MAX,
     MIN_PENETRATION_MM,
+    MIN_STITCH_MM,
     TIE_ALONG_MM,
     TIE_LATERAL_MM,
+    TRAVEL_STEP_MM,
     TRIM_JUMP_MM,
 )
 from app.services.digitizer.geometry import (
@@ -69,7 +72,7 @@ def _merge_adjacent_same_hex(stitches, color_stops, objects) -> int:
 
 
 def _route_travel(pts, region, step_px: float, dilate_px: int = 2,
-                  pad_px: int | None = None):
+                  pad_px: int | None = None, min_pitch_px: float | None = None):
     """Replace needle-up jumps whose path stays inside the object's own region
     with running stitches at TRAVEL_STEP_MM (v2 Part 25).
 
@@ -162,10 +165,22 @@ def _route_travel(pts, region, step_px: float, dilate_px: int = 2,
         underlay connections stayed as trimmed jumps (CTO review C2/A3,
         measured). Halving the pitch until every chord passes keeps the
         travel pitch where the boundary allows it and only densifies the
-        concave stretches; below 2px the boundary is genuinely unusable and
-        the caller keeps the jump.
+        concave stretches.
+
+        THE FLOOR IS MILLIMETRES, NOT PIXELS (CTO verdict STEP −1). This
+        loop used to bottom out at 2 *pixels*, which at the working
+        resolution is roughly a tenth of a millimetre — so a concave
+        boundary drove the pitch far below the needle-safety floor and this
+        function re-injected exactly the sub-floor penetrations
+        `_coalesce_short` had removed one line earlier. Measured on
+        01_flat_2color_logo: 70.8% of all shipped stitches were manufactured
+        here, 59.6% of penetrations landed under MIN_STITCH_MM, and the
+        design took 21.3 machine-minutes instead of ~8. Below the floor the
+        boundary is unusable at a safe pitch, so we return None and the
+        caller keeps the jump for trimming — a trim is cheap, a perforated
+        edge is not.
         """
-        while pitch >= 2.0:
+        while pitch >= floor_px:
             keep = [path[0]]
             acc = 0.0
             for p, q in pairwise(path):
@@ -179,6 +194,14 @@ def _route_travel(pts, region, step_px: float, dilate_px: int = 2,
                 return keep
             pitch /= 2.0
         return None
+
+    # Needle-safety floor in pixels. Derived from the caller's own travel
+    # pitch when not supplied, so a direct caller cannot silently reinstate
+    # the pixel floor: step_px IS TRAVEL_STEP_MM in pixels, so the ratio
+    # converts MIN_STITCH_MM into the same units.
+    floor_px = (min_pitch_px if min_pitch_px is not None
+                else MIN_STITCH_MM * max(step_px, 1e-6) / TRAVEL_STEP_MM)
+    floor_px = max(float(floor_px), 1.0)
 
     out = [pts[0]]
     for prev, cur in pairwise(pts):
@@ -207,7 +230,16 @@ def _route_travel(pts, region, step_px: float, dilate_px: int = 2,
         if via is not None:
             d_in = math.dist((ax, ay), via[0])
             d_out = math.dist(via[-1], (bx, by))
+            # Cost cap (CTO verdict STEP −1): a travel run that walks most of
+            # the way around a region to avoid one short jump is not a saving
+            # — it is sewn thread, machine time and needle wear replacing a
+            # single trim. Anything over DETOUR_COST_MAX x the direct move is
+            # refused and the jump survives for trimming.
+            detour_len = d_in + d_out + sum(
+                math.dist(p, q) for p, q in pairwise(via)
+            )
             if (d_in <= max_hop and d_out <= max_hop
+                    and detour_len <= DETOUR_COST_MAX * length
                     and inside(ax, ay, via[0][0], via[0][1], d_in, end_mask)
                     and inside(via[-1][0], via[-1][1], bx, by, d_out, end_mask)):
                 for p in via:
@@ -447,7 +479,8 @@ def _finish_rebuild_segment(seg, mask, mm_per_px: float, route_pad: int,
     from app.services.digitizer import constants
 
     seg = _coalesce_short(seg, min_stitch_mm / mm_per_px)
-    seg = _route_travel(seg, mask, travel_step_mm / mm_per_px, pad_px=route_pad)
+    seg = _route_travel(seg, mask, travel_step_mm / mm_per_px, pad_px=route_pad,
+                        min_pitch_px=min_stitch_mm / mm_per_px)
     if constants._PENETRATION_FLOOR_MM:
         seg = _drop_floor_reversals(
             seg, constants._PENETRATION_FLOOR_MM / mm_per_px,

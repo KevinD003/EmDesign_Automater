@@ -529,6 +529,26 @@ MIN_STITCH_MM = 0.5  # below this a needle penetration risks thread break / need
 TRAVEL_STEP_MM = 2.0
 
 
+# A travel run may cost at most this multiple of the direct jump it replaces
+# (CTO verdict 2026-08-09, STEP -1). Routing a connection inside the region
+# avoids a trim, but a run that walks most of the way around a shape to dodge
+# one short move is not a saving: it is sewn thread, machine time and needle
+# wear standing in for a single 2.5s trim. Measured before this cap,
+# `_route_travel` manufactured 70.8% of every stitch on 01_flat_2color_logo
+# and 64.4% on the badge. A cap in this band keeps the genuinely useful
+# detours (a hole rim is barely longer than the chord across it) and refuses
+# the pathological ones; the jump then survives for `_lock_stream` to trim.
+#
+# 2.0 chosen by sweep on 01_flat_2color_logo (stitches / sub-0.5mm share /
+# trims): 3.0 and 2.5 both 10,259 / 4.9% / 47 · 2.0 -> 8,749 / 3.8% / 67 ·
+# 1.5 -> 7,620 / 3.6% / 80. Machine time decides it, since that is the
+# owner's cost centre: at 800spm plus 2.5s per trim, 3.0 costs 14.8 min and
+# 2.0 costs 13.7 — the 20 extra trims are 50s, the 1,510 fewer stitches save
+# 113s. 1.5 measures better still (12.9 min) but sits OUTSIDE the 2-3x band
+# the verdict specified, so it is reported rather than taken.
+DETOUR_COST_MAX = 2.0
+
+
 # A jump crossing open fabric longer than this gets a tie-off and a TRIM.
 # Below it, the machine's own movement is short enough that the trail is
 # accepted (and many machines auto-trim in this range themselves anyway).

@@ -48,6 +48,7 @@ FIXTURE_DIR = BACKEND_ROOT / "tests" / "fixtures" / "quality_bench"
 BENCH_DIR = REPO_ROOT / "docs" / "benchmarks"
 
 RNG_SEED = 20260728
+TRIM_SECONDS = 2.5  # machine stop per trim; see optimizer.TRIM_COST_S (3-7s cited)
 SPM = 800.0  # machine speed used for the time estimate (matches package.build_summary)
 MACHINE_MAX_STITCH_MM = 12.7  # hard machine limit; anything longer is a defect
 
@@ -94,6 +95,13 @@ class FixtureResult:
     width_mm: float = 0.0
     height_mm: float = 0.0
     est_minutes: float = 0.0
+    # Share of consecutive STITCH pairs below the needle-safety floor, and
+    # machine time INCLUDING trim stops (CTO verdict STEP -1). Neither existed
+    # before, which is how `_route_travel` came to manufacture 70.8% of a
+    # fixture's stitches — 59.6% of them under the floor — while every gate in
+    # the suite stayed green against a stale exact-hash baseline.
+    sub_floor_share: float = 0.0
+    machine_minutes: float = 0.0
 
     jump_count: int = 0
     trim_count: int = 0
@@ -276,6 +284,13 @@ def run_fixture(path: Path, out_dir: Path) -> FixtureResult:
     res.color_changes = sum(1 for s in design.stitches if _cmd(s) == "COLOR_CHANGE")
 
     lengths = _stitch_lengths(design)
+    from app.services.digitizer import MIN_STITCH_MM
+
+    res.sub_floor_share = (round(sum(1 for x in lengths if x < MIN_STITCH_MM) / len(lengths), 4)
+                           if lengths else 0.0)
+    # Trims stop the machine for about TRIM_SECONDS each; a routing change that
+    # trades stitches for trims must be judged on the total, not on either half.
+    res.machine_minutes = round(res.est_minutes + res.trim_count * TRIM_SECONDS / 60.0, 2)
     if lengths:
         res.max_stitch_mm = round(max(lengths), 2)
         res.mean_stitch_mm = round(sum(lengths) / len(lengths), 3)
