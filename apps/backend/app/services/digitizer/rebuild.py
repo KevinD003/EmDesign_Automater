@@ -8,6 +8,8 @@ bumping the 1,500-line layering gate on every change, four times in a row.
 
 from __future__ import annotations
 
+import math
+
 from app.models.design import (
     Design,
     DesignObject,
@@ -21,7 +23,6 @@ from app.services.digitizer import (
 from app.services.digitizer.constants import (
     CONNECT_MM,
     CONTOUR_ROW_MAX_STEP_MM,
-    EDGE_INSET_MM,
     FILL_UNDERLAY_ANGLE_OFFSET_DEG,
     FILL_UNDERLAY_PITCH_MULT,
     MAX_STITCH_MM,
@@ -30,12 +31,13 @@ from app.services.digitizer.constants import (
     SATIN_MAX_W_MM,
     SATIN_SPACING_MM,
     TRAVEL_STEP_MM,
-    UNDERLAY_STEP_MM,
+    TRIM_MIN_GAP_MM,
     UNDERLAY_ZIGZAG_INSET_MM,
     UNDERLAY_ZIGZAG_PITCH_MULT,
 )
 from app.services.digitizer.fills import (
     _contour_fill,
+    _fill_angle,
     _fill_by_component,
     _radial_fill,
     _scanline_angled,
@@ -43,6 +45,7 @@ from app.services.digitizer.fills import (
 )
 from app.services.digitizer.geometry import (
     _dilate_pull,
+    _fabric_profile,
     _flow_divide_valid,
     _flow_line_angle,
     _flow_side_angles,
@@ -165,6 +168,24 @@ def rebuild_design(design: Design) -> Design:
     def to_mm(x: float, y: float) -> tuple[float, float]:
         return ((x - pad) * mm_per_px + minx, (y - pad) * mm_per_px + miny)
 
+    # THE FABRIC PROFILE, which rebuild ignored entirely until now. digitize
+    # takes its underlay step, edge inset and fill row pitch from
+    # `_fabric_profile(design.fabric_type)`; rebuild hard-coded the cotton
+    # constants, so editing one object on a fleece design re-stitched it with
+    # cotton underlay spacing (2.0 vs 1.5mm) and a cotton edge inset (0.6 vs
+    # 0.8mm). `Design.fabric_type` was there the whole time.
+    #
+    # Only the three quantities with NO per-object override are taken from the
+    # profile. Row pitch and pull comp are NOT: digitize baked them onto the
+    # object at emission and the user may since have edited them, so the stored
+    # value wins — except for `fill_row_px` below, which paces a tatami
+    # remainder inside a SATIN object and therefore has no per-object row pitch
+    # to inherit.
+    prof = _fabric_profile(design.fabric_type or "")
+    fill_row_px = max(1, round(prof["row_mm"] / mm_per_px))
+    under_step_px_prof = max(1, round(prof["under_mm"] / mm_per_px))
+    edge_inset_px_prof = max(1, round(prof["inset_mm"] / mm_per_px))
+
     max_step_px = max(2, round(MAX_STITCH_MM / mm_per_px))
     # Fills subdivide on their own, tighter grid (CTO A6): tatami rows cap at
     # MAX_FILL_STITCH_MM, not the general run cap — see the constant's note.
@@ -193,12 +214,31 @@ def rebuild_design(design: Design) -> Design:
             ut = enum_str(o.underlay_type)
             spacing_mm = 1.0 / max(float(o.density) or 1.0, 0.2)
             spacing_px = max(1, round(spacing_mm / mm_per_px))
-            under_step_px = max(1, round(UNDERLAY_STEP_MM / mm_per_px))
+            under_step_px = under_step_px_prof
             top = _dilate_pull(mask, float(o.pull_compensation or 0.0), mm_per_px)  # honor edited pull comp
             applique_phases = None
             # Set only when the satin column actually came off the medial axis;
             # the underlay then walks that same axis instead of the rect midline.
             satin_axis_pts = None
+            # THE ANGLE THE TOP ROWS ARE ACTUALLY SEWN AT, which is what the
+            # PARALLEL underlay must cross at 90 degrees. digitize maintains
+            # this invariant by construction — it passes the very `fill_angle`
+            # it just filled with — while rebuild passed the raw stored
+            # `stitch_angle`, which is a different number in three cases:
+            #
+            #   * CONTOUR/SPIRAL/RADIAL fills, where rebuild's own code says the
+            #     stored angle "does not describe this object". digitize
+            #     substitutes the region's principal axis; rebuild used the
+            #     stored 0.0 and so laid every crossing layer at a flat 90.
+            #   * a Stitch Flow line, which overrides the angle for the top rows
+            #     only — so a user who draws a flow line 90 degrees off gets an
+            #     underlay running PARALLEL to the rows it is meant to brace,
+            #     nesting between them at 3x their pitch instead of supporting
+            #     them, and showing through as a ridge every third row.
+            #   * a divided flow, where there are two top angles and no single
+            #     one is right — the region's own axis is the honest choice,
+            #     for the same reason digitize gives it to contour fills.
+            top_row_angle = float(o.stitch_angle)
             if st == "APPLIQUE":
                 # placement → STOP → tackdown → STOP → satin cover; the STOP
                 # rationale and phase recipe live on _applique_phases (A4).
@@ -289,10 +329,23 @@ def rebuild_design(design: Design) -> Design:
                         satin_axis_pts = axis_pts
                         # Per-segment fallback, exactly as digitize: parts too
                         # wide for a column are tatami'd rather than dropped.
+                        #
+                        # "Exactly as digitize" was a claim, not a fact: two of
+                        # the four arguments were wrong. This is a TATAMI fill,
+                        # so it takes the FILL row pitch, not the satin column
+                        # pitch — `row_mm` and `satin_mm` are separate profile
+                        # keys and coincide only on cotton (0.40/0.40); they are
+                        # 0.50/0.45 on knit, 0.55/0.50 on jersey, and unrelated
+                        # after any density edit. And it takes the remainder's
+                        # OWN principal axis: omitting `angle_deg` silently
+                        # defaulted it to 0.0, so every wide patch came back
+                        # with horizontal rows crossing the satin columns it
+                        # sits between.
                         if cv2.countNonZero(wide_mask):
                             pts = pts + _fill_by_component(
-                                wide_mask, spacing_px, fill_step_px, connect_px,
+                                wide_mask, fill_row_px, fill_step_px, connect_px,
                                 start=pts[-1][:2] if pts else None,
+                                angle_deg=_fill_angle(wide_mask),
                             )
                     else:
                         # Too wide for columns, or the thinning could not
@@ -308,6 +361,7 @@ def rebuild_design(design: Design) -> Design:
                 # panel. `stitch_angle` does not describe either and is ignored.
                 fill_fn = _spiral_fill if st == "SPIRAL_FILL" else _radial_fill
                 pts = fill_fn(top, spacing_px, max_step_px, connect_px)
+                top_row_angle = _fill_angle(top)
             elif st == "CONTOUR_FILL":
                 # Rows follow the outline, so `stitch_angle` does not describe
                 # this object and is deliberately not consulted (v2 Part 24b).
@@ -319,6 +373,7 @@ def rebuild_design(design: Design) -> Design:
                     max(1, min(max_step_px, round(CONTOUR_ROW_MAX_STEP_MM / mm_per_px))),
                     connect_px,
                 )
+                top_row_angle = _fill_angle(top)
             elif st in ("RUNNING_SINGLE", "RUNNING_DOUBLE", "RUNNING_TRIPLE", "MANUAL"):
                 # Running stitch ALONG the drawn path (open polyline), not an
                 # area fill. Pitch is density-aware with the 2.5mm pro default
@@ -346,6 +401,7 @@ def rebuild_design(design: Design) -> Design:
                     ang_pos, ang_neg = _flow_side_angles(
                         o.flow_divide, o.flow_line, o.flow_line_b, float(o.stitch_angle),
                     )
+                    top_row_angle = _fill_angle(top)
                     pts = []
                     for side_mask, ang in zip(_split_mask_by_line(top, a_px, b_px),
                                               (ang_pos, ang_neg)):
@@ -354,9 +410,9 @@ def rebuild_design(design: Design) -> Design:
                                 side_mask, ang, spacing_px, fill_step_px, connect_px,
                             )
                 else:
+                    top_row_angle = _flow_line_angle(o.flow_line, float(o.stitch_angle))
                     pts = _scanline_angled(
-                        top, _flow_line_angle(o.flow_line, float(o.stitch_angle)),
-                        spacing_px, fill_step_px, connect_px,
+                        top, top_row_angle, spacing_px, fill_step_px, connect_px,
                     )
             else:
                 # There is deliberately no catch-all fill here (v2 Part 43). This
@@ -379,12 +435,12 @@ def rebuild_design(design: Design) -> Design:
             # (CTO A5/C5) — see _rebuild_underlay for the honesty contract.
             under = _rebuild_underlay(
                 st, ut, mask, rect if st == "SATIN" else None,
-                float(o.stitch_angle), spacing_px, under_step_px, connect_px,
+                top_row_angle, spacing_px, under_step_px, connect_px,
                 max_step_px, mm_per_px,
                 (constants._PENETRATION_FLOOR_MM / mm_per_px) if constants._PENETRATION_FLOOR_MM else 0.0,
                 MAX_STITCH_MM / mm_per_px,
-                max(1, round(EDGE_INSET_MM / mm_per_px)),
-                UNDERLAY_STEP_MM * UNDERLAY_ZIGZAG_PITCH_MULT / mm_per_px,
+                edge_inset_px_prof,
+                prof["under_mm"] * UNDERLAY_ZIGZAG_PITCH_MULT / mm_per_px,
                 UNDERLAY_ZIGZAG_INSET_MM / mm_per_px,
                 FILL_UNDERLAY_PITCH_MULT, FILL_UNDERLAY_ANGLE_OFFSET_DEG,
                 axis_pts=satin_axis_pts,
@@ -423,12 +479,37 @@ def rebuild_design(design: Design) -> Design:
             else:
                 pts = _finish(pts)
             if len(pts) < 2:
-                continue
+                # THIS USED TO BE `continue`, and it deleted the object.
+                #
+                # Not a theoretical risk: measured on 05_wordmark_caps and
+                # 06_wordmark_script, a rect sweep across a curved script stroke
+                # produced under two points and each design came back one object
+                # short, with no error, no log and no visible sign until you
+                # counted. The user sees a letter missing from their wordmark.
+                #
+                # Silence is the wrong default for "a generator produced
+                # nothing". Fixing the cause (see the 250e850 residuals) stopped
+                # it firing on the whole corpus; this makes sure the next cause
+                # announces itself instead of quietly costing someone a letter.
+                raise ValueError(
+                    f"{o.name} ({st}): only {len(pts)} point(s) survived to "
+                    f"emission, too few to sew. The object would otherwise be "
+                    f"dropped from the design without a trace. This usually "
+                    f"means the contour is degenerate at the rebuild raster, or "
+                    f"a generator fell back to a path that cannot span this shape."
+                )
 
             if stitches and stitches[-1].command != "COLOR_CHANGE":
                 last = stitches[-1]
-                stitches.append(Stitch(x=last.x, y=last.y, command="TRIM"))
                 ex, ey = to_mm(pts[0][0], pts[0][1])
+                # Trim only when the connecting thread would be long enough to
+                # matter (v2 Part 48) — digitize's rule, which rebuild did not
+                # have: it trimmed at EVERY object transition. A trim costs
+                # roughly 2.5s of machine time, and below TRIM_MIN_GAP_MM the
+                # machine carries a short thread to the next region, which is
+                # what commercial digitizers do.
+                if math.hypot(ex - last.x, ey - last.y) >= TRIM_MIN_GAP_MM:
+                    stitches.append(Stitch(x=last.x, y=last.y, command="TRIM"))
                 stitches.append(Stitch(x=ex, y=ey, command="JUMP"))
             obj_start = len(stitches)
             if applique_phases is not None:
