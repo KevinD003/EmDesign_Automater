@@ -267,7 +267,7 @@ def _rebuild_underlay(st: str, ut: str, mask, rect, stitch_angle: float,
                       max_step_px: int, mm_per_px: float, floor_px: float,
                       max_px: float, edge_inset_px: int, zigzag_pitch_px: float,
                       zigzag_inset_px: float, parallel_pitch_mult: float,
-                      parallel_angle_offset_deg: float):
+                      parallel_angle_offset_deg: float, axis_pts=None):
     """Underlay for a rebuilt object: the SELECTED type dispatched to its real
     generator (CTO A5/C5). Returns [(x, y, is_jump)] or [] for none.
 
@@ -276,23 +276,45 @@ def _rebuild_underlay(st: str, ut: str, mask, rect, stitch_angle: float,
     take no underlay. A stored value digitize never assigns to the family (a
     legacy save from the old free-for-all dropdown) keeps the old collapse so
     no design errors out on load.
+
+    ``axis_pts`` is the MEDIAL AXIS the satin column was actually swept along,
+    or None when the column came from the bounding-rect sweep. It matters
+    because the underlay has to follow the same path the top layer does. B1.5
+    moved rebuild's satin TOP LAYER onto the medial axis and left the underlay
+    on `_center_walk`, which walks the bounding-rect midline: on a ring or an
+    arc that line leaves the column entirely and the underlay is sewn on bare
+    fabric. digitize never had this problem — `_satin_width_underlay` takes
+    `axis_pts` for exactly this reason. With an axis we use the same
+    generators it does; without one the column really is a rect, and the rect
+    midline is right.
     """
     if not ut or ut == "NONE":
         return []
     if st == "SATIN":
+        # The spine's own centre line when we have it, the rect midline when we
+        # do not — see the note above.
+        def _axis():
+            if axis_pts is not None:
+                run = _axis_underlay(axis_pts, float(under_step_px), connect_px,
+                                     floor_px, max_px)
+                if run:
+                    return run
+            return _center_walk(mask, rect, under_step_px, connect_px)
+
         if ut == "DOUBLE_ZIGZAG":
-            # Zigzag lattice along the column midline — same generator and
-            # pitch recipe as digitize's wide-satin path.
-            axis = _center_walk(mask, rect, under_step_px, connect_px)
+            # Zigzag lattice along the column's own centre line — same
+            # generator and pitch recipe as digitize's wide-satin path.
+            spine = axis_pts if axis_pts is not None else _center_walk(
+                mask, rect, under_step_px, connect_px)
             return _zigzag_underlay(
-                mask, axis, zigzag_pitch_px, zigzag_inset_px, connect_px,
+                mask, spine, zigzag_pitch_px, zigzag_inset_px, connect_px,
                 floor_px, max_px,
-            ) or _center_walk(mask, rect, under_step_px, connect_px)
+            ) or _axis()
         if ut == "EDGE_WALK":
             return _edge_walk(mask, edge_inset_px, under_step_px, connect_px,
                               floor_px, max_px)
         # CENTER_WALK, plus legacy PARALLEL/CONTOUR saves
-        return _center_walk(mask, rect, under_step_px, connect_px)
+        return _axis()
     if st in ("TATAMI", "CONTOUR_FILL", "SPIRAL_FILL", "RADIAL_FILL"):
         under = _edge_walk(mask, edge_inset_px, under_step_px, connect_px,
                            floor_px, max_px)

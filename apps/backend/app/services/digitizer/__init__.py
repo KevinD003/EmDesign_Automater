@@ -196,6 +196,7 @@ from app.services.digitizer.provenance import (
     rebuild_is_a_noop,
 )
 from app.services.digitizer.rebuild import (
+    _angle_is_digitizes_own,
     rebuild_design,
 )
 from app.services.digitizer.routing import (
@@ -377,6 +378,7 @@ __all__ = [
     "FieldArtifact",
     "RegionPlan",
     "_absorb_specks",
+    "_angle_is_digitizes_own",
     "_applique_phases",
     "_arc_at",
     "_assign_boundary",

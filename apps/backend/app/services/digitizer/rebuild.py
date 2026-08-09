@@ -49,6 +49,7 @@ from app.services.digitizer.geometry import (
     _split_mask_by_line,
 )
 from app.services.digitizer.provenance import (
+    is_unedited,
     object_params_hash,
     rebuild_is_a_noop,
 )
@@ -69,6 +70,46 @@ from app.services.digitizer.underlay import (
     _rebuild_underlay,
     _with_underlay,
 )
+
+# How far a stored satin angle may sit from this contour's recomputed axis and
+# still count as "digitize wrote this, the user did not touch it".
+#
+# This tolerance was 0.15 degrees and that is BELOW THE NOISE FLOOR of the
+# comparison it makes. The stored angle is rounded to 1dp and was measured by
+# digitize on ITS raster (~18px/mm); rebuild recomputes `minAreaRect` on the
+# same contour re-quantized to its own 10px/mm grid with integer truncation.
+# The two disagree by requantization alone. Measured on a fresh digitize with
+# NO edits at all, so every delta below is pure noise:
+#
+#   04_thin_line_outline   6 satins, max delta 0.000 deg -> 6/6 took the spine
+#   05_wordmark_caps       6 satins, max delta 3.700 deg -> 4/6
+#   06_wordmark_script     7 satins, max delta 0.637 deg -> 2/7
+#
+# So on a script wordmark five of seven untouched satin columns were sent to
+# the bounding-rect sweep — the very path B1.5 moved them off — because the
+# gate could not tell requantization from an edit.
+#
+# The numeric comparison is now the FALLBACK. The primary test is provenance:
+# `is_unedited` says whether this object still matches the fingerprint digitize
+# stored on it, and an unedited object's angle IS digitize's own by definition,
+# whatever the raster says. Only an object the user actually changed reaches
+# the numeric test, and there the tolerance is set above the measured noise —
+# a deliberate angle edit is a UI drag, whole degrees, not hundredths.
+SATIN_ANGLE_AUTO_TOL_DEG = 1.0
+
+
+def _angle_is_digitizes_own(obj, want: float, raw_rect) -> bool:
+    """True when this satin's stored angle is provenance rather than an edit.
+
+    Spine satin is only correct when the angle is digitize's own: a medial axis
+    has no single angle, so running it on a user-set angle would silently
+    discard that angle and re-break probe P4. See SATIN_ANGLE_AUTO_TOL_DEG for
+    why the numeric test alone was not good enough.
+    """
+    if is_unedited(obj):
+        return True
+    delta = abs((want % 180.0) - _satin_axis_deg(raw_rect))
+    return min(delta, 180.0 - delta) <= SATIN_ANGLE_AUTO_TOL_DEG
 
 
 def rebuild_design(design: Design) -> Design:
@@ -155,6 +196,9 @@ def rebuild_design(design: Design) -> Design:
             under_step_px = max(1, round(UNDERLAY_STEP_MM / mm_per_px))
             top = _dilate_pull(mask, float(o.pull_compensation or 0.0), mm_per_px)  # honor edited pull comp
             applique_phases = None
+            # Set only when the satin column actually came off the medial axis;
+            # the underlay then walks that same axis instead of the rect midline.
+            satin_axis_pts = None
             if st == "APPLIQUE":
                 # placement → STOP → tackdown → STOP → satin cover; the STOP
                 # rationale and phase recipe live on _applique_phases (A4).
@@ -218,19 +262,31 @@ def rebuild_design(design: Design) -> Design:
                 # makes the same distinction — the DT median is only its cheap
                 # pre-gate; the real decision is median_w plus the uncovered
                 # share, and those are reused verbatim here.
-                _dt = cv2.distanceTransform((top > 0).astype(np.uint8), cv2.DIST_L2, 5)
+                # MEASURE THE TRUE REGION, exactly as digitize does. `top` is
+                # already `_dilate_pull`-ed, so measuring it and ALSO passing
+                # pull/2 as the extra column half-width applies pull
+                # compensation TWICE — precisely what pipeline.py warns about
+                # at its own call site ("measuring the pre-dilated mask would
+                # fold pull comp into the width test and push a 3.66mm stem
+                # over the cap"). digitize passes the undilated `region`; this
+                # passed `top`. Both the DT pre-measure and the skeleton call
+                # now take `mask`.
+                _dt = cv2.distanceTransform((mask > 0).astype(np.uint8), cv2.DIST_L2, 5)
                 stroke_mm = (float(np.median(_dt[_dt > 0])) * 2.0 * mm_per_px
                              if (_dt > 0).any() else 0.0)
-                if abs((want % 180.0) - _satin_axis_deg(raw_rect)) <= 0.15:
+                if _angle_is_digitizes_own(o, want, raw_rect):
                     cand, median_w, wide_mask, axis_pts = _skeleton_satin_hires(
-                        top, mm_per_px, spacing_px, max_step_px,
+                        mask, mm_per_px, spacing_px, max_step_px,
                         (float(o.pull_compensation or 0.0) / 2.0) / mm_per_px,
                         stroke_mm / mm_per_px,
                     )
-                    top_px = max(cv2.countNonZero(top), 1)
+                    top_px = max(cv2.countNonZero(mask), 1)
                     uncovered = cv2.countNonZero(wide_mask) / top_px
                     if cand and median_w <= SATIN_MAX_W_MM and uncovered <= SATIN_MAX_UNCOVERED:
                         pts = cand
+                        # The underlay must follow the SAME axis the top layer
+                        # does — see `_rebuild_underlay`'s note on `axis_pts`.
+                        satin_axis_pts = axis_pts
                         # Per-segment fallback, exactly as digitize: parts too
                         # wide for a column are tatami'd rather than dropped.
                         if cv2.countNonZero(wide_mask):
@@ -331,6 +387,7 @@ def rebuild_design(design: Design) -> Design:
                 UNDERLAY_STEP_MM * UNDERLAY_ZIGZAG_PITCH_MULT / mm_per_px,
                 UNDERLAY_ZIGZAG_INSET_MM / mm_per_px,
                 FILL_UNDERLAY_PITCH_MULT, FILL_UNDERLAY_ANGLE_OFFSET_DEG,
+                axis_pts=satin_axis_pts,
             )
             if under:
                 pts = _with_underlay(under, pts, connect_px)
