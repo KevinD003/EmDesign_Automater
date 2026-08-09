@@ -1,0 +1,361 @@
+"""Every §8 acceptance probe, run on all THREE paths a design can reach.
+
+CTO verdict 2026-08-09, STEP 1. The probes in `test_cto_probes.py` only ever
+exercised `digitize_image`. That was already a gap, and B1.5's provenance
+pass-through turned it into a blind spot:
+
+    if rebuild_is_a_noop(design, objs):
+        return design
+
+An unedited design rebuilds to *the very same object*, so P6 — "does rebuilding
+an unedited design reproduce its stream?" — compared a design to itself and
+passed by identity, no matter how far the two code paths had drifted. Five more
+probes were hollowed out the same way. Measured while restoring the signal: with
+the short-circuit disabled, the regenerated stream differs from digitize's by
+up to 8% overall and up to 36% on a single object. None of that was visible.
+
+THE THREE PATHS
+    digitize          `digitize_image` — the reference
+    rebuild-unedited  `rebuild_design(..., force=True)` — the same objects
+                      regenerated. force= is what makes this a measurement
+                      rather than a tautology; `test_the_passthrough_is_real`
+                      below separately pins that the UN-forced call really does
+                      short-circuit, because that is a correctness property in
+                      its own right.
+    rebuild-edited    a real 1% density edit, which is what a user actually
+                      does and the only path that runs the generators in anger.
+
+Bands here are BANDS, per the verdict — set from measured values with headroom,
+not exact hashes. A hash moves with the regression; that is how a 2-pixel travel
+floor manufactured 70.8% of a fixture's stitches with every gate green.
+"""
+
+from __future__ import annotations
+
+import math
+
+import cv2
+import numpy as np
+import pytest
+
+from app.models.design import Design
+from app.services.digitizer import digitize_image, rebuild_design
+from app.services.embroidery_io import read_embroidery, write_embroidery
+
+PATHS = ("digitize", "rebuild-unedited", "rebuild-edited")
+
+
+def _real_edit(design: Design) -> Design:
+    """The smallest edit a user can make that is genuinely an edit: 1% density
+    on the first object. Anything less and the fingerprint still matches."""
+    d = design.model_copy(deep=True)
+    d.objects[0].density = round(float(d.objects[0].density or 4.0) * 1.01, 6)
+    return d
+
+
+def _three_paths(dig: Design) -> dict[str, Design]:
+    return {
+        "digitize": dig,
+        "rebuild-unedited": rebuild_design(dig.model_copy(deep=True), force=True),
+        "rebuild-edited": rebuild_design(_real_edit(dig)),
+    }
+
+
+# ── the fixtures the §8 probes use, each carried down all three paths ────────
+
+
+def _ring_image() -> bytes:
+    img = np.full((600, 600, 3), 255, np.uint8)
+    cv2.circle(img, (300, 300), 200, (40, 60, 160), -1, cv2.LINE_AA)
+    cv2.circle(img, (300, 300), 110, (255, 255, 255), -1, cv2.LINE_AA)
+    ok, buf = cv2.imencode(".png", img)
+    assert ok
+    return buf.tobytes()
+
+
+def _two_color_image() -> bytes:
+    """Two separated SAME-colour blobs plus a third colour — same-colour
+    separation is what forces explicit TRIMs, which is what P2 needs."""
+    img = np.full((500, 900, 3), 255, np.uint8)
+    cv2.circle(img, (180, 250), 120, (40, 60, 160), -1, cv2.LINE_AA)
+    cv2.circle(img, (720, 250), 120, (40, 60, 160), -1, cv2.LINE_AA)
+    cv2.circle(img, (450, 250), 90, (150, 60, 40), -1, cv2.LINE_AA)
+    ok, buf = cv2.imencode(".png", img)
+    assert ok
+    return buf.tobytes()
+
+
+@pytest.fixture(scope="module")
+def ring_paths() -> dict[str, Design]:
+    cv2.setRNGSeed(1234)
+    return _three_paths(digitize_image(_ring_image(), "cotton", "100x100", 2))
+
+
+@pytest.fixture(scope="module")
+def two_color_paths() -> dict[str, Design]:
+    cv2.setRNGSeed(1234)
+    return _three_paths(digitize_image(_two_color_image(), "cotton", "100x100", 3))
+
+
+# ── the pass-through itself, pinned as the correctness property it is ────────
+
+
+def test_the_passthrough_is_real_and_force_defeats_it():
+    """Both halves matter. The un-forced call MUST short-circuit — re-stitching
+    an object the user did not touch is the defect B1.5 fixed. And force= must
+    actually regenerate, or every probe below is measuring the short-circuit
+    again."""
+    cv2.setRNGSeed(1234)
+    dig = digitize_image(_ring_image(), "cotton", "100x100", 2)
+
+    assert rebuild_design(dig) is dig, (
+        "an unedited design no longer passes through — untouched objects are "
+        "being re-stitched"
+    )
+    forced = rebuild_design(dig.model_copy(deep=True), force=True)
+    assert forced is not dig, "force=True still returned the input object"
+    assert forced.stitches is not dig.stitches
+    assert len(forced.stitches) > 0
+
+
+def test_a_real_edit_is_not_swallowed():
+    cv2.setRNGSeed(1234)
+    dig = digitize_image(_ring_image(), "cotton", "100x100", 2)
+    edited = rebuild_design(_real_edit(dig))
+    assert edited is not dig, "a 1% density edit read as 'unedited'"
+
+
+# ── P1 on all three paths ────────────────────────────────────────────────────
+
+
+def _counter_crossings(design: Design) -> int:
+    """P1's metric verbatim: needle paths through the counter's open area, with
+    the hole shrunk 7% so segments that merely kiss the rim do not count."""
+    hole = next((o.holes[0] for o in design.objects if o.holes), None)
+    assert hole is not None, "ring digitized without its counter"
+    poly = np.array([[p.x, p.y] for p in hole], np.float32)
+    cx, cy = poly[:, 0].mean(), poly[:, 1].mean()
+    shrunk = ((poly - [cx, cy]) * 0.93 + [cx, cy]).astype(np.float32)
+    crossings, prev = 0, None
+    for s in design.stitches:
+        if str(s.command) in ("STITCH", "JUMP") and prev is not None:
+            n = max(2, int(math.dist(prev, (s.x, s.y)) / 0.3))
+            for i in range(1, n):
+                t = i / n
+                x, y = prev[0] + (s.x - prev[0]) * t, prev[1] + (s.y - prev[1]) * t
+                if cv2.pointPolygonTest(shrunk, (float(x), float(y)), False) >= 0:
+                    crossings += 1
+                    break
+        prev = (s.x, s.y)
+    return crossings
+
+
+# digitize is held at zero; the two rebuild paths carry the measured residual.
+P1_BANDS = {"digitize": 0, "rebuild-unedited": 2, "rebuild-edited": 2}
+
+
+@pytest.mark.parametrize("path", PATHS)
+def test_probe1_ring_counter_stays_open_on_every_path(ring_paths, path):
+    """C2 was closed on digitize and open on every edit: before STEP 0 the
+    edited path put 98 needle paths straight across the counter while the probe
+    reported 0, because the probe only ever looked at digitize."""
+    got = _counter_crossings(ring_paths[path])
+    assert got <= P1_BANDS[path], (
+        f"P1 on {path}: {got} needle paths cross the ring's open counter "
+        f"(band {P1_BANDS[path]}). Was 98 on the edited path before STEP 0."
+    )
+
+
+# ── P2 on all three paths ────────────────────────────────────────────────────
+
+
+# P2's lock criterion is IMPORTED, not re-stated. Re-stating it is how the two
+# paths' finishing constants drifted apart in the first place (STEP 0), and
+# writing it out here immediately produced a stricter rule than P2's own — one
+# that failed all three paths including digitize, which P2 passes.
+from test_cto_probes import _lockish
+
+
+@pytest.mark.parametrize("path", PATHS)
+def test_probe2_every_thread_end_is_locked_on_every_path(two_color_paths, path):
+    """A tie-off missing on the edit path is exactly as bad as one missing on
+    digitize — the thread pulls out of the garment either way."""
+    design = two_color_paths[path]
+    sts = read_embroidery(write_embroidery(design, "dst"), "dst").stitches
+
+    trim_idx = [i for i, s in enumerate(sts) if str(s.command) == "TRIM"]
+    assert trim_idx, f"P2 on {path}: probe needs at least one trim to be meaningful"
+    for i in trim_idx:
+        pts = [(s.x, s.y) for s in sts[max(0, i - 5):i] if str(s.command) == "STITCH"]
+        assert len(pts) >= 3 and _lockish(pts), f"P2 on {path}: trim at {i} has no tie-off"
+
+    starts, in_block = [], False
+    for i, s in enumerate(sts):
+        c = str(s.command)
+        if c in ("TRIM", "COLOR_CHANGE"):
+            in_block = False
+        elif c == "STITCH" and not in_block:
+            starts.append(i)
+            in_block = True
+    assert starts
+    for i in starts:
+        pts = [(s.x, s.y) for s in sts[i:i + 6] if str(s.command) == "STITCH"]
+        assert len(pts) >= 3 and _lockish(pts), (
+            f"P2 on {path}: block start at {i} has no tie-in "
+            f"({'stream start' if i == starts[0] else 'post-cut'})"
+        )
+
+
+# ── P6, restored: the fidelity signal the pass-through was answering for ─────
+#
+# Measured 2026-08-09 with the short-circuit disabled, digitize vs the
+# regenerated stream:
+#
+#   fixture                   digitize   forced   ratio   worst object
+#   01_flat_2color_logo          8,374    9,084    1.08         -4.9%
+#   04_thin_line_outline         1,560    1,470    0.94        -10.1%
+#   05_wordmark_caps             1,345    1,343    1.00         -6.8%
+#   06_wordmark_script           1,284    1,256    0.98        -18.9%
+#   07_circular_badge           10,759   10,322    0.96        -36.2%
+#   02_logo_fine_text_3color     7,296    6,821    0.93        -23.1%
+#
+# The badge's -36.2% and fine-text's -23.1% are the remaining real gap and are
+# recorded as outstanding work, not certified. The bands below are set to hold
+# the line where it now is; they are deliberately not loose enough to absorb
+# another regression of the size STEP -1 fixed.
+
+from pathlib import Path
+
+FIXTURES = Path(__file__).resolve().parent / "fixtures" / "quality_bench"
+
+# (stem, colours, min total ratio, max total ratio, max single-object loss)
+FIDELITY_BANDS = [
+    ("01_flat_2color_logo", 6, 0.90, 1.15, 0.15),
+    ("04_thin_line_outline", 4, 0.88, 1.10, 0.20),
+    ("05_wordmark_caps", 4, 0.90, 1.10, 0.15),
+    ("06_wordmark_script", 4, 0.90, 1.10, 0.30),
+    ("07_circular_badge", 6, 0.88, 1.10, 0.45),
+    ("02_logo_fine_text_3color", 4, 0.85, 1.10, 0.35),
+]
+
+
+@pytest.mark.parametrize(("stem", "colors", "lo", "hi", "max_loss"), FIDELITY_BANDS)
+def test_probe6_regenerating_reproduces_the_design(stem, colors, lo, hi, max_loss):
+    """P6 with the pass-through OFF. This is the parity number; the identity
+    assertion it replaced could not fail."""
+    cv2.setRNGSeed(1234)
+    dig = digitize_image((FIXTURES / f"{stem}.png").read_bytes(), "cotton", "100x100", colors)
+    reb = rebuild_design(dig.model_copy(deep=True), force=True)
+
+    ratio = len(reb.stitches) / max(len(dig.stitches), 1)
+    assert lo <= ratio <= hi, (
+        f"P6 on {stem}: regenerated stream is {ratio:.2f}x digitize's "
+        f"({len(reb.stitches):,} vs {len(dig.stitches):,}), band [{lo}, {hi}]"
+    )
+
+    a = {o.sequence_order: int(o.stitch_count or 0) for o in dig.objects}
+    b = {o.sequence_order: int(o.stitch_count or 0) for o in reb.objects}
+    assert set(a) == set(b), (
+        f"P6 on {stem}: regenerating changed the object set — "
+        f"missing {sorted(set(a) - set(b))}, extra {sorted(set(b) - set(a))}"
+    )
+    losses = {k: b[k] / a[k] - 1.0 for k in a if a[k]}
+    worst_k = min(losses, key=losses.get)
+    assert losses[worst_k] >= -max_loss, (
+        f"P6 on {stem}: object {worst_k} lost {losses[worst_k]:.1%} of its "
+        f"stitches on regeneration (band {max_loss:.0%})"
+    )
+
+
+def test_probe6_bands_are_not_vacuous():
+    """A band wide enough to admit anything is not a probe. Pin that each one
+    would reject a design half or double the reference size."""
+    for stem, _c, lo, hi, max_loss in FIDELITY_BANDS:
+        assert lo > 0.5 and hi < 2.0, f"{stem}: total-ratio band is too wide to mean anything"
+        assert max_loss < 0.5, f"{stem}: per-object band admits losing half the object"
+
+
+# ── P4 and P5: the paths that exist, and the one that does not ──────────────
+#
+# P4 (an edited angle changes the stream) and P5 (appliqué emits STOPs) already
+# live on the rebuild path — they build synthetic objects and rebuild them. Two
+# things were missing.
+#
+# P5 has NO digitize path and that is by design: `digitize_image` never
+# classifies a region as APPLIQUE, because appliqué is a fabric-layering
+# decision a user makes, not something inferable from pixels. Saying so here is
+# better than inventing a third case to make a table symmetrical.
+
+
+def _satin_bar_design(angle: float):
+    from test_cto_probes import _satin_bar
+
+    from app.models.design import StitchType
+
+    return _satin_bar(StitchType.SATIN, angle)
+
+
+def test_probe4_an_unedited_satin_keeps_its_direction_through_a_forced_rebuild():
+    """The counterpart P4 never had. P4 pins that an EDITED angle changes the
+    stream; this pins that an UNEDITED one does not drift — the failure mode the
+    v131 provenance short-circuit introduced a risk of, since it lets an
+    untouched satin take the medial-axis path instead of the stored frame."""
+    from test_cto_probes import _dominant_seg_angle
+
+    from app.services.digitizer.provenance import object_params_hash
+
+    d = _satin_bar_design(0.0)
+    d.objects[0].params_hash = object_params_hash(d.objects[0])
+
+    before = _dominant_seg_angle(rebuild_design(d.model_copy(deep=True), force=True))
+    after = _dominant_seg_angle(rebuild_design(d.model_copy(deep=True), force=True))
+    assert before == pytest.approx(after), "a forced rebuild is not deterministic"
+
+    edited = d.model_copy(deep=True)
+    edited.objects[0].stitch_angle = 77.0
+    moved = _dominant_seg_angle(rebuild_design(edited))
+    delta = abs(moved - before) % 180.0
+    assert min(delta, 180.0 - delta) > 5.0, (
+        f"a 77 degree angle edit moved the sewn direction by only "
+        f"{min(delta, 180.0 - delta):.1f} degrees — P4's contract, on the "
+        f"provenance path"
+    )
+
+
+@pytest.mark.parametrize("forced", [False, True])
+def test_probe5_applique_emits_its_stops_on_both_rebuild_paths(forced):
+    """Appliqué has no digitize path (see the note above), so 'all three paths'
+    is two here. Both must pause the machine for the operator."""
+    from test_cto_probes import _satin_bar
+
+    from app.models.design import StitchType
+
+    built = rebuild_design(_satin_bar(StitchType.APPLIQUE, 0.0), force=forced)
+    stops = sum(1 for s in built.stitches if str(s.command) == "STOP")
+    assert stops >= 2, (
+        f"appliqué (force={forced}) emitted {stops} STOPs; the operator needs "
+        f"one after placement and one after tackdown"
+    )
+
+
+def test_digitize_really_never_emits_applique():
+    """Pin the claim above rather than asserting it in a comment. If digitize
+    ever learns to classify appliqué, P5 gains a third path and this fails to
+    say so."""
+    import inspect
+
+    from app.services.digitizer import pipeline
+
+    src = inspect.getsource(pipeline)
+    assert "APPLIQUE" not in src, (
+        "pipeline.py now mentions APPLIQUE — if digitize can classify it, P5 "
+        "needs a digitize path too"
+    )
+
+
+def test_probe6_would_catch_the_step_minus_one_regression():
+    """The regression that started all this — a travel resampler manufacturing
+    70.8% of a fixture's stitches — must be outside every band. It was a 1.95x
+    inflation on fixture 01 (17,078 against 8,749)."""
+    band_hi = {s: hi for s, _c, _lo, hi, _m in FIDELITY_BANDS}
+    assert 17078 / 8749 > band_hi["01_flat_2color_logo"]

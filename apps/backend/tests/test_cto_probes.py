@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import itertools
 import math
+import pathlib
 
 import cv2
 import numpy as np
@@ -470,20 +471,33 @@ def test_transparent_png_keeps_black_artwork():
 # ── P6: fidelity test — rebuild of an unedited design ────────────────────────
 
 
-def test_probe6_rebuild_of_unedited_design_is_faithful():
-    # B1.5: an unedited design rebuilds to ITSELF — not "within 0.1mm" but
-    # identical, because rebuild now recognises that nothing it could change
-    # has changed and returns the design untouched. Full contract and the
-    # edited-design counterpart live in test_rebuild_parity.py.
+def test_probe6_an_unedited_design_passes_through_untouched():
+    """THIS TEST NO LONGER CLAIMS TO MEASURE FIDELITY — it measures the
+    pass-through, which is a different (and also real) property.
+
+    As written for B1.5 it asserted stitch counts within 1%, coordinates within
+    0.1mm and matching commands, against `rebuild_design(d)`. But an unedited
+    design short-circuits and `rebuild_design` returns *the very same object*,
+    so all three assertions compared `d` to `d`. They could not fail, whatever
+    the generators did — and while they sat green the regenerated stream drifted
+    up to 36% on a single object (CTO verdict V2, "probe-gaming").
+
+    The fidelity question is now asked where it can get a real answer, with the
+    short-circuit disabled: `test_probes_three_paths.py::test_probe6_*`.
+    """
     from helpers import digitized_fixture
 
     d = digitized_fixture()
     r = rebuild_design(d)
-    assert abs(r.stitch_count - d.stitch_count) <= 0.01 * d.stitch_count
-    # The review's verbatim criterion: no coordinate moves by more than 0.1mm.
-    assert len(r.stitches) == len(d.stitches)
-    worst = max(math.hypot(a.x - b.x, a.y - b.y)
-                for a, b in zip(d.stitches, r.stitches))
-    assert worst <= 0.1, f"worst coordinate move {worst:.3f}mm"
-    assert all(str(a.command) == str(b.command)
-               for a, b in zip(d.stitches, r.stitches))
+    # State the identity plainly instead of dressing it as a measurement.
+    assert r is d, "an unedited design must not be re-stitched at all"
+
+
+def test_probe6_fidelity_is_measured_somewhere_that_can_fail():
+    """Guard against this file quietly becoming the whole story again: the real
+    P6 must exist, run with the pass-through off, and carry bands."""
+    import test_probes_three_paths as three
+
+    assert three.FIDELITY_BANDS, "the real P6 has no bands"
+    src = (pathlib.Path(three.__file__)).read_text()
+    assert "force=True" in src, "the fidelity probe is not disabling the pass-through"

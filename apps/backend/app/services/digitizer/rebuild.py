@@ -115,12 +115,23 @@ def _angle_is_digitizes_own(obj, want: float, raw_rect) -> bool:
     return min(delta, 180.0 - delta) <= SATIN_ANGLE_AUTO_TOL_DEG
 
 
-def rebuild_design(design: Design) -> Design:
+def rebuild_design(design: Design, *, force: bool = False) -> Design:
     """Regenerate the whole stitch stream from object contours + parameters.
 
     Every object must carry a ``contour`` (only digitized designs do). Objects are
     re-filled with their CURRENT stitch_type / density / stitch_angle, so editing a
     parameter and rebuilding applies the edit. Raises ValueError if not regenerable.
+
+    ``force`` skips the unedited-design pass-through and REGENERATES regardless.
+
+    That pass-through is a correctness feature — an untouched object must not be
+    re-stitched — but it also made the fidelity probe self-fulfilling: P6 asked
+    whether rebuilding an unedited design reproduced its stream, and the
+    pass-through returned the very same object, so every assertion compared the
+    design to itself and passed no matter how far the two paths had drifted
+    (CTO verdict V2). Five more probes were hollowed out the same way. `force`
+    exists so the test suite can measure the generators rather than the
+    short-circuit; production never sets it.
     """
     import cv2
     import numpy as np
@@ -144,7 +155,7 @@ def rebuild_design(design: Design) -> Design:
         )
 
     # Nothing to rebuild? Return the design untouched — see `rebuild_is_a_noop`.
-    if rebuild_is_a_noop(design, objs):
+    if not force and rebuild_is_a_noop(design, objs):
         return design
 
     xs = [p.x for o in objs for p in o.contour]
