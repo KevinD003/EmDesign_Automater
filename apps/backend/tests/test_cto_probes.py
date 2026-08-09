@@ -471,6 +471,7 @@ def test_transparent_png_keeps_black_artwork():
 # ── P6: fidelity test — rebuild of an unedited design ────────────────────────
 
 
+@pytest.mark.needs_rebuild_passthrough
 def test_probe6_an_unedited_design_passes_through_untouched():
     """THIS TEST NO LONGER CLAIMS TO MEASURE FIDELITY — it measures the
     pass-through, which is a different (and also real) property.

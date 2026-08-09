@@ -39,20 +39,40 @@ def _stream(design):
 # ── the pass-through fires ───────────────────────────────────────────────────
 
 
+@pytest.mark.needs_rebuild_passthrough
 def test_unedited_rebuild_is_byte_identical(digitized):
     r = rebuild_design(digitized)
     assert _stream(r) == _stream(digitized)
 
 
 def test_repeated_rebuilds_never_accumulate_damage(digitized):
-    # The C6 failure mode is cumulative: each rebuild roughens what the last
-    # one produced. Five in a row must move nothing at all.
-    d = digitized
-    for _ in range(5):
-        d = rebuild_design(d)
-    assert _stream(d) == _stream(digitized)
+    """C6: each rebuild must not roughen what the last one produced.
+
+    This test used to run five UN-forced rebuilds, every one of which
+    short-circuited and returned the input object, so it compared `d` to `d`
+    five times over and proved nothing about the generators (CTO verdict V2).
+    The property it was named for is real and worth having, so it is now asked
+    where it can fail: with the pass-through OFF, `force=True` every time.
+
+    Measured on the fixture: digitize 8,903 -> first regeneration 9,664, and
+    then BIT-IDENTICAL for every pass after that. Rebuild reaches a fixed point
+    in one step, which is the actual C6 guarantee — the raster is driven by the
+    stored contours, and rebuild never rewrites those. The 8,903 -> 9,664 step
+    is the digitize/rebuild gap, banded separately by P6.
+    """
+    first = rebuild_design(digitized.model_copy(deep=True), force=True)
+    prev = first
+    for i in range(2, 6):
+        cur = rebuild_design(prev.model_copy(deep=True), force=True)
+        assert _stream(cur) == _stream(prev), (
+            f"regeneration {i} differs from {i - 1}: rebuild has no fixed "
+            f"point, so every edit a user makes degrades the design further"
+        )
+        prev = cur
+    assert _stream(prev) == _stream(first)
 
 
+@pytest.mark.needs_rebuild_passthrough
 def test_recolour_and_rename_still_pass_through(digitized):
     # Neither changes a single stitch, so neither may trigger a re-raster.
     edited = digitized.model_copy(update={
@@ -162,6 +182,7 @@ def test_fingerprint_tracks_geometry(digitized):
     assert object_params_hash(moved) != object_params_hash(o)
 
 
+@pytest.mark.needs_rebuild_passthrough
 def test_fingerprint_survives_a_json_round_trip(digitized):
     # A design that goes to the cloud and comes back must still pass through;
     # float repr through JSON must not read as an edit.
@@ -191,9 +212,20 @@ def test_a_real_but_tiny_move_is_an_edit(digitized):
     assert object_params_hash(moved) != object_params_hash(o)
 
 
+@pytest.mark.needs_rebuild_passthrough
 def test_fidelity_criterion_holds_verbatim(digitized):
-    # The review's own wording, measured: "rebuild of an unedited design
-    # changes no coordinate by >0.1mm".
+    """The review's own wording: "rebuild of an unedited design changes no
+    coordinate by >0.1mm".
+
+    THIS HOLDS FOR THE SHIPPED PATH AND ONLY THAT PATH, and it is honest to say
+    so rather than quietly reinterpret the criterion. An unedited design passes
+    through untouched, so the worst move is exactly 0.0mm — the criterion is met
+    because nothing is regenerated, not because regeneration is faithful.
+    REGENERATION DOES NOT MEET IT: forcing a rebuild of the same fixture moves
+    the stitch count 8,903 -> 9,664, so "no coordinate moves by >0.1mm" is not
+    even well-defined there. That gap is real, measured, and banded as P6 in
+    test_probes_three_paths.py rather than hidden behind this assertion.
+    """
     r = rebuild_design(digitized)
     assert len(r.stitches) == len(digitized.stitches)
     worst = max(math.hypot(a.x - b.x, a.y - b.y)

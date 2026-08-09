@@ -42,6 +42,19 @@ jobs:
           path: ~/.u2net
           key: u2net-weights-v1
       - run: python -m pytest tests -q
+      # SECOND LANE: the same suite with rebuild's provenance pass-through
+      # disabled (CTO verdict STEP 2). `rebuild_design` short-circuits when a
+      # design is unedited and returns THE VERY SAME OBJECT — correct
+      # behaviour, but it also let tests "exercise" the rebuild path without
+      # running a generator. P6 asserted stitch counts, coordinates AND
+      # commands against `d` and `d`, and stayed green while the regenerated
+      # stream drifted 36% on a single object. Seven tests were only passing
+      # because of the short-circuit.
+      #
+      # This lane forces every rebuild to regenerate, so that class of test
+      # cannot come back. The handful whose SUBJECT is the pass-through carry
+      # `@pytest.mark.needs_rebuild_passthrough` and skip here.
+      - run: STITCHIQ_NO_REBUILD_PASSTHROUGH=1 python -m pytest tests -q
       # Audit lint claims are machine-checked (v2 Part 12): any audit carrying a
       # LINT-VERIFY marker has its claimed ruff count re-run and compared, so a
       # miscounted "N findings over every touched file" fails CI instead of

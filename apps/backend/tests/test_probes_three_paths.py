@@ -100,6 +100,7 @@ def two_color_paths() -> dict[str, Design]:
 # ── the pass-through itself, pinned as the correctness property it is ────────
 
 
+@pytest.mark.needs_rebuild_passthrough
 def test_the_passthrough_is_real_and_force_defeats_it():
     """Both halves matter. The un-forced call MUST short-circuit — re-stitching
     an object the user did not touch is the defect B1.5 fixed. And force= must
@@ -351,6 +352,87 @@ def test_digitize_really_never_emits_applique():
         "pipeline.py now mentions APPLIQUE — if digitize can classify it, P5 "
         "needs a digitize path too"
     )
+
+
+# ── the second CI lane, and the escape hatch it needs ────────────────────────
+#
+# `STITCHIQ_NO_REBUILD_PASSTHROUGH=1` runs the whole suite with the
+# short-circuit off. Seven tests failed the first time it was switched on; five
+# of them legitimately have the pass-through as their SUBJECT and now carry
+# `@pytest.mark.needs_rebuild_passthrough`, and two were hiding real properties
+# and were rewritten to ask them where they can fail.
+#
+# The marker is an escape hatch, and an escape hatch that nobody watches becomes
+# the way every awkward test gets silenced. These two tests watch it.
+
+ALLOWED_PASSTHROUGH_TESTS = {
+    # the pass-through IS the assertion in each of these
+    "test_probe6_an_unedited_design_passes_through_untouched",
+    "test_the_passthrough_is_real_and_force_defeats_it",
+    "test_unedited_rebuild_is_byte_identical",
+    "test_recolour_and_rename_still_pass_through",
+    "test_fingerprint_survives_a_json_round_trip",
+    "test_fidelity_criterion_holds_verbatim",
+}
+
+
+def test_the_passthrough_marker_is_not_a_dumping_ground():
+    """Every test carrying the skip marker must be on the list above, with a
+    reason recorded in this file. Adding a marker to silence an inconvenient
+    failure means editing this set, which is a visible act in review."""
+    import ast
+
+    here = Path(__file__).resolve().parent
+    marked = set()
+    for path in sorted(here.glob("test_*.py")):
+        tree = ast.parse(path.read_text())
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.FunctionDef):
+                continue
+            for dec in node.decorator_list:
+                if "needs_rebuild_passthrough" in ast.unparse(dec):
+                    marked.add(node.name)
+    unexpected = marked - ALLOWED_PASSTHROUGH_TESTS
+    assert not unexpected, (
+        "these tests were excused from the no-pass-through lane without being "
+        f"recorded: {sorted(unexpected)}. If the pass-through really is the "
+        f"subject, add them to ALLOWED_PASSTHROUGH_TESTS with a reason; if not, "
+        f"they are hiding a real failure."
+    )
+    stale = ALLOWED_PASSTHROUGH_TESTS - marked
+    assert not stale, f"listed but no longer marked: {sorted(stale)}"
+
+
+def test_ci_runs_the_no_passthrough_lane():
+    """The lane only protects anything if CI actually runs it."""
+    ci = Path(__file__).resolve().parents[3] / ".github" / "workflows" / "ci.yml"
+    assert ci.is_file(), ci
+    text = ci.read_text()
+    assert "STITCHIQ_NO_REBUILD_PASSTHROUGH=1" in text, (
+        "CI no longer runs the suite with the pass-through disabled — the "
+        "probe-gaming class of defect can return unnoticed"
+    )
+
+
+def test_the_switch_actually_switches():
+    """Guard the mechanism itself: with the variable set, an unedited rebuild
+    must regenerate rather than pass through. Read straight from conftest so a
+    renamed variable cannot leave the lane silently inert."""
+    import conftest
+
+    from app.services.digitizer import rebuild as rebuild_mod
+
+    if conftest.NO_PASSTHROUGH:
+        cv2.setRNGSeed(1234)
+        dig = digitize_image(_ring_image(), "cotton", "100x100", 2)
+        assert rebuild_design(dig) is not dig, (
+            "the lane is set but rebuild still short-circuits"
+        )
+    else:
+        assert rebuild_mod.rebuild_is_a_noop.__module__.endswith("provenance"), (
+            "the pass-through is patched out in the DEFAULT lane — the normal "
+            "suite is no longer testing shipped behaviour"
+        )
 
 
 def test_probe6_would_catch_the_step_minus_one_regression():
