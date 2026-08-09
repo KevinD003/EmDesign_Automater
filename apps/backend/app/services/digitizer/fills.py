@@ -11,6 +11,7 @@ from app.services.digitizer.constants import (
 )
 from app.services.digitizer.geometry import (
     _dist,
+    _fg_window,
     _resample_closed,
     _subdivide_long,
     _warp_fit,
@@ -464,15 +465,42 @@ def _scanline_fill(region, row_px: int, max_step_px: int, connect_px: float):
 
 def _scanline_angled(region, angle_deg: float, row_px: int, max_step_px: int, connect_px: float):
     """Scanline fill at an arbitrary angle: rotate the mask so rows are horizontal,
-    fill, then map points back through the inverse rotation."""
+    fill, then map points back through the inverse rotation.
 
+    THE ROTATION IS ABOUT THE REGION'S OWN CROP, NOT THE CANVAS (CTO verdict
+    STEP 3). It used to be `_warp_fit(region, (w/2, h/2), ...)` — the centre of
+    whatever canvas the region happened to be sitting on — and `_warp_fit` then
+    offsets the fitted output by `(nw - w)/2`, which depends on the canvas
+    dimensions too. Both terms leak the canvas into the row grid, so the SAME
+    shape at the SAME angle got a different fill depending on where else objects
+    sat around it. Measured on a 120x80 rectangle at 30 degrees:
+
+        canvas 300x300 vs 300x420, region unmoved   every stitch up to 0.83px off
+        region translated +100px, canvas unchanged  up to 35.16px off
+
+    35px is a different row phase entirely — the fill was not a property of the
+    object at all. digitize rasters at ~18px/mm on the image and rebuild at
+    10px/mm on the bounding box of every object, so the two paths never agreed
+    on the grid; and moving one object re-phased its neighbours, which would
+    have made B2's move/scale/rotate silently restitch things the user did not
+    touch.
+
+    Cropping to the region's own foreground window makes the fitted size, the
+    rotation centre and hence the row phase depend on nothing but the region's
+    own pixels. `_skeleton_satin_hires` already worked this way.
+    """
     if abs(angle_deg) < 0.5:
         return _scanline_fill(region, row_px, max_step_px, connect_px)
-    h, w = region.shape
-    rot, Minv = _warp_fit(region, (w / 2.0, h / 2.0), angle_deg)
+    win = _fg_window(region, 1)
+    if win is None:
+        return []
+    y0, y1, x0, x1 = win
+    crop = region[y0:y1, x0:x1]
+    ch, cw = crop.shape
+    rot, Minv = _warp_fit(crop, (cw / 2.0, ch / 2.0), angle_deg)
     out = []
     for x, y, jump in _scanline_fill(rot, row_px, max_step_px, connect_px):
-        X = Minv[0, 0] * x + Minv[0, 1] * y + Minv[0, 2]
-        Y = Minv[1, 0] * x + Minv[1, 1] * y + Minv[1, 2]
+        X = Minv[0, 0] * x + Minv[0, 1] * y + Minv[0, 2] + x0
+        Y = Minv[1, 0] * x + Minv[1, 1] * y + Minv[1, 2] + y0
         out.append((float(X), float(Y), jump))
     return out
