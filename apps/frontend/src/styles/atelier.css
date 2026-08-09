@@ -264,21 +264,14 @@
   color: var(--sq-faint);
 }
 
-/* ── responsive: the studio collapses to one column ─────────────────── */
-
-@media (max-width: 64rem) {
-  .app-body {
-    grid-template-columns: minmax(0, 1fr) !important;
-  }
-  .app-body > .panel-left,
-  .app-body > .panel-right {
-    display: none;
-  }
-  .sq-tabbar {
-    display: flex;
-  }
-}
-
+/* ── mobile tab bar ─────────────────────────────────────────────────── */
+/*
+ * These base rules MUST stay above the max-width media query below.
+ * As shipped they sat after it, and `.sq-tabbar { display: none }` has the
+ * same specificity as the `display: flex` inside the query — so the later
+ * rule won unconditionally and the bar never appeared at any width.
+ * Confirmed in a browser at 390px: four buttons in the DOM, nothing on screen.
+ */
 .sq-tabbar {
   display: none;
   gap: 0.2rem;
@@ -306,6 +299,21 @@
   color: var(--sq-accent-text);
 }
 
+
+/* ── responsive: the studio collapses to one column ─────────────────── */
+
+@media (max-width: 64rem) {
+  .app-body {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+  .app-body > .panel-left,
+  .app-body > .panel-right {
+    display: none;
+  }
+  .sq-tabbar {
+    display: flex;
+  }
+}
 @keyframes sq-rise {
   from {
     opacity: 0;

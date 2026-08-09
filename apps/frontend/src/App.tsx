@@ -11,6 +11,8 @@ import { StitchPlayer } from './components/player/StitchPlayer';
 import { StitchCanvas } from './components/canvas/StitchCanvas';
 import { TrueView3D } from './components/trueview/TrueView3D';
 import { Toasts } from './components/feedback/Toasts';
+import { CommandPalette } from './components/command/CommandPalette';
+import { MobileTabBar } from './components/nav/MobileTabBar';
 import { AuthBar } from './components/auth/AuthBar';
 import { DashShell } from './components/dash/DashShell';
 import { OverviewPage } from './components/dash/OverviewPage';
@@ -84,6 +86,8 @@ export default function App() {
           {route.section === 'admin' && <AdminPage />}
         </DashShell>
         <Toasts />
+        <CommandPalette />
+        <MobileTabBar route={route} />
       </>
     );
   }
@@ -141,6 +145,8 @@ export default function App() {
         </>
       )}
       <Toasts />
+      <CommandPalette />
+      <MobileTabBar route={route} />
     </div>
   );
 }
