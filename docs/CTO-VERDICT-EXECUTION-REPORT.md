@@ -205,7 +205,30 @@ Numbers 7 and 8 were invisible to the corpus by construction: `row_mm` and `sati
   pre-existing (2,573 of 630,436 px changed). Small curved satin text — **B3/B4** territory.
 - **P3** remains the one strict xfail: 102 st/letter against the ≥150 target — **B4**.
 
-## 6. Blocked on the owner
+## 6. Other work shipped in the same window — outside this verdict
+
+**This section was missing from the first version of this report, and its absence was a
+reporting failure.** The rule going forward: every workstream gets a line in every report, whatever
+its scope, and regardless of how low-risk I judge it.
+
+**Atelier frontend redesign — `56f5709` (P1), `ad76331` (P2).** Owner-directed, not part of the CTO
+plan. The owner wrote *"I have also updated the frontend so add that new frontend prepared by Claude
+Design and remove the old one"*, then supplied a design handoff bundle
+(`docs/design/ATELIER-HANDOFF.md` with its reference comp), then confirmed continuing.
+
+- **P1** — token layer, fonts, and `data-theme` moved from `.dz-root` to `<html>`. Colour literals
+  in `index.css` 74 → 8, by repointing token *definitions* rather than editing consumers. The
+  Studio became themable for the first time. Two latent breakages caught by reading: a
+  `.dz-root[data-theme='light']` block that could never match again, and a startup path that would
+  have brought the Studio up light.
+- **P2** — ⌘K command palette and mobile tab bar. Found a cascade bug in the shipped design file:
+  the tab bar could never appear at any width, because its `display: none` sat after the media
+  query setting `display: flex`. Verified with twelve browser checks.
+- Frontend gate on both: tsc clean, vitest 186 passed, build clean. **No backend code touched.**
+
+**P3–P5 are halted** pending the owner's confirmation, per the CTO ruling.
+
+## 7. Blocked on the owner
 
 1. **Live RLS is not applied.** S3 is open in production until an operator runs
    `db/migrations/001_identity_rls.sql` and `apps/backend/scripts/verify_rls.py`.
