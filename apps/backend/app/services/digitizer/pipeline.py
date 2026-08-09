@@ -1199,4 +1199,7 @@ def digitize_image(
         stitches=stitches,
         status="digitized",
         warnings=user_warnings,
+        # The grid every generator above actually ran on, so a later rebuild
+        # can reproduce it instead of guessing (CTO verdict STEP 3).
+        source_mm_per_px=round(float(mm_per_px), 6),
     )

@@ -241,6 +241,18 @@ class Design(CamelModel):
     # measured defect — a 40x40mm hoop took the badge fixture from 21 objects
     # to 4 with nothing said. Empty list == nothing to report.
     warnings: list[str] = Field(default_factory=list)
+    # The raster the digitizer actually worked at, in mm per pixel (CTO verdict
+    # STEP 3). Every generator in the package is a raster operation, so the grid
+    # is part of what produced these stitches — and rebuild had no way to know
+    # it. digitize works at whatever the source image and hoop imply (0.075
+    # mm/px, 13.3 px/mm, on the bench corpus); rebuild picked its own 0.1 mm/px
+    # from the object bounding box, so the two paths measured widths,
+    # thinned skeletons and laid rows on grids that differed by a third.
+    #
+    # None means "digitized before this field existed, or not digitized at all"
+    # — imported stitch files have no raster — and rebuild falls back to its own
+    # choice, which is exactly the previous behaviour.
+    source_mm_per_px: float | None = None
 
 
 class WorksheetColorRow(CamelModel):

@@ -479,7 +479,7 @@ def _scanline_angled(region, angle_deg: float, row_px: int, max_step_px: int, co
         region translated +100px, canvas unchanged  up to 35.16px off
 
     35px is a different row phase entirely — the fill was not a property of the
-    object at all. digitize rasters at ~18px/mm on the image and rebuild at
+    object at all. digitize rasters at 13.3px/mm on the image and rebuild at
     10px/mm on the bounding box of every object, so the two paths never agreed
     on the grid; and moving one object re-phased its neighbours, which would
     have made B2's move/scale/rotate silently restitch things the user did not

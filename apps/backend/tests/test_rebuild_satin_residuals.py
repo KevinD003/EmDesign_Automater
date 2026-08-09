@@ -19,7 +19,7 @@ reading:
 
   R3  THE AUTO-ANGLE GATE WAS TIGHTER THAN ITS OWN NOISE FLOOR. The 0.15°
       tolerance compared a stored angle (rounded to 1dp, measured by digitize
-      at ~18px/mm) against a `minAreaRect` recomputed on the same contour
+      at 13.3px/mm) against a `minAreaRect` recomputed on the same contour
       requantized to rebuild's 10px/mm grid. Measured on a fresh digitize with
       NO edits at all — so every delta is pure requantization noise — the gate
       sent 5 of 7 untouched satin columns on `06_wordmark_script` to the

@@ -210,20 +210,31 @@ def test_probe2_every_thread_end_is_locked_on_every_path(two_color_paths, path):
 # ── P6, restored: the fidelity signal the pass-through was answering for ─────
 #
 # Measured 2026-08-09 with the short-circuit disabled, digitize vs the
-# regenerated stream:
+# regenerated stream. The second pair of columns is after STEP 3b gave rebuild
+# the grid digitize actually used (`Design.source_mm_per_px`) instead of letting
+# it pick 0.1 mm/px from the object bounding box — digitize runs at 0.075 on
+# this corpus, a third finer, so the two paths were measuring stroke widths and
+# laying rows on different grids:
 #
-#   fixture                   digitize   forced   ratio   worst object
-#   01_flat_2color_logo          8,374    9,084    1.08         -4.9%
-#   04_thin_line_outline         1,560    1,470    0.94        -10.1%
-#   05_wordmark_caps             1,345    1,343    1.00         -6.8%
-#   06_wordmark_script           1,284    1,256    0.98        -18.9%
-#   07_circular_badge           10,759   10,322    0.96        -36.2%
-#   02_logo_fine_text_3color     7,296    6,821    0.93        -23.1%
+#                             rebuild @ own grid   rebuild @ digitize's grid
+#   fixture                    ratio  worst object   ratio  worst object
+#   01_flat_2color_logo         1.08        -4.4%     1.06        +0.5%
+#   04_thin_line_outline        0.94       -10.1%     1.00        -5.1%
+#   05_wordmark_caps            1.00        -7.1%     1.00        -8.3%
+#   06_wordmark_script          0.98       -18.9%     1.00       -13.5%
+#   07_circular_badge           0.96       -36.2%     1.03       -25.5%
+#   02_logo_fine_text_3color    0.95       -23.1%     1.08       -20.0%
 #
-# The badge's -36.2% and fine-text's -23.1% are the remaining real gap and are
-# recorded as outstanding work, not certified. The bands below are set to hold
-# the line where it now is; they are deliberately not loose enough to absorb
-# another regression of the size STEP -1 fixed.
+# Worst-object improves on five of six. 05 goes slightly the other way
+# (-7.1% -> -8.3%), and 02's TOTAL ratio gets worse (0.95 -> 1.08) even as its
+# worst object improves. Mean |ratio - 1| 0.042 -> 0.028, mean worst-object loss
+# 16.6% -> 12.0%: a clear net gain, but not a uniform one, and the bands record
+# where each fixture actually landed rather than one flattering summary.
+#
+# The badge's -25.5% and fine-text's -20.0% are the remaining real gap. They are
+# outstanding work, not certified. Bands hold the line where it now is and are
+# deliberately not loose enough to absorb another regression of the size
+# STEP -1 fixed.
 
 from pathlib import Path
 
@@ -231,12 +242,12 @@ FIXTURES = Path(__file__).resolve().parent / "fixtures" / "quality_bench"
 
 # (stem, colours, min total ratio, max total ratio, max single-object loss)
 FIDELITY_BANDS = [
-    ("01_flat_2color_logo", 6, 0.90, 1.15, 0.15),
-    ("04_thin_line_outline", 4, 0.88, 1.10, 0.20),
-    ("05_wordmark_caps", 4, 0.90, 1.10, 0.15),
-    ("06_wordmark_script", 4, 0.90, 1.10, 0.30),
-    ("07_circular_badge", 6, 0.88, 1.10, 0.45),
-    ("02_logo_fine_text_3color", 4, 0.85, 1.10, 0.35),
+    ("01_flat_2color_logo", 6, 0.95, 1.12, 0.10),
+    ("04_thin_line_outline", 4, 0.95, 1.06, 0.12),
+    ("05_wordmark_caps", 4, 0.95, 1.06, 0.14),
+    ("06_wordmark_script", 4, 0.95, 1.06, 0.20),
+    ("07_circular_badge", 6, 0.95, 1.10, 0.32),
+    ("02_logo_fine_text_3color", 4, 0.95, 1.15, 0.27),
 ]
 
 

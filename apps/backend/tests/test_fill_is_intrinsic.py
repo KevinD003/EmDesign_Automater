@@ -13,7 +13,7 @@ Measured on a 120x80 rectangle at 30 degrees, before the fix:
 35px is a different row phase entirely. Three consequences, in ascending order
 of seriousness:
 
-  * digitize rasters at ~18px/mm on the source image and rebuild at 10px/mm on
+  * digitize rasters at 13.3px/mm on the source image and rebuild at 10px/mm on
     the bounding box of every object, so the two paths could never agree on the
     grid even in principle — part of the residual P6 gap.
   * adding or deleting an unrelated object changes the design's bounding box,
@@ -134,3 +134,99 @@ def test_the_probe_would_have_caught_the_old_behaviour():
             "the old canvas-centre rotation looks position-independent on this "
             "probe, so the tests above are not demonstrating the fix"
         )
+
+
+# ── STEP 3b: the raster digitize used is recorded, and rebuild honours it ────
+
+
+def test_digitize_stamps_the_raster_it_used():
+    """Every generator in the package is a raster operation, so the grid is part
+    of what produced a design's stitches. Rebuild had no way to know it and
+    picked its own, a third coarser."""
+    from pathlib import Path
+
+    from app.services.digitizer import digitize_image
+
+    fixtures = Path(__file__).resolve().parent / "fixtures" / "quality_bench"
+    cv2.setRNGSeed(1234)
+    d = digitize_image((fixtures / "01_flat_2color_logo.png").read_bytes(),
+                       "cotton", "100x100", 6)
+    assert d.source_mm_per_px, "digitize did not record its raster"
+    # 0.075 mm/px on this corpus. Band, not an exact value: the raster follows
+    # the source image and the hoop.
+    assert 0.02 <= d.source_mm_per_px <= 0.30, d.source_mm_per_px
+
+
+def test_rebuild_uses_the_stamped_raster():
+    from app.models.design import ColorStop, Design, DesignObject, Point, StitchType, UnderlayType
+    from app.services.digitizer import rebuild_design
+
+    def design_with(mm_per_px):
+        obj = DesignObject(
+            id="x", name="Fill 1", sequence_order=1, color_stop=1,
+            stitch_type=StitchType.TATAMI, underlay_type=UnderlayType.NONE,
+            density=2.5, stitch_angle=0.0, pull_compensation=0.0,
+            contour=[Point(x=0, y=0), Point(x=40, y=0), Point(x=40, y=30), Point(x=0, y=30)],
+        )
+        return Design(
+            name="t", width_mm=40, height_mm=30,
+            color_stops=[ColorStop(stop_number=1, thread_brand="M", catalog_number="1",
+                                   thread_name="a", hex="#112233")],
+            objects=[obj], stitches=[], source_mm_per_px=mm_per_px,
+        )
+
+    fine = len(rebuild_design(design_with(0.05)).stitches)
+    coarse = len(rebuild_design(design_with(0.20)).stitches)
+    assert fine != coarse, (
+        "the stamped raster is stored but not reaching the generators — "
+        "rebuild produced the same stream at 0.05 and 0.20 mm/px"
+    )
+
+
+def test_a_design_without_a_stamp_still_rebuilds():
+    """Older saves and imported stitch files have no raster. They must fall back
+    to the previous behaviour, not crash and not produce nothing."""
+    from pathlib import Path
+
+    from app.services.digitizer import digitize_image, rebuild_design
+
+    fixtures = Path(__file__).resolve().parent / "fixtures" / "quality_bench"
+    cv2.setRNGSeed(1234)
+    d = digitize_image((fixtures / "05_wordmark_caps.png").read_bytes(),
+                       "cotton", "100x100", 4)
+    legacy = d.model_copy(deep=True)
+    legacy.source_mm_per_px = None
+    assert len(rebuild_design(legacy, force=True).stitches) > 0
+
+
+def test_an_absurd_stamp_cannot_blow_up_the_canvas():
+    """A stored raster is data, and data can be wrong or hostile. The 2000px
+    canvas cap must still bound the allocation."""
+    from pathlib import Path
+
+    from app.services.digitizer import digitize_image, rebuild_design
+
+    fixtures = Path(__file__).resolve().parent / "fixtures" / "quality_bench"
+    cv2.setRNGSeed(1234)
+    d = digitize_image((fixtures / "05_wordmark_caps.png").read_bytes(),
+                       "cotton", "100x100", 4)
+    hostile = d.model_copy(deep=True)
+    hostile.source_mm_per_px = 1e-6  # a million px per mm
+    out = rebuild_design(hostile, force=True)
+    assert len(out.stitches) > 0
+
+
+def test_the_stamp_survives_a_rebuild():
+    """A second edit must land on the same grid as the first, or every edit
+    re-rasters the design slightly differently — the C6 failure mode wearing a
+    different hat."""
+    from pathlib import Path
+
+    from app.services.digitizer import digitize_image, rebuild_design
+
+    fixtures = Path(__file__).resolve().parent / "fixtures" / "quality_bench"
+    cv2.setRNGSeed(1234)
+    d = digitize_image((fixtures / "05_wordmark_caps.png").read_bytes(),
+                       "cotton", "100x100", 4)
+    once = rebuild_design(d.model_copy(deep=True), force=True)
+    assert once.source_mm_per_px == d.source_mm_per_px

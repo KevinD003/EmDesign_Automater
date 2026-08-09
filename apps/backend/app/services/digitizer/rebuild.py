@@ -79,7 +79,7 @@ from app.services.digitizer.underlay import (
 #
 # This tolerance was 0.15 degrees and that is BELOW THE NOISE FLOOR of the
 # comparison it makes. The stored angle is rounded to 1dp and was measured by
-# digitize on ITS raster (~18px/mm); rebuild recomputes `minAreaRect` on the
+# digitize on ITS raster (13.3px/mm); rebuild recomputes `minAreaRect` on the
 # same contour re-quantized to its own 10px/mm grid with integer truncation.
 # The two disagree by requantization alone. Measured on a fresh digitize with
 # NO edits at all, so every delta below is pure noise:
@@ -168,7 +168,26 @@ def rebuild_design(design: Design, *, force: bool = False) -> Design:
     # rebuild and the damage accumulated across repeated edits. The 2000px
     # canvas cap keeps full resolution up to a 200mm design — beyond every
     # supported hoop — and degrades gracefully past it.
-    px_per_mm = min(10.0, 2000.0 / max(w_mm, h_mm))
+    # REBUILD ON THE GRID DIGITIZE ACTUALLY USED, when the design records one
+    # (CTO verdict STEP 3, `Design.source_mm_per_px`). Every generator here is a
+    # raster operation — thinning, distance transforms, scanlines, contour
+    # tracing — so the grid is part of what produced the original stitches.
+    # digitize ran at 0.075 mm/px on the bench corpus and rebuild picked 0.1
+    # from the object bounding box, a third coarser, and the two paths then
+    # measured different stroke widths and laid rows at a different pitch on the
+    # same shape.
+    #
+    # The canvas cap still applies: a stored value that would blow the raster
+    # past 2000px on the long side is clamped rather than trusted, so a design
+    # digitized from a huge source cannot make an edit allocate an enormous
+    # canvas. No stored value (an older save, or an imported stitch file that
+    # never had a raster) falls back to the previous behaviour exactly.
+    cap_px_per_mm = min(10.0, 2000.0 / max(w_mm, h_mm))
+    stored = design.source_mm_per_px
+    if stored and stored > 0:
+        px_per_mm = min(1.0 / float(stored), 2000.0 / max(w_mm, h_mm))
+    else:
+        px_per_mm = cap_px_per_mm
     mm_per_px = 1.0 / px_per_mm
     pad = 2
     cw, ch = int(w_mm * px_per_mm) + 2 * pad, int(h_mm * px_per_mm) + 2 * pad
