@@ -51,7 +51,6 @@ from app.services.digitizer.constants import (
     MIN_STITCH_MM,
     OUTLINE_RUN_MM,
     PLAN_MAX_COLORS,
-    SATIN_MAX_UNCOVERED,
     SATIN_MAX_W_MM,
     SATIN_PREGATE_SLACK,
     SKETCH_MAX_RETRIES,
@@ -73,6 +72,9 @@ from app.services.digitizer.fills import (
     _fill_angle,
     _fill_angle_provenance,
     _fill_by_component,
+)
+from app.services.digitizer.generation import (
+    spine_satin,
 )
 from app.services.digitizer.geometry import (
     _border_color,
@@ -111,7 +113,6 @@ from app.services.digitizer.routing import (
 from app.services.digitizer.satin import (
     _fill_border,
     _satin_axis_deg,
-    _skeleton_satin_hires,
     fill_border_width_px,
 )
 from app.services.digitizer.underlay import (
@@ -656,46 +657,30 @@ def digitize_image(
             if region_med_w > SATIN_MAX_W_MM * SATIN_PREGATE_SLACK:
                 reason = "broad_fill_pregate"  # typical width far over the cap
             else:
-                # Measure the TRUE region and add pull compensation to the column
-                # half-width. Measuring the pre-dilated mask would fold pull comp
-                # into the width test and push a 3.66mm stem over the cap.
-                cand, median_w, wide_mask, axis_pts = _skeleton_satin_hires(
-                    region, mm_per_px, sat_step, max_step_px,
-                    (pull_mm / 2.0) / mm_per_px, region_med_w / mm_per_px,
+                # The shared generation core (STEP 3c) — see `generation.py`.
+                # This block and rebuild's were separate implementations of the
+                # same sweep and drifted three times: pull compensation applied
+                # twice, the remainder paced at the satin pitch instead of the
+                # fill pitch, and the remainder's angle silently defaulted to 0.
+                # `region` is UNDILATED on purpose; the core adds pull comp to
+                # the column half-width itself.
+                attempt = spine_satin(
+                    region, mm_per_px=mm_per_px, spacing_px=sat_step,
+                    max_step_px=max_step_px, fill_step_px=fill_step_px,
+                    connect_px=connect_px, pull_mm=pull_mm,
+                    stroke_mm=region_med_w, row_px=row_px,
                 )
-                region_px = max(cv2.countNonZero(region), 1)
-                uncovered = cv2.countNonZero(wide_mask) / region_px
-                # Two independent conditions. Width: the stroke must fit under the
-                # satin cap (median, not p90 — the distance transform spikes at
-                # junctions where the medial axis is far from every edge although
-                # the stroke is no wider). Reducibility: satin columns swept along
-                # the medial axis must actually account for the shape. A disc has
-                # a medial axis but columns capped at the satin width cannot cover
-                # it, so the uncovered share stays high and it correctly remains
-                # tatami — this is what stops broad fills being forced into satin.
-                if not cand:
-                    # Too small to reduce to a 1D axis at all — a freckle, a
-                    # catchlight, a punctuation dot. A tiny fill is right here.
-                    reason = "no_medial_axis"
-                elif median_w > SATIN_MAX_W_MM:
-                    reason = "wider_than_satin_cap"
-                    skeleton_tatami_fallback += 1
-                elif uncovered > SATIN_MAX_UNCOVERED:
-                    reason = "not_stroke_like"
-                    skeleton_tatami_fallback += 1
-                else:
-                    reason = "satin"
-                    if cv2.countNonZero(wide_mask) > 0:
-                        # Per-segment fallback: tatami only the parts too wide,
-                        # fragment-by-fragment from wherever the satin ended.
-                        cand = cand + _fill_by_component(
-                            wide_mask, row_px, fill_step_px, connect_px,
-                            start=cand[-1][:2] if cand else None,
-                            angle_deg=_fill_angle(wide_mask),
-                        )
-                        skeleton_partial_tatami += 1
-                    skel_pts = cand
+                median_w, uncovered = attempt.median_w_mm, attempt.uncovered_share
+                axis_pts, reason = attempt.axis_pts, attempt.reason
+                if attempt.viable:
+                    skel_pts = attempt.points
                     skeleton_satin_used += 1
+                    if attempt.remainder_tatami:
+                        skeleton_partial_tatami += 1
+                elif reason != "no_medial_axis":
+                    # A freckle that has no axis at all is not a "fallback" —
+                    # a tiny fill was always the right answer for it.
+                    skeleton_tatami_fallback += 1
             is_satin = skel_pts is not None
             _CLASSIFICATION_LOG.append(
                 {

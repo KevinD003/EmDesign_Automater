@@ -194,14 +194,24 @@ def test_the_skeleton_measures_the_undilated_mask():
     and undilated masks produce plausible output, and the difference only shows
     up on a stem near the satin width cap. Pin that the width test is taken on
     `mask`, never on the pull-dilated `top`."""
-    src = (Path(__file__).resolve().parents[1] / "app" / "services" / "digitizer"
-           / "rebuild.py").read_text()
-    block = src[src.index("_skeleton_satin_hires("):]
-    block = block[: block.index(")")]
-    assert "mask," in block and "top," not in block, (
-        "rebuild passes the pull-dilated mask to _skeleton_satin_hires and ALSO "
-        "passes pull/2 as the extra half-width — pull compensation applied "
-        f"twice. Got:\n{block}"
+    root = Path(__file__).resolve().parents[1] / "app" / "services" / "digitizer"
+
+    # STEP 3c moved the sweep into `generation.spine_satin`, so the claim now
+    # has two halves and both must hold.
+    #
+    # 1. rebuild hands the core the UNDILATED mask, not the pull-dilated `top`.
+    reb = (root / "rebuild.py").read_text()
+    call = reb[reb.index("attempt = spine_satin("):]
+    call = call[: call.index("\n                    )")]
+    assert "mask," in call and "top," not in call, (
+        f"rebuild passes the pull-dilated mask to the satin core, so pull "
+        f"compensation is counted twice. Got:\n{call}"
+    )
+    # 2. the core adds pull to the column half-width itself, which is the other
+    #    half of the double-count.
+    gen = (root / "generation.py").read_text()
+    assert "(pull_mm / 2.0) / mm_per_px" in gen, (
+        "the core no longer adds pull compensation to the column half-width"
     )
 
 

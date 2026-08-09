@@ -140,6 +140,10 @@ from app.services.digitizer.fills import (
     _scanline_fill,
     _spiral_fill,
 )
+from app.services.digitizer.generation import (
+    SatinAttempt,
+    spine_satin,
+)
 from app.services.digitizer.geometry import (
     _border_color,
     _chaikin_closed,
@@ -377,6 +381,7 @@ __all__ = [
     "DigitizePlan",
     "FieldArtifact",
     "RegionPlan",
+    "SatinAttempt",
     "_absorb_specks",
     "_angle_is_digitizes_own",
     "_applique_phases",
@@ -492,5 +497,6 @@ __all__ = [
     "rebuild_is_a_noop",
     "remember",
     "set_penetration_floor",
+    "spine_satin",
     "travel_route_pad_px",
 ]

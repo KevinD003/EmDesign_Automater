@@ -81,8 +81,15 @@ def _trims(d: Design) -> int:
 
 
 def _wide_remainder_call() -> ast.Call:
-    """The `_fill_by_component(wide_mask, …)` call inside rebuild's satin branch."""
-    tree = ast.parse((DIGITIZER / "rebuild.py").read_text())
+    """The `_fill_by_component(wide_mask, …)` call for a satin's too-wide patch.
+
+    It lived in rebuild's satin branch when these defects were found and moved
+    to `generation.py` at STEP 3c, when the sweep became one implementation
+    shared with digitize. The assertions below are unchanged — only where they
+    look. `test_generation_core.py` covers the same ground from the core's side;
+    both are kept, because this file is the record of what was actually wrong.
+    """
+    tree = ast.parse((DIGITIZER / "generation.py").read_text())
     for node in ast.walk(tree):
         if (isinstance(node, ast.Call)
                 and isinstance(node.func, ast.Name)
@@ -99,11 +106,25 @@ def test_the_wide_remainder_is_paced_at_the_fill_row_pitch_not_the_satin_pitch()
     tatami fill at satin density — on cotton the two happen to be equal, which
     is why the corpus hid this; raise a satin to 4.0/mm and the remainder comes
     back 60% denser than digitize's, a stiff puckered patch mid-stroke."""
+    # Inside the core the parameter is `row_px`; both halves of the chain are
+    # asserted, because either one alone can be right while the pair is wrong.
     pitch = _wide_remainder_call().args[1]
-    assert isinstance(pitch, ast.Name) and pitch.id == "fill_row_px", (
-        f"wide-remainder tatami is paced by {ast.unparse(pitch)!r}; it must use "
-        f"the fabric's fill row pitch, not the satin column pitch"
+    assert isinstance(pitch, ast.Name) and pitch.id == "row_px", (
+        f"the core paces the wide remainder by {ast.unparse(pitch)!r}; it must "
+        f"use the fill row pitch it was handed, not the satin column pitch"
     )
+    reb = (DIGITIZER / "rebuild.py").read_text()
+    call = reb[reb.index("attempt = spine_satin("):]
+    call = call[: call.index("\n                    )")]
+    assert "row_px=fill_row_px" in call, (
+        f"rebuild feeds the core something other than the fabric's fill row "
+        f"pitch — `spacing_px` here is the SATIN column pitch, and the two "
+        f"coincide only on cotton. Got:\n{call}"
+    )
+    pipe = (DIGITIZER / "pipeline.py").read_text()
+    pcall = pipe[pipe.index("attempt = spine_satin("):]
+    pcall = pcall[: pcall.index("\n                )")]
+    assert "row_px=row_px" in pcall, f"digitize's call lost its fill pitch:\n{pcall}"
 
 
 def test_the_wide_remainder_is_filled_at_its_own_axis_not_zero():

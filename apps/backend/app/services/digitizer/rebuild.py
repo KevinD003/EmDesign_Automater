@@ -27,8 +27,6 @@ from app.services.digitizer.constants import (
     FILL_UNDERLAY_PITCH_MULT,
     MAX_STITCH_MM,
     MIN_STITCH_MM,
-    SATIN_MAX_UNCOVERED,
-    SATIN_MAX_W_MM,
     SATIN_SPACING_MM,
     TRAVEL_STEP_MM,
     TRIM_MIN_GAP_MM,
@@ -38,10 +36,12 @@ from app.services.digitizer.constants import (
 from app.services.digitizer.fills import (
     _contour_fill,
     _fill_angle,
-    _fill_by_component,
     _radial_fill,
     _scanline_angled,
     _spiral_fill,
+)
+from app.services.digitizer.generation import (
+    spine_satin,
 )
 from app.services.digitizer.geometry import (
     _dilate_pull,
@@ -64,7 +64,6 @@ from app.services.digitizer.routing import (
 from app.services.digitizer.satin import (
     _satin_axis_deg,
     _satin_zigzag,
-    _skeleton_satin_hires,
     rebuild_fill_border,
 )
 from app.services.digitizer.underlay import (
@@ -324,59 +323,37 @@ def rebuild_design(design: Design, *, force: bool = False) -> Design:
                 # explicitly asked this object to be SATIN. The rect sweep
                 # spans any width, which is exactly why Part 4 retained it for
                 # user-forced satin — measured: the 30x8mm probe bar (8mm, over
-                # the 4.5mm cap) came back as horizontal tatami rows.
-                # The width test uses the SKELETON's own measured width, not the
-                # distance-transform median: the median under-reads a rectangle
-                # badly (measured 3.6mm for the 8mm probe bar, which would have
-                # sailed through the 4.5mm cap and been tatami'd). digitize
-                # makes the same distinction — the DT median is only its cheap
-                # pre-gate; the real decision is median_w plus the uncovered
-                # share, and those are reused verbatim here.
-                # MEASURE THE TRUE REGION, exactly as digitize does. `top` is
-                # already `_dilate_pull`-ed, so measuring it and ALSO passing
-                # pull/2 as the extra column half-width applies pull
-                # compensation TWICE — precisely what pipeline.py warns about
-                # at its own call site ("measuring the pre-dilated mask would
-                # fold pull comp into the width test and push a 3.66mm stem
-                # over the cap"). digitize passes the undilated `region`; this
-                # passed `top`. Both the DT pre-measure and the skeleton call
-                # now take `mask`.
+                # the 4.5mm cap) came back as horizontal tatami rows. The width
+                # test uses the SKELETON's own measured width and not the
+                # distance-transform median, which under-reads a rectangle badly
+                # (3.6mm for that 8mm bar, which would have sailed under the cap
+                # and been tatami'd) — the DT median below is only the cheap
+                # pre-measure that picks the hi-res upscale factor.
+                #
+                # THE SHARED GENERATION CORE (STEP 3c) — see `generation.py`.
+                # This sweep and digitize's were separate implementations of the
+                # same thing and drifted three times, all shipped by 250e850:
+                # pull compensation applied twice (the core takes the UNDILATED
+                # mask and adds pull to the column half-width itself), the
+                # wide remainder paced at the satin pitch instead of the fill
+                # pitch, and the remainder's angle silently defaulting to 0.
+                # There is one implementation now, so a fourth is not available.
                 _dt = cv2.distanceTransform((mask > 0).astype(np.uint8), cv2.DIST_L2, 5)
                 stroke_mm = (float(np.median(_dt[_dt > 0])) * 2.0 * mm_per_px
                              if (_dt > 0).any() else 0.0)
                 if _angle_is_digitizes_own(o, want, raw_rect):
-                    cand, median_w, wide_mask, axis_pts = _skeleton_satin_hires(
-                        mask, mm_per_px, spacing_px, max_step_px,
-                        (float(o.pull_compensation or 0.0) / 2.0) / mm_per_px,
-                        stroke_mm / mm_per_px,
+                    attempt = spine_satin(
+                        mask, mm_per_px=mm_per_px, spacing_px=spacing_px,
+                        max_step_px=max_step_px, fill_step_px=fill_step_px,
+                        connect_px=connect_px,
+                        pull_mm=float(o.pull_compensation or 0.0),
+                        stroke_mm=stroke_mm, row_px=fill_row_px,
                     )
-                    top_px = max(cv2.countNonZero(mask), 1)
-                    uncovered = cv2.countNonZero(wide_mask) / top_px
-                    if cand and median_w <= SATIN_MAX_W_MM and uncovered <= SATIN_MAX_UNCOVERED:
-                        pts = cand
+                    if attempt.viable:
+                        pts = attempt.points
                         # The underlay must follow the SAME axis the top layer
                         # does — see `_rebuild_underlay`'s note on `axis_pts`.
-                        satin_axis_pts = axis_pts
-                        # Per-segment fallback, exactly as digitize: parts too
-                        # wide for a column are tatami'd rather than dropped.
-                        #
-                        # "Exactly as digitize" was a claim, not a fact: two of
-                        # the four arguments were wrong. This is a TATAMI fill,
-                        # so it takes the FILL row pitch, not the satin column
-                        # pitch — `row_mm` and `satin_mm` are separate profile
-                        # keys and coincide only on cotton (0.40/0.40); they are
-                        # 0.50/0.45 on knit, 0.55/0.50 on jersey, and unrelated
-                        # after any density edit. And it takes the remainder's
-                        # OWN principal axis: omitting `angle_deg` silently
-                        # defaulted it to 0.0, so every wide patch came back
-                        # with horizontal rows crossing the satin columns it
-                        # sits between.
-                        if cv2.countNonZero(wide_mask):
-                            pts = pts + _fill_by_component(
-                                wide_mask, fill_row_px, fill_step_px, connect_px,
-                                start=pts[-1][:2] if pts else None,
-                                angle_deg=_fill_angle(wide_mask),
-                            )
+                        satin_axis_pts = attempt.axis_pts
                     else:
                         # Too wide for columns, or the thinning could not
                         # resolve it. digitize would reclassify as tatami, but
