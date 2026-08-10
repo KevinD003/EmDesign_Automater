@@ -30,7 +30,11 @@ import numpy as np
 import pytest
 
 from app.services.digitizer import pipeline, rebuild
-from app.services.digitizer.constants import SATIN_MAX_UNCOVERED, SATIN_MAX_W_MM
+from app.services.digitizer.constants import (
+    NO_AXIS_REASONS,
+    SATIN_MAX_UNCOVERED,
+    SATIN_MAX_W_MM,
+)
 from app.services.digitizer.generation import SatinAttempt, spine_satin
 
 DIGITIZER = Path(__file__).resolve().parents[1] / "app" / "services" / "digitizer"
@@ -153,13 +157,56 @@ def test_a_speck_has_no_medial_axis():
 
 def test_the_reasons_are_the_ones_the_classifier_expects():
     """pipeline.py maps `reason` straight into its classification log and its
-    counters. A renamed reason would silently change what digitize records."""
+    counters. A renamed reason would silently change what digitize records.
+
+    This test EARNED ITS KEEP on 2026-08-10: splitting the no-axis arm into
+    `no_medial_axis` (a speck) and `compact_no_axis` (a disc) would otherwise
+    have left `pipeline.py` excluding only the first from its tatami-FALLBACK
+    counter, so every disc would quietly have started counting as "satin was
+    tried and failed". It is strengthened rather than loosened — the exclusion
+    is now asserted through the shared tuple, and the tuple is asserted to cover
+    every no-axis reason the core can actually emit.
+    """
     src = (DIGITIZER / "generation.py").read_text()
-    for reason in ("satin", "no_medial_axis", "wider_than_satin_cap", "not_stroke_like"):
+    for reason in ("satin", "no_medial_axis", "compact_no_axis",
+                   "wider_than_satin_cap", "not_stroke_like"):
         assert f'"{reason}"' in src
-    # And only "no_medial_axis" is excluded from the tatami-fallback counter.
+
+    # The no-axis reasons are named in ONE place and both are excluded.
+    assert set(NO_AXIS_REASONS) == {"no_medial_axis", "compact_no_axis"}
     pipe = (DIGITIZER / "pipeline.py").read_text()
-    assert 'reason != "no_medial_axis"' in pipe
+    assert "reason not in NO_AXIS_REASONS" in pipe, (
+        "the fallback counter must exclude the no-axis reasons via the shared "
+        "tuple, not a string literal that a third arm could be added past"
+    )
+    assert 'reason != "no_medial_axis"' not in pipe, "literal comparison came back"
+
+
+def test_a_disc_is_distinguished_from_a_speck():
+    """Both have no medial axis and both are tatami. They are not the same case.
+
+    A width-based detector is structurally blind to anything on this arm —
+    `median_w` and the sample count are both zero — so the arm has to say WHICH
+    shape it is or a survey cannot tell a 168mm2 disc from a 3mm2 freckle. On
+    the bench corpus that cost a round trip: `09_nonuniform_background` seq 1 is
+    a 14.6mm disc sewing correctly at 100% coverage, and it was reported as an
+    anomaly because it shared a reason string with punctuation dots.
+    """
+    speck = _attempt(_bar(3, 3, pad=10), stroke_mm=0.3)
+    assert not speck.viable
+    assert speck.reason == "no_medial_axis"
+
+    # A disc whose medial axis genuinely is a single point. `_attempt` works at
+    # 0.1 mm/px, so a 14.6mm disc is 73px across — the same object the corpus
+    # survey flagged.
+    r_px = round((14.6 / 2) / 0.1)
+    disc = np.zeros((2 * r_px + 40, 2 * r_px + 40), np.uint8)
+    cv2.circle(disc, (r_px + 20, r_px + 20), r_px, 255, -1)
+    a = _attempt(disc, stroke_mm=14.6)
+    assert not a.viable, "a disc is never satin"
+    assert a.reason != "no_medial_axis", "a 14.6mm disc is not a speck"
+    if not a.axis_pts:
+        assert a.reason == "compact_no_axis"
 
 
 def test_pull_widens_the_columns_but_not_the_width_MEASUREMENT():

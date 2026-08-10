@@ -540,6 +540,130 @@ def test_density_is_order_independent_where_the_triple_test_is_blind():
     assert seam_cell, f"the seam pair must be visible to the cell count: {m['hottest']}"
 
 
+def _flagged_cells(design, m) -> list[tuple[int, int]]:
+    """The grid cells at or over `DENSITY_FLAG_PER_CELL`, as (cx, cy).
+
+    `density_metrics` reports how MANY cells are flagged but not which, and the
+    caller needs the identity to ask what is in them. Binned exactly as the
+    metric bins, so the two cannot disagree about cell boundaries.
+    """
+    from collections import Counter
+
+    from measure_stitch_quality import DENSITY_CELL_MM, DENSITY_FLAG_PER_CELL, _cmd
+
+    cells: Counter = Counter()
+    for s in design.stitches:
+        if _cmd(s) == "STITCH":
+            cells[(int(s.x / DENSITY_CELL_MM), int(s.y / DENSITY_CELL_MM))] += 1
+    return [c for c, n in cells.items() if n >= DENSITY_FLAG_PER_CELL]
+
+
+def _has_tieoff_signature(design, cell) -> bool:
+    """Does this cell's density come from a tie-off rather than from stitching?
+
+    A lock goes out from an anchor and comes back to it, so the SAME COORDINATE
+    is stitched twice. Fill and satin never do that: a fill re-entering a region
+    lands on a new row, and a satin column's two ends are a column apart. So an
+    exact coordinate revisit inside the cell is the discriminator, and it is what
+    was measured at fixture 08's peak — (36.006, 64.803) stitched at penetration
+    8049 and again at 8052, five stitches after a JUMP.
+
+    Compares the emitted floats exactly and deliberately: a lock RETURNS TO its
+    anchor, it does not approach it. A tolerance here would start matching dense
+    stitching, which is the thing being excluded.
+
+    Read over the cell's NEIGHBOURHOOD, not the cell. The first version of this
+    helper looked inside the cell alone and reported "not a tie-off" for a site
+    that demonstrably is one: fixture 08's lock revisits (36.006, 64.803), which
+    bins to cell (72, 129) while the flagged cell is (71, 130). The lock
+    STRADDLES the grid line — which is the whole reason the cell tripped — so a
+    cell-shaped test can never see it. Same mistake as the fixed-box density
+    probe, made twice; the neighbourhood is every penetration within one cell
+    width of a penetration in the cell, matching how `_max_per_disc` clusters.
+    """
+    from measure_stitch_quality import DENSITY_CELL_MM, _cmd
+
+    cx, cy = cell
+    pts = [(float(s.x), float(s.y)) for s in design.stitches if _cmd(s) == "STITCH"]
+    inside = [p for p in pts
+              if (int(p[0] / DENSITY_CELL_MM), int(p[1] / DENSITY_CELL_MM)) == (cx, cy)]
+    if not inside:
+        return False
+
+    r2 = DENSITY_CELL_MM * DENSITY_CELL_MM
+    seen: set[tuple[float, float]] = set()
+    for p in pts:
+        if not any((p[0] - q[0]) ** 2 + (p[1] - q[1]) ** 2 <= r2 for q in inside):
+            continue
+        if p in seen:
+            return True
+        seen.add(p)
+    return False
+
+
+def test_the_tieoff_discriminator_actually_discriminates():
+    """The density gate above is only worth having if this can answer NO.
+
+    A check that passes everything is worse than no check, because it reads in
+    the diff as a safety assertion. So: the same cell count, built once as a
+    tie-off and once as dense stitching, must come back True and False.
+    """
+    from measure_stitch_quality import DENSITY_CELL_MM
+
+    cell = (40, 40)
+    x0 = (cell[0] + 0.5) * DENSITY_CELL_MM
+    y0 = (cell[1] + 0.5) * DENSITY_CELL_MM
+
+    # Dense stitching: 14 penetrations packed into the cell on a fine lattice,
+    # every one at a DISTINCT coordinate. This is the perforation case.
+    packed = [
+        _S(x0 + (k % 4) * 0.03 - 0.045, y0 + (k // 4) * 0.03 - 0.045)
+        for k in range(14)
+    ]
+    assert not _has_tieoff_signature(_D(packed), cell), (
+        "dense stitching with no coordinate revisit was accepted as a tie-off"
+    )
+
+    # A tie-off: out to a point and back to the anchor already stitched.
+    anchor = (x0, y0)
+    lock = packed[:11] + [
+        _S(*anchor), _S(x0 + 0.2, y0 + 0.15), _S(*anchor),
+    ]
+    assert _has_tieoff_signature(_D(lock), cell), (
+        "a return to an already-stitched coordinate was not recognised"
+    )
+
+
+def test_the_tieoff_discriminator_sees_a_lock_that_straddles_the_grid():
+    """The failure the first version of the helper actually had.
+
+    Fixture 08's lock revisits a coordinate that bins to the cell NEXT DOOR to
+    the flagged one, because the cluster sits on a grid line — which is exactly
+    why that cell reached the flag. A cell-shaped test reports "not a tie-off"
+    on a real tie-off. Pinned so the neighbourhood cannot quietly shrink back.
+    """
+    from measure_stitch_quality import DENSITY_CELL_MM
+
+    cell = (40, 40)
+    lo_x = cell[0] * DENSITY_CELL_MM
+    lo_y = cell[1] * DENSITY_CELL_MM
+
+    # 12 in the cell, hard against its upper-x edge...
+    inside = [_S(lo_x + 0.45, lo_y + 0.05 + k * 0.03) for k in range(12)]
+    # ...and the lock's revisited anchor just OVER that edge, in cell (41, 40),
+    # within a thread width of the cell's own penetrations.
+    over = lo_x + DENSITY_CELL_MM + 0.05
+    stitches = inside + [_S(over, lo_y + 0.2), _S(over + 0.1, lo_y + 0.3),
+                         _S(over, lo_y + 0.2)]
+    assert (int(over / DENSITY_CELL_MM), int((lo_y + 0.2) / DENSITY_CELL_MM)) != cell, (
+        "probe bug: the revisited pair must land in a DIFFERENT cell"
+    )
+    assert _has_tieoff_signature(_D(stitches), cell), (
+        "a tie-off straddling the cell boundary was missed — the helper is "
+        "reading a box again"
+    )
+
+
 def test_density_corpus_health_is_pinned():
     """Fixture 08 is the corpus's densest; it must stay far below the flag.
 
@@ -566,19 +690,51 @@ def test_density_corpus_health_is_pinned():
     # densest cell in the corpus is now a lock site rather than organic
     # stitching. That is the intended trade: an unlocked end unravels, and the
     # flag level at 14 still means "a second full layer on the worst healthy
-    # cell". flagged_cells == 0 remains the invariant that must never move.
+    # cell". 13 after CTO 1b (12 without rembg — the documented path split).
     #
-    # 13 after CTO 1b (12 without rembg — the documented path split), measured
-    # both ways. It is ONE cell: the hottest moved 0.4mm, from (35.8, 65.2) to
-    # (35.8, 64.8), and gained a penetration. p99_per_cell is UNCHANGED at 5 and
-    # flagged_cells is still 0, so this is not a density shift — the fill's cell
-    # decomposition re-entered near an existing lock site. Recorded rather than
-    # waved through, because THE MARGIN TO THE FLAG IS NOW ONE. If a later
-    # change puts a 14 here, that is a genuine "second full layer" on a real
-    # cell and must be investigated, not re-pinned.
-    assert 6 <= m["max_per_cell"] <= 13
+    # 14 after the parity fix (CTO ruling 5.1). The previous revision of this
+    # test said a 14 here "must be investigated, not re-pinned". It was, by
+    # running the shipped code on both trees and describing the site rather than
+    # counting it. What the probes established:
+    #
+    #   * NOT a density shift. p99_per_cell is unchanged at 5, and the whole
+    #     tail below the peak is identical: 12,9,8,8,8,8,7,7,7,7,7 both sides.
+    #     Exactly one cell moved.
+    #   * The peak is a TWO-OBJECT COINCIDENCE, not a fill defect. `Satin 1`
+    #     (#de6c26) and `Satin 19` (#30221e) both come within 0.15mm of
+    #     (35.93, 65.03). Satin 1 contributes ~17 penetrations there as the
+    #     pivot end of a column zigzag (2.6-4.7mm crossings, alternate ends
+    #     landing in the same 0.5mm disc) — present identically BEFORE the fix.
+    #   * The +3 the fix adds is Satin 19's TIE-OFF: five consecutive
+    #     penetrations entered by a JUMP, steps 0.62/0.34/0.70/0.61/0.61, the
+    #     last returning to exactly (36.006, 64.803) — the coordinate of the
+    #     second. The pre-fix stream shows the same signature with 3 members
+    #     revisiting (35.869, 64.717). Deliberate, and what stops an end
+    #     unravelling.
+    #
+    # So the gate is rewritten to discriminate CAUSE instead of counting, which
+    # is what `flagged_cells == 0` could not do. The count bound is relaxed by
+    # one; in exchange a flagged cell must now PROVE it is a tie-off. A future
+    # change that piles fill into a cell has no coordinate revisit and fails
+    # here, where the old form would have passed it at 13.
+    #
+    # `max_per_cell` is grid-anchored and provably translation-dependent (see
+    # `_max_per_disc`'s docstring), so the grid-free measure is pinned beside it
+    # and is the one to believe.
+    assert 6 <= m["max_per_cell"] <= 14
     assert m["p99_per_cell"] <= 6, "p99 moving is a density shift; a lone max is not"
-    assert m["flagged_cells"] == 0
+    assert m["max_per_disc"] <= 26, (
+        "translation-invariant peak rose above the measured lock-plus-pivot "
+        "site; unlike max_per_cell this cannot be a grid artefact"
+    )
+    assert m["flagged_cells"] <= 1
+    for cell in _flagged_cells(design, m):
+        assert _has_tieoff_signature(design, cell), (
+            f"cell {cell} is at or over the density flag and is NOT a tie-off — "
+            f"no penetration in it returns to a coordinate already stitched. "
+            f"That is fabric being perforated by stitching, which is the case "
+            f"this flag exists for."
+        )
 
 
 def test_fixture_07_underlay_has_no_floor_violations():

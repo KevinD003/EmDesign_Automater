@@ -23,9 +23,29 @@ def _thin_state(full):
     profiled at 44s of a 62s fixture at 2x work resolution. Only a foreground
     pixel can ever be removed, so the loop then carries PADDED FLAT INDICES of
     the live pixels instead of full-window masks; fixture 07's largest thinning
-    input is 2.5% foreground of a 2400x2400 window. Parity keys off ABSOLUTE
-    (y + x), so the crop origin MUST be added back — otherwise an odd-offset
-    region thins differently from the same region uncropped.
+    input is 2.5% foreground of a 2400x2400 window.
+
+    PARITY IS RELATIVE TO THE CROP, NOT THE CANVAS (CTO 2026-08-10, P1). This
+    line used to read ``(row + col + y0 + x0) % 2`` under a comment saying the
+    crop origin "MUST be added back — otherwise an odd-offset region thins
+    differently from the same region uncropped". The goal was right and the
+    means were exactly backwards: keying to absolute (y + x) makes thinning
+    depend on WHERE THE ARTWORK SITS. `_zhang_suen_thin` walks parities in a
+    fixed order, so shifting a shape one pixel swaps every pixel's checkerboard
+    colour, reverses the erosion schedule, and can hand back a different
+    skeleton — measured, **13 of 24 short thick bars changed stitch_type under a
+    one-pixel shift**, and on the shortest ones `median_w` swung between 0.00
+    and 2.86mm because the axis was erased outright. The signature was
+    unmistakable: (0,0) and (+1,+1) always agreed, (+1,0) and (0,+1) always
+    agreed.
+
+    Crop-relative parity gives BOTH invariants, which is why the old comment's
+    premise was false. `_fg_window` derives the crop from the foreground, so the
+    same region cropped or uncropped yields the same (row, col) for every pixel
+    — the property the absolute term was reaching for — while a translation
+    moves y0/x0 and leaves (row, col) alone. Same family as the STEP 3a fill
+    defect: a shape's stitching must be a property of the shape.
+
     Returns ``(window, padded, idx, parity)``, or None for an empty mask.
     """
     import numpy as np
@@ -40,8 +60,7 @@ def _thin_state(full):
     padded[1:-1, 1:-1] = full[y0:y1, x0:x1]
     idx = np.flatnonzero(padded)
     row, col = np.divmod(idx, padded.shape[1])
-    # padded (row, col) is canvas (y0 + row - 1, x0 + col - 1); the -2 drops out.
-    return win, padded, idx, ((row + col + y0 + x0) % 2).astype(np.uint8)
+    return win, padded, idx, ((row + col) % 2).astype(np.uint8)
 
 
 def _thin_terms(flat, idx, offsets):
