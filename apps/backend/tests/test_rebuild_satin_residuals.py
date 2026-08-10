@@ -209,9 +209,27 @@ def test_the_skeleton_measures_the_undilated_mask():
     )
     # 2. the core adds pull to the column half-width itself, which is the other
     #    half of the double-count.
-    gen = (root / "generation.py").read_text()
-    assert "(pull_mm / 2.0) / mm_per_px" in gen, (
-        "the core no longer adds pull compensation to the column half-width"
+    #
+    # Asserted through the AST, on WHICH ARGUMENT carries pull, rather than by
+    # matching the expression's source text. The literal form pinned here used
+    # to be `"(pull_mm / 2.0) / mm_per_px"`, which made the test a guard on UP1
+    # — satin receiving half the per-side compensation a fill receives from the
+    # same stored number — instead of a guard on the double-count it is named
+    # for. Correcting the halving failed this test, which is precisely backwards.
+    # The claim that belongs here is "pull reaches the half-width argument at
+    # all"; how much of it does is UP1's question and is measured behaviourally
+    # in test_generation_core.py.
+    import ast
+
+    tree = ast.parse((root / "generation.py").read_text())
+    calls = [n for n in ast.walk(tree)
+             if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+             and n.func.id == "_skeleton_satin_hires"]
+    assert len(calls) == 1, f"expected one sweep call in the core, found {len(calls)}"
+    extra_arg = calls[0].args[4]           # the extra half-width, per side
+    assert "pull_mm" in {n.id for n in ast.walk(extra_arg) if isinstance(n, ast.Name)}, (
+        "the core no longer adds pull compensation to the column half-width: "
+        f"argument 5 of the sweep is {ast.unparse(extra_arg)!r}"
     )
 
 

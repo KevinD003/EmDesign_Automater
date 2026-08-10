@@ -355,8 +355,18 @@ def _column_ends(frame, assigned, spacing_px: float, max_half_px: float, extra_p
         v = end - mid
         d = np.linalg.norm(v, axis=1)
         d[d < 1e-9] = 1.0
+        # Pull compensation is added to the CLAMPED half-width, not dropped by
+        # the clamp (UP1). Before this, a column whose boundary sat at or past
+        # the satin cap landed exactly on `max_half_px` with no `extra_px` at
+        # all, while every narrower column on the same stroke grew by it — so
+        # compensation silently switched off at precisely the widest columns,
+        # which are the ones that pull in hardest. `_raycast_columns`, the
+        # per-branch fallback doing the same job three functions down, has
+        # always clamped and THEN added; the two generators disagreed, which is
+        # the divergence class this package keeps being bitten by.
+        limit = max_half_px + extra_px
         over = d > max_half_px
-        end[over] = mid[over] + v[over] / d[over, None] * max_half_px
+        end[over] = mid[over] + v[over] / d[over, None] * limit
         grow = (d + extra_px) / d                    # pull compensation, outward
         end[~over] = mid[~over] + v[~over] * grow[~over, None]
     if floor_px > 0.0:

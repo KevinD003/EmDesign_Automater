@@ -1,38 +1,38 @@
 {
   "04_thin_line_outline": {
-    "hash": "557ade09b69f1da0223248c73dee40b9e232e474cfec13a06f6396c3618b427c",
-    "machine_minutes": 2.68,
+    "hash": "64d8b45c54a55726cdbffa12bf79effc465a63fc60bd6ae600aa6c8112f54ac7",
+    "machine_minutes": 2.69,
     "max_stitch_mm": 4.23,
-    "stitches": 1874,
-    "sub_floor_share": 0.0005,
-    "sub_penetration_share": 0.0,
+    "stitches": 1882,
+    "sub_floor_share": 0.0011,
+    "sub_penetration_share": 0.0005,
     "trims": 8
   },
   "05_wordmark_caps": {
-    "hash": "5cfd1b01d8f4e9354c80b6e0452876c9248ef09e5446fd4b3ed416d04634338f",
+    "hash": "61357cdb681361aec655d8181fd05d563aa753201418ae4c79cb7b8c1ccff453",
     "machine_minutes": 2.62,
-    "max_stitch_mm": 4.3,
+    "max_stitch_mm": 4.5,
     "stitches": 1830,
     "sub_floor_share": 0.0117,
     "sub_penetration_share": 0.0028,
     "trims": 8
   },
   "06_wordmark_script": {
-    "hash": "a0554720dd9a072406bbb89d92314014b8a0dbf75f931e682a2c554e021114ad",
-    "machine_minutes": 2.72,
-    "max_stitch_mm": 4.72,
-    "stitches": 1841,
-    "sub_floor_share": 0.0893,
-    "sub_penetration_share": 0.011,
+    "hash": "9910b1ea4f29a94428707b942e7d951cc4366741c92a66e1c74038a56f021dc1",
+    "machine_minutes": 2.7,
+    "max_stitch_mm": 4.92,
+    "stitches": 1823,
+    "sub_floor_share": 0.0902,
+    "sub_penetration_share": 0.0095,
     "trims": 10
   },
   "07_circular_badge": {
-    "hash": "0db697f491669f3e45436888c6050ff3c87d3226366a9c30370eb78f37b282e7",
+    "hash": "18e12c4491873e9d9efc4d5a87ee30ed144d8b4eae69a3add04c3dc228ca7e51",
     "machine_minutes": 22.78,
     "max_stitch_mm": 6.05,
-    "stitches": 17294,
-    "sub_floor_share": 0.0317,
-    "sub_penetration_share": 0.0025,
+    "stitches": 17290,
+    "sub_floor_share": 0.0305,
+    "sub_penetration_share": 0.0024,
     "trims": 28
   }
 }

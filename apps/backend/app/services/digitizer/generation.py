@@ -87,9 +87,18 @@ def spine_satin(region, *, mm_per_px: float, spacing_px: int, max_step_px: int,
     """
     import cv2
 
+    # PULL COMPENSATION, PER SIDE (UP1). `pull_mm` is documented per side and
+    # applied per side to fills — `_dilate_pull` dilates by `pull_mm / mm_per_px`
+    # and a dilation grows a mask by its radius on every side. Satin took half
+    # of that from the same stored number, so a satin stroke and the fill beside
+    # it, both compensated from one fabric profile, were compensated by
+    # different amounts: the satin came back 2x under-compensated, pulled in on
+    # stretchy fabric and opened a gap along the seam it was supposed to close.
+    # The halving read as if it were converting a full width to a half-width,
+    # but the argument is the outward growth of ONE end, not a total.
     cand, median_w, wide_mask, axis_pts = _skeleton_satin_hires(
         region, mm_per_px, spacing_px, max_step_px,
-        (pull_mm / 2.0) / mm_per_px, stroke_mm / mm_per_px,
+        pull_mm / mm_per_px, stroke_mm / mm_per_px,
     )
     region_px = max(cv2.countNonZero(region), 1)
     uncovered = cv2.countNonZero(wide_mask) / region_px
