@@ -79,14 +79,16 @@ from app.services.digitizer.generation import (
     spine_satin,
 )
 from app.services.digitizer.geometry import (
+    _bgr_to_hex,
     _border_color,
-    _decode_image_bgr,
+    _decode_raster,
     _decode_svg,
     _dilate_pull,
     _drop_floor_reversals,
     _fabric_profile,
     _hole_covered_later,
     _open_preserving_detail,
+    _parse_bgr,
     _parse_hoop,
     _resample_open,
     _smooth_contour,
@@ -142,9 +144,18 @@ def digitize_image(
     max_colors: int = DEFAULT_MAX_COLORS,
     min_region_mm2: float = MIN_REGION_MM2,
     text_mode: bool = False,
+    substrate_color: str | tuple | None = None,
     _texture_smooth: bool | None = None,
 ) -> Design:
     """Convert an image into a stitch Design (classical CV baseline).
+
+    ``substrate_color`` is the garment being stitched onto, as ``"#RRGGBB"`` or
+    a BGR triple (DET3). Regions matching it are left unstitched so the cloth
+    shows through instead of being covered in its own colour. Default None keeps
+    the historical behaviour — infer it from the image border — which is a guess
+    the customer is never asked to confirm and cannot correct. Whatever the
+    source, any area removed by the rule is reported: as a warning naming the
+    colour and the area, and as `substrate_removed_mm2` on the Design.
 
     ``_texture_smooth`` is internal: None means the Part 27 variance gate
     decides whether the photographic mean-shift runs; True forces it — used
@@ -182,13 +193,21 @@ def digitize_image(
     cv2.setRNGSeed(DIGITIZE_RNG_SEED)
 
     # Alpha-aware decode (CTO A15/N2) — rationale on _decode_image_bgr.
-    img = _decode_image_bgr(data)
+    decoded_raster = _decode_raster(data)
     svg_mask = None
-    if img is None:
+    alpha_mask = None
+    if decoded_raster is None:
         decoded = _decode_svg(data)  # vector path (v2 Part 25)
         if decoded is None:
             raise ValueError("Could not decode image (expected SVG/PNG/JPEG/BMP/WebP)")
         img, svg_mask = decoded
+    else:
+        img, alpha_mask = decoded_raster
+    # An alpha channel and an SVG's mask are the same kind of thing: the file
+    # SAYING what is artwork, rather than us inferring it (DET3). Both exempt
+    # the input from the substrate rule below, which exists only because a
+    # raster foreground is a guess.
+    declared_mask = svg_mask if svg_mask is not None else alpha_mask
 
     hoop_w, hoop_h = _parse_hoop(hoop_size)
     ih, iw = img.shape[:2]
@@ -217,13 +236,22 @@ def digitize_image(
         # rendered bigger upstream, not inflated here.
         up_f = min(2.0, _MIN_WORK_PX / max(iw, ih))
         img = cv2.resize(img, (round(iw * up_f), round(ih * up_f)), interpolation=cv2.INTER_CUBIC)
+        if alpha_mask is not None:
+            # NEAREST, not the image's cubic: this is a declaration, and
+            # interpolating it would invent partly-declared pixels at every edge.
+            alpha_mask = cv2.resize(alpha_mask, (round(iw * up_f), round(ih * up_f)),
+                                    interpolation=cv2.INTER_NEAREST)
         mm_per_px /= up_f
         ih, iw = img.shape[:2]
     if max(iw, ih) > _MAX_WORK_PX:
         f = _MAX_WORK_PX / max(iw, ih)
         img = cv2.resize(img, (int(iw * f), int(ih * f)), interpolation=cv2.INTER_AREA)
+        if alpha_mask is not None:
+            alpha_mask = cv2.resize(alpha_mask, (int(iw * f), int(ih * f)),
+                                    interpolation=cv2.INTER_NEAREST)
         mm_per_px /= f
         ih, iw = img.shape[:2]
+    declared_mask = svg_mask if svg_mask is not None else alpha_mask
 
     # Photographic input: posterize shading before quantization (v2 Part 27).
     # A photo — including a photographed sew-out, thread sheen and all — carries
@@ -312,7 +340,14 @@ def digitize_image(
             labels, centers, n_shade_splits = labels2, centers2, splits2
             sketch_cov = cov2
 
-    substrate = _border_color(img)
+    # THE GARMENT COLOUR IS AN INPUT WHEN THE CALLER KNOWS IT (DET3). It was
+    # only ever inferred from the image border — a number the customer is never
+    # asked for and cannot correct, yet it decides which of their artwork gets
+    # deleted as "the cloth". A caller that knows what it is stitching onto says
+    # so; everyone else keeps the border guess, which is the old behaviour.
+    substrate_declared = substrate_color is not None
+    substrate = (_parse_bgr(substrate_color) if substrate_declared
+                 else _border_color(img))
 
     # Darkest-first stitching order (spec §4.2). Clusters emptied by halo
     # suppression are skipped so they never open a colour stop.
@@ -434,7 +469,15 @@ def digitize_image(
         # element on a white page is real artwork the file states explicitly,
         # and this rule was measured deleting exactly that (the white disc of
         # the white-on-white probe survived the mask and died here).
-        if svg_mask is None and float(np.linalg.norm(center.astype(float) - substrate)) < SUBSTRATE_DELTA:
+        # `declared_mask`, not `svg_mask` (DET3): an alpha channel declares what
+        # is artwork exactly as an SVG's mask does, and the reason this rule is
+        # skipped for a declaration is not that the file is vector — it is that
+        # nothing here has to be guessed. White artwork on a transparent
+        # background composites to white, matches a white border, and was being
+        # deleted as "the garment"; a transparent PNG with the design's own
+        # colour near the substrate is the most common real digitizing input
+        # there is.
+        if declared_mask is None and float(np.linalg.norm(center.astype(float) - substrate)) < SUBSTRATE_DELTA:
             # The garment is not a thread (v2 Part 41). A cluster the colour of
             # the cloth is the cloth showing between the design's elements, and
             # stitching it lays thread over bare fabric: measured on the black
@@ -1125,8 +1168,13 @@ def digitize_image(
         # child's own, which is correct for the design it returns).
         drop_snapshot = list(_DROP_LOG)
         cls_snapshot = list(_CLASSIFICATION_LOG)
+        # `substrate_color` travels with the retry: it is the caller's statement
+        # about the garment, not a property of this attempt, and dropping it
+        # here would have the retry delete different artwork than the first pass.
         retry = digitize_image(data, fabric_type, hoop_size, max_colors,
-                               min_region_mm2, text_mode, _texture_smooth=True)
+                               min_region_mm2, text_mode,
+                               substrate_color=substrate_color,
+                               _texture_smooth=True)
         retry_unc = _LAST_UNCOVERED_PX  # set by the recursive call
         _LAST_UNCOVERED_PX = uncovered_px
         if retry_unc <= uncovered_px - TEXTURE_RETRY_MIN_GAIN:
@@ -1139,6 +1187,23 @@ def digitize_image(
             return retry.model_copy(update={"warnings": [note, *retry.warnings]})
         _DROP_LOG[:] = drop_snapshot
         _CLASSIFICATION_LOG[:] = cls_snapshot
+    # SUBSTRATE REMOVAL GETS ITS OWN CHANNEL (DET3). This rule deletes artwork
+    # on the strength of a colour match, and until now it reported nothing at
+    # all: `substrate_owned` is subtracted from BOTH coverage bases (`owned` and
+    # `art_base`), so a design could lose a fifth of its foreground and every
+    # quality metric would still read as if it had sewn everything. Silence is
+    # not an option for a destructive default — say how much went, and which
+    # colour was blamed, and whether that colour was told to us or guessed.
+    substrate_removed_mm2 = round(substrate_px * mm_per_px * mm_per_px, 1)
+    if substrate_px:
+        user_warnings.append(
+            f"{substrate_removed_mm2:.0f}mm² of the image matched the garment "
+            f"colour {_bgr_to_hex(substrate)} and was left unstitched so the "
+            f"cloth shows through"
+            + ("." if substrate_declared else
+               " — that colour was read from the image border, not supplied. "
+               "If it is wrong, pass the garment colour to correct it.")
+        )
     if lost_share >= DROPPED_SHARE_WARN:
         user_warnings.append(
             f"About {lost_share:.0%} of the artwork is too small or too "
@@ -1217,4 +1282,10 @@ def digitize_image(
         # The grid every generator above actually ran on, so a later rebuild
         # can reproduce it instead of guessing (CTO verdict STEP 3).
         source_mm_per_px=round(float(mm_per_px), 6),
+        # Artwork deleted as "the garment", as a number rather than as prose
+        # (DET3). 0.0 means the rule removed nothing — including every input
+        # that declares its own foreground, where the rule does not run.
+        substrate_removed_mm2=substrate_removed_mm2,
+        substrate_color_used=_bgr_to_hex(substrate),
+        substrate_color_declared=substrate_declared,
     )

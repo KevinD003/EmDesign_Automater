@@ -160,6 +160,23 @@ export interface Design {
    * Absent on designs saved before this field existed.
    */
   warnings?: string[];
+  /**
+   * Artwork the digitizer left unstitched because it matched the garment
+   * colour, in mm² (DET3). The rule is right — you let the cloth show rather
+   * than cover it in its own colour — but it deletes artwork on a colour
+   * match, and its removal is subtracted from the coverage bases, so without
+   * this number a design could lose a fifth of its foreground while every
+   * quality metric still read as if it had sewn everything.
+   */
+  substrateRemovedMm2?: number;
+  /** The garment colour the removal above was judged against, `#RRGGBB`. */
+  substrateColorUsed?: string | null;
+  /**
+   * False means that colour was READ OFF THE IMAGE BORDER rather than
+   * supplied — a guess about the customer's garment that decides which of
+   * their artwork survives, and worth surfacing as correctable.
+   */
+  substrateColorDeclared?: boolean;
 }
 
 /** One row of the worksheet color sequence (spec §4.9). */

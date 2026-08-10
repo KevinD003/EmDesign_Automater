@@ -159,8 +159,15 @@ def test_digitize_seeds_before_any_random_work():
     seed_at = src.find("cv2.setRNGSeed(DIGITIZE_RNG_SEED)")
     assert seed_at != -1, "digitize_image no longer seeds the RNG"
 
-    decode_at = src.find("_decode_image_bgr(data)")
-    assert decode_at != -1
+    # Matched on "a decode of `data`", not on one function's name: DET3 replaced
+    # `_decode_image_bgr(data)` with `_decode_raster(data)` so the alpha channel
+    # survives as a declaration, and a name-pinned search would have silently
+    # found nothing and asserted -1 rather than failing loudly. The claim is
+    # about ORDER, so it should be pinned to the step, not the spelling.
+    decodes = [i for i in range(len(src))
+               if src.startswith("_decode_", i) and "(data)" in src[i:i + 40]]
+    assert decodes, "digitize_image no longer decodes `data` by any known name"
+    decode_at = min(decodes)
     assert seed_at < decode_at, (
         "the RNG seed must come before the image is even decoded, so no stage "
         "can consume foreign randomness"

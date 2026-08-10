@@ -7,6 +7,8 @@ from itertools import pairwise
 from app.services.digitizer.constants import (
     _CLASSIFICATION_LOG,
     _MAX_WORK_PX,
+    ALPHA_DECLARED_MIN,
+    ALPHA_OPAQUE_MIN,
     APPROX_EPS_MM,
     CHAIKIN_ITERS,
     COALESCE_REPAIR_PASSES,
@@ -119,6 +121,37 @@ def _parse_hoop(hoop_size: str) -> tuple[float, float]:
         return max(float(w), 10.0), max(float(h), 10.0)
     except Exception:  # noqa: BLE001 - bad input → default hoop
         return 100.0, 100.0
+
+
+def _parse_bgr(value):
+    """A caller-supplied colour as a float BGR triple (DET3).
+
+    Accepts ``"#RRGGBB"``, ``"RRGGBB"``, or any 3-sequence already in BGR.
+    Raises rather than falling back to a guess: a substrate the caller asked for
+    and did not get would delete different artwork than either party intended,
+    silently, which is the whole defect this parameter exists to close.
+    """
+    import numpy as np
+
+    if isinstance(value, str):
+        s = value.strip().lstrip("#")
+        if len(s) != 6:
+            raise ValueError(f"substrate_color must be #RRGGBB, got {value!r}")
+        try:
+            r, g, b = (int(s[i:i + 2], 16) for i in (0, 2, 4))
+        except ValueError as exc:
+            raise ValueError(f"substrate_color is not a hex colour: {value!r}") from exc
+        return np.array([b, g, r], np.float32)
+    seq = list(value)
+    if len(seq) != 3:
+        raise ValueError(f"substrate_color must have three channels, got {value!r}")
+    return np.array([float(c) for c in seq], np.float32)
+
+
+def _bgr_to_hex(bgr) -> str:
+    """A BGR triple as ``#RRGGBB``, for saying which colour was assumed."""
+    b, g, r = (max(0, min(255, round(float(c)))) for c in bgr[:3])
+    return f"#{r:02x}{g:02x}{b:02x}"
 
 
 def _border_color(img):
@@ -649,8 +682,8 @@ def _split_mask_by_line(mask, a_px, b_px):
     return pos, neg
 
 
-def _decode_image_bgr(data: bytes):
-    """Decode raster bytes to 3-channel BGR, or None if not a raster.
+def _decode_raster(data: bytes):
+    """Decode raster bytes to ``(bgr, declared_mask)``, or None if not a raster.
 
     IMREAD_UNCHANGED, not IMREAD_COLOR (CTO A15/N2): COLOR strips alpha, so a
     transparent background decodes as BLACK — and the corner-average
@@ -660,6 +693,30 @@ def _decode_image_bgr(data: bytes):
     outlines are the single most common real digitizing input, so the alpha
     plane is composited over white — transparent pixels become background the
     heuristic reads correctly, and dark ink stays ink.
+
+    THE ALPHA CHANNEL IS ALSO RETURNED, NOT JUST CONSUMED (DET3). Compositing
+    answers "what colour is this pixel" and throws away "is this pixel artwork",
+    which the file stated outright. That second answer is exactly what the
+    substrate rule downstream has to GUESS from the border colour, and the guess
+    is wrong in the one case that matters most: white artwork on a transparent
+    background composites to white, matches a white border, and is deleted as
+    "the garment" — silently, because the deletion is subtracted from the loss
+    bases too. An SVG's declared mask already exempts it from that rule; an
+    alpha channel is the same kind of declaration and now earns the same
+    exemption.
+
+    ``declared_mask`` is None when there is nothing to declare. A declaration
+    has to PARTITION the image — to say which pixels are artwork and which are
+    not — and an alpha channel fails that at either extreme:
+
+      fully opaque       what a great many exporters attach to artwork with no
+                         transparency at all. Says nothing about background;
+                         treating it as a declaration would exempt a large share
+                         of ordinary uploads from a rule they still need.
+      fully transparent  says nothing about which pixels are design either, and
+                         in practice is an empty image. Left as "no
+                         declaration" so such input takes exactly the path it
+                         always took.
     """
     import cv2
     import numpy as np
@@ -667,13 +724,30 @@ def _decode_image_bgr(data: bytes):
     img = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_UNCHANGED)
     if img is None:
         return None
+    declared = None
     if img.ndim == 3 and img.shape[2] == 4:
-        alpha = img[:, :, 3:4].astype(np.float32) / 255.0
+        a = img[:, :, 3]
+        if bool((a < ALPHA_OPAQUE_MIN).any()):
+            # Anything not (near-)transparent is artwork the file declares.
+            mask = (a >= ALPHA_DECLARED_MIN).astype(np.uint8) * 255
+            if bool(mask.any()):        # ...and a partition needs both sides
+                declared = mask
+        alpha = a[:, :, None].astype(np.float32) / 255.0
         img = (img[:, :, :3].astype(np.float32) * alpha
                + 255.0 * (1.0 - alpha)).astype(np.uint8)
     elif img.ndim == 2:  # grayscale → 3-channel
         img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
-    return img
+    return img, declared
+
+
+def _decode_image_bgr(data: bytes):
+    """`_decode_raster`'s image alone, for callers that do not want the mask.
+
+    Kept because this name is part of the package's exported surface and is
+    what the determinism suite pins the seed ordering against.
+    """
+    out = _decode_raster(data)
+    return None if out is None else out[0]
 
 
 def _uncovered_chunk_mm2(art_base, emitted_mask, mm_per_px: float) -> float:

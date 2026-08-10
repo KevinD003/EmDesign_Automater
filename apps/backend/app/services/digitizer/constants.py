@@ -234,6 +234,28 @@ SUBSTRATE_ENCLOSED_MAX_SHARE = 0.05
 SUBSTRATE_ENCLOSED_MAX_MM2 = 40.0
 SUBSTRATE_DELTA = 12.0
 
+# ── The alpha channel as a DECLARATION of what is artwork (DET3) ─────────────
+# Everything above is a heuristic answering "is this pixel the garment or the
+# design?" from the border colour. When the file carries an alpha channel it has
+# already answered, and the answer does not need guessing — the same reasoning
+# that exempts SVG input, which has a declared mask rather than a matte.
+#
+# Two thresholds, not one, because they decide different things:
+#
+#   ALPHA_OPAQUE_MIN    is there a declaration here AT ALL? A fully opaque alpha
+#                       channel (every pixel 255) is what a great many exporters
+#                       emit for artwork with no transparency, and it says
+#                       nothing about what is background — treating it as a
+#                       declaration would exempt every such file from a rule it
+#                       still needs. So a declaration exists only if SOME pixel
+#                       is meaningfully transparent.
+#   ALPHA_DECLARED_MIN  given a declaration, which pixels are artwork. Kept low
+#                       so anti-aliased edges — which is where alpha spends most
+#                       of its intermediate values — stay inside the declared
+#                       region rather than being shaved off it.
+ALPHA_OPAQUE_MIN = 250
+ALPHA_DECLARED_MIN = 8
+
 # The colour planner's seed cap (v2 Part 59, making a long-standing literal
 # explicit). Planning has used min(max_colors, 8) since the k-means planner
 # landed; Part 57 measured that requests above it are inert — max_colors=12 and

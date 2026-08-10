@@ -253,6 +253,20 @@ class Design(CamelModel):
     # — imported stitch files have no raster — and rebuild falls back to its own
     # choice, which is exactly the previous behaviour.
     source_mm_per_px: float | None = None
+    # Artwork the digitizer deleted as "the garment" (DET3). The substrate rule
+    # leaves regions matching the cloth colour unstitched so the fabric shows
+    # through, which is right — but `substrate_owned` is subtracted from BOTH
+    # coverage bases, so before these fields a design could lose a fifth of its
+    # foreground with every quality metric still reading 100%. The removal now
+    # has somewhere to be reported.
+    #
+    # `substrate_color_declared` False means the colour was READ OFF THE IMAGE
+    # BORDER rather than supplied — a guess about the customer's garment that
+    # decides which of their artwork survives. Defaults keep every design saved
+    # before this field loading unchanged.
+    substrate_removed_mm2: float = 0.0
+    substrate_color_used: str | None = None
+    substrate_color_declared: bool = False
 
 
 class WorksheetColorRow(CamelModel):
