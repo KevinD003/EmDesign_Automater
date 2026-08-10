@@ -206,6 +206,8 @@ new functions (1), the skeleton lock (15), and the three below.
 | fixture 08 density | `max_per_cell` 12 → **13** (flag 14). One cell: the hottest moved 0.4 mm and gained a penetration at a lock site. **p99 unchanged at 5, `flagged_cells` still 0** — not a density shift. Measured on both segmentation paths (13 with rembg, 12 without) and the pin brackets both. Recorded loudly because **the margin to the flag is now one**; a 14 here later must be investigated, not re-pinned. |
 | Stream locks | re-pinned through the STEP 3d band gate |
 | Visual baselines | re-pinned, all ten |
+| Local suite | **1,186 passed / 2 skipped** (default lane) · **1,180 passed / 8 skipped** (`STITCHIQ_NO_REBUILD_PASSTHROUGH=1`) |
+| Remote CI, commit `c9fe26d` | **fully green** — frontend typecheck/vitest/build, both backend lanes, and `verify_lint_claim.py`. [Run 31345545388](https://github.com/KevinD003/EmDesign_Automater/actions/runs/31345545388) |
 
 ### Bands re-cut, not carried over
 
