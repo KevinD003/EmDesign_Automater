@@ -45,3 +45,9 @@ apps/backend/scripts/corpus100*.json
 # look at, never something to check in.
 apps/backend/tests/visual/diffs/
 apps/backend/tests/visual/contact-sheet.png
+
+# The real-job comparison harness writes here (scripts/compare_expert.py). The
+# self-test sheet is regenerated on every run and carries no information between
+# runs; a real job's sheet is worth keeping and is committed by name when there
+# is one, rather than by sweeping in whatever the last run happened to produce.
+docs/benchmarks/real-jobs/self-test.png
