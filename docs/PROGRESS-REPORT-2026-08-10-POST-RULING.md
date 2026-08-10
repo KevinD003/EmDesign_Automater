@@ -2,7 +2,17 @@
 
 **For review.** Self-contained: a reviewer needs this file, `CTO-RULING-2026-08-10.md` (the
 instructions being executed) and `CONSOLIDATED-REPORT-2026-08-10.md` (the state before it). Picks up
-exactly where the ruling left off and covers everything to `ecad056`.
+exactly where the ruling left off and covers everything to `224b850`.
+
+## Revision 3 — what changed since revision 2
+
+Revision 2 was reviewed. Since then:
+
+1. **The reviewer corrected their own Q4 ruling, twice**, and the second correction invalidated a whole
+   work item. Recorded in §8; the item is closed in §7.1.2.
+2. **Item 1 of the revised order — the real-artwork landing site — is complete**, in four commits.
+   New §9.
+3. **A new standing rule** on stating fixture limits, generalised from process failure #5. §10.
 
 ## Revision 2 — what changed since the version that was reviewed
 
@@ -46,9 +56,12 @@ code path it measured.
 | 2 | `bedc998` | UP1 — satin's per-side pull compensation, both halves | priority 2 |
 | 3 | `9918397` | DET3 — substrate removal, all four parts | priority 3 |
 | 4 | `ecad056` | DET3 completion — a declared foreground **is** the foreground; + ruling Q2 | revised order 1 |
+| 5 | `0361344` | corpus reproducible from the repository; dead `stitch_start` removed | landing site |
+| 6 | `1551fc4` | real job-pair loader + expert comparison harness | landing site |
+| 7 | `224b850` | fabric axis on the bench | landing site |
 
-All four are shipped-code changes affecting every upload. Both CI lanes were run to completion
-before each commit; no commit was pushed on a partial verification.
+Commits 1–4 are shipped-code changes affecting every upload; 5–7 are the instrument. Both CI lanes
+were run to completion before each commit; no commit was pushed on a partial verification.
 
 | commit | lane 1 (default) | lane 2 (`STITCHIQ_NO_REBUILD_PASSTHROUGH=1`) |
 | --- | --- | --- |
@@ -56,6 +69,13 @@ before each commit; no commit was pushed on a partial verification.
 | `bedc998` | 1221 passed | 1215 passed |
 | `9918397` | 1229 passed | 1223 passed |
 | `ecad056` | 1231 passed | 1225 passed |
+| `0361344` | 1231 passed | 1225 passed |
+| `1551fc4` | 1252 passed | 1246 passed |
+| `224b850` | 1258 passed | 1252 passed |
+
+`1551fc4` and `224b850` were split rather than committed together, because the lanes that verified
+the harness had **started before** the fabric-axis files were copied in and never collected their
+tests. Committing both on that evidence would have claimed verification that did not exist.
 
 ---
 
@@ -417,6 +437,21 @@ rest credible.
    read the count difference and inferred a defect instead of reading the function that produces it.
    Corrected in §7.1.2, along with the real defect sitting next to it.
 
+7. **I derived work from an impossible specification without checking it.** The harness spec said
+   "per-object stitch-type agreement against an expert machine file". I wrote that this was *blocked*
+   by attribution, planned the work, and reported it as a priority item — never once asking what a
+   DST actually contains. It contains no objects. The measurement could not have existed at any
+   priority. The moment to have caught it was when I wrote the word "blocks": a claim that X blocks Y
+   is a claim about Y, and I had not looked at Y.
+
+8. **I made the render-alignment decision wrong in both directions.** First an ink test of "darker
+   than white" on a canvas that is (222, 228, 232) — every channel already under 250 — so the whole
+   canvas read as ink. Then, fixing that, I registered the two renders on absolute millimetres, which
+   is wrong for comparing against a machine file whose coordinates are relative to its own origin.
+   The second error was caught only because I had written a test asserting a pure translation must
+   not register as a difference; without it, the harness would have shipped producing plausible,
+   entirely fictional difference images on the first real job.
+
 ---
 
 ## 7. Open items
@@ -427,8 +462,20 @@ rest credible.
    trees, untouched by anything here, and the larger half of the corpus's worst density site. Never
    examined. This is a satin column geometry question — the inner side of a tight turn re-using its
    pivot — not a flag-level question.
-2. **Per-object stitch attribution for the comparison harness.** *(Premise corrected — revision 1
-   had this wrong.)*
+2. **Per-object stitch attribution — CLOSED, not done. No consumer can exist.**
+   *(Premise corrected twice: once by me in revision 2, once by the reviewer, whose correction
+   invalidated the item entirely.)*
+
+   **Revision 3 resolution.** The consumer this was for cannot exist. A DST carries no object
+   metadata and a PES carries colour blocks and nothing else, so **there is no expert-side object to
+   agree with**. The specification that generated this work — "per-object stitch-type agreement
+   against an expert machine file" — asked for a measurement that no machine file can supply. I
+   derived work from it without checking what the expert side actually contains, which I should have
+   done the moment I wrote "blocks the comparison harness".
+
+   Deferred indefinitely. The one real action was carried out in `0361344`: the dead
+   `stitch_start=obj_start` argument is removed, since it claimed provenance that was silently
+   discarded. The paragraphs below record what was true when it was diagnosed.
 
    Revision 1 reported `sum(object.stitch_count)` = 8,001 against 8,091 actual penetrations as
    "per-object counts are wrong somewhere". **They are not.** The 90 are lock stitches — tie-offs
@@ -469,7 +516,7 @@ rest credible.
   goes after the physical-units tranche because SH2 and that tranche both move streams.
 - **Stays open, unabsorbed**: 5.2 (+6 trim divergence), 5.4 (knockout policy), 5.5 (veto dissent).
 
-### 7.3 Diagnosed but not yet fixed — `build_corpus100.py`
+### 7.3 `build_corpus100.py` — **FIXED in `0361344`**, see §9.2
 
 Read during this stretch; the fix is not written. `tier_a()` reads the three real photographs from a
 **hardcoded session scratchpad path**, not from the tracked copies already in the repo at
@@ -497,25 +544,159 @@ Revision 1's four questions were answered. Recorded here so the decisions travel
 | Q1 — 3e-i | **Defer, as landed.** A 46-stitch object at ±7 % on a contour round trip is noise. 3e-i's only safety property is "must not change either path's stream", and SH2 *and* the physical-units contract both move streams — so 3e-i goes **after** the physical-units tranche. | accepted, no change needed |
 | Q2 — density gate | **Primary bound moves to the grid-free `max_per_disc`; keep the revisit discriminator; keep `p99_per_cell <= 6` verbatim.** `max_per_cell` is a grid artefact by construction. | **done, `ecad056`** (§5.5) |
 | Q3 — veto statistic | **Neither `areaW` nor `true_w`.** Use the local-thickness area-over-cap fraction, `dilate(EDT > cap/2, disk(cap/2))`. Measured separation: **0.000000** on all 13 correctly-classified satins, **0.558–0.798** on all 4 misclassified, **0.894–1.000** on all 8 tatami — any threshold in 0.01–0.55 is identical, so take the middle. `areaW` is a dispersion statistic computed from the same density-biased samples as the median it is meant to check, and it **fires on two correctly-classified tatami objects** (07 seq 1 at 1.38, seq 10 at 1.49); it agreed with my three satins by luck. Ship with a regression asserting 0.000000 on the 13 known-good satins so corpus growth cannot erode the margin. | pending, after the physical-units tranche |
-| Q4 — attribution | **Pull ahead of SH2.** It blocks the comparison harness, which is the instrument for the binding constraint. | next (§7.1.2, premise corrected) |
+| Q4 — attribution | **RETRACTED BY THE REVIEWER.** Originally "pull ahead of SH2, it blocks the comparison harness". Two errors, both acknowledged as theirs: the 90 stitches ruling was made on my wrong diagnosis without verifying it; and, worse, **the harness specification it served asked for a measurement that cannot exist** — per-object agreement against a file format that carries no objects. | **closed, not done** (§7.1.2) |
+
+**Q4's retraction changed the spec, not just the order.** The harness now compares at the two
+granularities both sides genuinely have — design level and colour-block level — plus a rendered
+side-by-side and difference image. Explicitly **not** per-object. Built to that spec in `1551fc4`
+(§9.4).
 
 **On §4.3 (the all-cotton bench), escalated by the reviewer:** it is a corpus defect worth more than
 revision 1 gave it. The bench cannot see *any* fabric-dependent behaviour — it understated UP1 by
 2.5× and will understate the entire physical-units contract the same way. A fabric axis must exist
-before that tranche or it will be tuned blind. **Plan:** fold the fabric axis into the landing-site
-work (order item 3) rather than leaving it to the tranche itself, so the instrument exists before it
-is needed.
+before that tranche or it will be tuned blind. **Done in `224b850`** (§9.5), folded into the landing
+site so the instrument exists before it is needed — and it immediately showed that every headline
+number in this series is a cotton number.
 
-### Revised order
+### Revised order (current)
 
-1. ~~DET3 completion (anti-aliased alpha)~~ — **done, `ecad056`** (§5.4)
-2. Per-object stitch attribution (§7.1.2)
-3. Real-artwork landing site — loader, comparison harness, `build_corpus100.py` reproducible
-   (§7.3 diagnosis is complete; the fix is to be written) **+ the fabric axis**
-4. SH2, with `TEXTURE_RETRY_UNCOVERED` re-derived
-5. The physical-units contract as its own tranche, re-pinned above a 133 mm hoop
+1. ~~Real-artwork landing site + the fabric axis~~ — **done**, `0361344` / `1551fc4` / `224b850` (§9)
+2. **SH2**, with `TEXTURE_RETRY_UNCOVERED` re-derived rather than assumed ← **in progress**
+3. The physical-units contract as its own tranche, re-pinned above a 133 mm hoop
 
 Then the veto (Q3 statistic), then 1c, then 3e-i.
 
+Superseded: DET3 completion (done, `ecad056`) was item 1 of the previous order; per-object
+attribution was item 2 and is now closed as having no possible consumer.
+
 Unchanged and still open, unabsorbed: 5.2 (+6 trim divergence), 5.4 (knockout policy), 5.5 (veto
-dissent).
+dissent), and `Satin 1`'s column-end pivot (§7.1.1) — the larger half of the corpus's worst density
+site, still never examined.
+
+---
+
+## 9. Item 1 of the revised order — the real-artwork landing site
+
+Complete, in four parts across three commits. **Nothing is tuned against real artwork; there is
+none.** A test asserts the harness carries no thresholds and no pass/fail, so it cannot quietly
+acquire an opinion before the material arrives.
+
+To use it: drop `tests/fixtures/corpus_real/<job-name>/artwork.png` beside `expert.dst` and run
+`scripts/compare_expert.py`.
+
+### 9.1 The dead provenance line (`0361344`)
+
+`pipeline.py` passed `stitch_start=obj_start` into `DesignObject` with a comment claiming it recorded
+"where this object's stitches are". `DesignObject` has no such field, so Pydantic's default
+`extra="ignore"` discarded it **silently** — verified absent from `model_fields`, `hasattr` False.
+Removed rather than implemented: the index would be invalidated anyway by `_lock_stream`, which
+inserts tie-offs into the assembled stream afterwards, and the B1.5 pass-through has always worked
+off `params_hash` alone.
+
+### 9.2 The corpus is reproducible from the repository (`0361344`)
+
+§7.3's diagnosis was correct. Fixed, and **measured on a fresh `git worktree` checkout**:
+
+| tier | fresh checkout, before | after |
+| --- | --- | --- |
+| A-real | 10 (photos silently skipped) | **13** |
+| B-real-derived | **0** (silently — `tier_b` returned on empty `reals`) | **40** |
+| C-parametric | 90 | **47** |
+
+**Verified claim:** two independent fresh checkouts now produce **byte-identical corpora, all 101
+files**. The tier split is asserted as 13/40/47 rather than printed, and every manifest entry is
+checked to have an image on disk — the case that used to pass silently.
+
+**A second defect, worse, found by testing the first.** Tier C **could not be generated at all**, by
+anyone, from this repository. `_contrasting()` sorts the palette by *descending* distance from the
+canvas, so `pal[3]` is by construction the **least** contrasting entry — and `hairline_linework` drew
+its only ink from `pal[3]`. The helper written to stop blank fixtures was guaranteeing one: on
+`PALETTES[1]` against white it resolves to (250, 250, 250), and `_write`'s blank guard correctly
+aborted the build at `C01`. Confirmed **pre-existing** by running the unmodified script from `HEAD`,
+which fails identically — so the per-tier RNG split did not cause it. The 47 tier-C images on disk
+predate the helper.
+
+### 9.3 The loader (`1551fc4`)
+
+Real pairs live in their own tier, `R-real-job`, with no path by which they can be averaged into
+corpus100's A/B/C — whose own docstring warns that a tier-C average must never be read as a
+real-world score. Half a pair **raises rather than skips**, for the same reason `build_corpus100.py`
+now refuses a missing tier-A source.
+
+### 9.4 The comparison harness (`1551fc4`)
+
+Built at the two granularities **both sides genuinely have**, per the revised spec — design level
+(stitch count, colour count, machine-minutes net of trim, trims, jumps, bounding box, and our own
+coverage metric run over the **expert's** stream as well) and colour-block level (per-block stitch
+count, extent, thread colour, matched nearest-colour then by spatial overlap) — plus a rendered
+side-by-side and difference image. `TRIM_SECONDS`, `RNG_SEED` and `coverage_metrics` are **imported**
+from the bench rather than restated.
+
+**Three bugs its 21 tests found, all in this code, after its own self-test had passed:**
+
+1. **`job.json` was read as the machine file.** `_expert_exts()` asks pyembroidery what it can read,
+   and pyembroidery reads a `.json` stitch format — so a job's own metadata matched as a machine file
+   and **every job carrying one** failed with "2 machine files". The first real job with metadata
+   would have hit it.
+2. **Render alignment, decided wrongly twice.** Ink was first detected as "darker than white" — but
+   the canvas is `FABRIC_BGR` (222, 228, 232), every channel under 250, so the whole canvas counted
+   as ink and the difference image was uniformly "both". Fixing that, I then registered the two
+   renders on **absolute millimetres**, which is wrong here: a DST stores coordinates relative to its
+   own origin, so where an expert placed the design in the hoop is a property of their file, not
+   their stitching. **Measured: a pure 7 mm translation read as 23.6 % disagreement** — the outline
+   drawn twice, a picture of nothing. Now aligned on bounding-box centre, with the cost stated in the
+   docstring: a placement difference is invisible in the image and appears in the `width_mm` /
+   `height_mm` deltas instead, where it belongs.
+3. **A test of mine matched its own docstring.** The check that blocks are not read from
+   `design.objects` tripped on the prose "the expert side has no objects". Asserted on the AST now.
+
+### 9.5 The fabric axis (`224b850`)
+
+Three fixtures × six fabrics spanning the whole 0.15–0.50 mm pull range.
+
+| fixture | denim → fleece | driver |
+| --- | --- | --- |
+| 05_wordmark_caps | p90 step **3.8750 → 4.5178** | pull compensation reaching the satin columns (UP1) |
+| 01_flat_2color_logo | **6,200 → 4,913** stitches | `row_mm` 0.40 → 0.55 |
+| 07_circular_badge | **17,178 → 14,160** stitches; **22.64 → 18.78** machine-minutes | same |
+
+**This finding outlives the task: every headline number in this engagement is a cotton number.** Fill
+stitch counts move 17–21 % with fabric. The **22.65 machine-minute** badge figure quoted throughout
+this series sits near the top of a 21 % range. Nothing reported was wrong; nothing carried its fabric
+label either — and the physical-units tranche will move each fabric differently.
+
+**A trap pinned rather than left to mislead:** `p90_step_mm` is **flat across every fabric** on
+fill-dominated fixtures (3.9750 on 01, 3.9975 on 07). That is not a broken measurement — fill rows
+are split at a fixed maximum stitch length, so the 90th percentile sits *on* that cap regardless of
+fabric. `median_step_mm` is the fabric-sensitive column for fills. A test asserts the flatness **and**
+says that if it ever changes, the premise needs rewriting rather than the assertion loosening.
+
+Six tests assert the axis **discriminates**, because an axis whose numbers do not move with fabric
+would look like coverage while providing none.
+
+---
+
+## 10. New standing rule — state the fixture's limits
+
+Generalised from process failure #5 at the reviewer's direction:
+
+> Every headline number states the **limits of the fixture that produced it** — what about the input
+> was chosen, and what a realistic input would have that this one does not. If you cannot name a way
+> your fixture is unlike real artwork, you have not looked hard enough.
+
+It has already produced four defects that passed their own tests. Applied to §9:
+
+- **§9.2** — the reproducibility check ran on one machine against pinned
+  `opencv-python-headless==5.0.0.93` and `numpy==2.4.6`. It shows the corpus is reproducible *from
+  the repository rather than from a scratchpad*; it does **not** show byte-identity across OpenCV
+  versions, since PNG encoding and `INTER_CUBIC` are implementation-defined.
+- **§9.4** — every test runs on `07_circular_badge`, a synthetic 4-colour flat design digitized by
+  **us**. Nothing has seen a real DST, a real expert's file, or a photograph. These verify the
+  instrument *reads* correctly; block matching has only met blocks we generated, which are cleaner
+  than an expert's.
+- **§9.5** — the sweep uses three synthetic bench fixtures at their existing hoops, and **every
+  fabric in it is a profile we defined**. It proves the axis detects fabric dependence; it says
+  nothing about whether our fabric parameters are right, because no real garment has been sewn or
+  measured.
+
+---
