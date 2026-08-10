@@ -1,5 +1,10 @@
 # StitchIQ engine — full review handoff, 2026-08-10
 
+> **SUPERSEDED by `docs/CONSOLIDATED-REPORT-2026-08-10.md`.** That document contains everything here
+> plus the earlier reports and everything since, with six factual errors corrected. **Two of those
+> errors are still present below** and are corrected inline where they appear. Read the consolidated
+> report instead; this file is kept only so the correction has something to point at.
+
 **For a reviewing Claude.** This covers everything from the last report through to the current state,
 including the things that went wrong. Written to be checked, not believed: every number below has a
 command beside it or is labelled as unverified.
@@ -50,13 +55,18 @@ is sewn to completion; cells are visited nearest-first.
 | | badge (07) |
 |---|---|
 | machine-minutes, net of trim cost | **47.0 → 22.65** |
-| stitches | 35,077 → 17,181 |
+| stitches | 35,077 → 17,183 |
 | trims | 76 → 28 |
 | corpus digitize stitches | 97,590 → 65,004 (−33.4%) |
 | coverage, all ten fixtures, both paths | 99.3–100%, none lost |
 
-Isolated on a 300px annulus: **2,151 points before and after** — pure reordering, no coverage
-removed — while total jump distance fell 13,059.6px → 233.9px and hole crossings 68 → 0.
+Isolated on a 300px annulus: **2,149 points before and after** — pure reordering, no coverage
+removed — while total jump distance fell 3,968.1px → 233.9px (−94.1%) and hole crossings 24 → 0.
+
+> **CORRECTED.** This paragraph said 2,151 points, 13,059.6px and 68 crossings. Those came from a
+> REIMPLEMENTATION of the pre-1b algorithm, not from running it — the probe toggled direction per
+> segment and skipped `segs.sort()`, overstating the defect 3.3×. Above is measured by executing
+> `fills.py` at `98ce364`.
 
 Independently reproduced by the CTO with a different coverage metric (0.4mm thread @ 8px/mm vs the
 series' 0.35mm @ 6px/mm): 17,162 st / 22.54 min / 100.0%.
@@ -91,17 +101,19 @@ The "100-design corpus" is **not** 100 designs of variety:
 
 **There are 3 real photographs in the entire backend test suite** — user-supplied embroidery
 sew-outs: a peacock patch, a black floral neckline, a floral neckline panel. A fourth committed
-file, `reference_sewout.jpg`, is a pixel-identical duplicate of one of them. The three originals came
-from a scratch directory that no longer exists, so `build_corpus100.py` **cannot be re-run on a fresh
-checkout**.
+file, `reference_sewout.jpg`, is a pixel-identical duplicate of one of them. `build_corpus100.py` **cannot be re-run on a fresh checkout**: its three source photographs live in
+an ephemeral session scratch directory outside version control, and the script hard-aborts even with
+them present. *(An earlier version of this paragraph said the directory no longer exists. It does,
+and holds all three files. The conclusion held; the stated cause was invented.)*
 
 The build engineer repeated the corpus's own tier labels without checking inside them, and told the
 owner "13 real". That was wrong in the way that matters.
 
 **Consequence for any reviewer:** a green suite and a clean corpus diff say the code did not break
 what already worked. They say very little about a photograph the pipeline has never seen. The scale
-gap is stark — the badge everything was tuned on is 17,181 stitches / 22 objects; the real peacock
-photo is 42,449 stitches / 335 objects.
+gap is stark — the badge everything was tuned on is 17,183 stitches / 22 objects; the real peacock
+photo is 42,449 stitches / 335 objects (2026-08-10 baseline run; that JSON is in session scratch,
+not the repo).
 
 ---
 

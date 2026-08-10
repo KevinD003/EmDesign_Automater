@@ -1,5 +1,9 @@
 # Handoff — StitchIQ digitizing engine, 2026-08-10
 
+> **SUPERSEDED by `docs/CONSOLIDATED-REPORT-2026-08-10.md`.** Numbers in this file predate a
+> fact-check that corrected six of them; the annulus figures below (2,151 points / 13,059.6px /
+> 98.2%) are among the wrong ones — the real values are 2,149 / 3,968.1px / −94.1%.
+
 **For whoever picks this up next.** Everything below is measured unless it says otherwise. Where a
 number is a guess I have labelled it a hypothesis, and there are two of those still open. Believe the
 labels — a good deal of this engagement was spent discovering that plausible explanations were wrong.
