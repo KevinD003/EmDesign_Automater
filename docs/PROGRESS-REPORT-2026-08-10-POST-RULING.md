@@ -654,16 +654,42 @@ from the bench rather than restated.
 
 Three fixtures × six fabrics spanning the whole 0.15–0.50 mm pull range.
 
-| fixture | denim → fleece | driver |
-| --- | --- | --- |
-| 05_wordmark_caps | p90 step **3.8750 → 4.5178** | pull compensation reaching the satin columns (UP1) |
-| 01_flat_2color_logo | **6,200 → 4,913** stitches | `row_mm` 0.40 → 0.55 |
-| 07_circular_badge | **17,178 → 14,160** stitches; **22.64 → 18.78** machine-minutes | same |
+> **CORRECTION (revision 4).** Revision 3 and commit `224b850` gave the badge as
+> "denim → fleece **17,178 → 14,160** stitches, 22.64 → 18.78 machine-minutes". **14,160 / 18.78 is
+> JERSEY, not fleece.** I quoted the minimum across the six fabrics and labelled it with the fabric I
+> expected to be the minimum. Fleece is **14,464 / 19.08**. Caught by the reviewer reproducing the
+> sweep independently and getting a different fleece figure.
+>
+> This is precisely the failure the labelling directive targets, committed in the same commit that
+> established the need for labelling. A number is not safe because it is measured; it is safe when it
+> carries what it is a measurement *of*.
 
-**This finding outlives the task: every headline number in this engagement is a cotton number.** Fill
-stitch counts move 17–21 % with fabric. The **22.65 machine-minute** badge figure quoted throughout
-this series sits near the top of a 21 % range. Nothing reported was wrong; nothing carried its fabric
-label either — and the physical-units tranche will move each fabric differently.
+All figures below re-run on the shipped code at `224b850`, at each fixture's own bench hoop:
+
+| fixture | hoop | denim (`pull` 0.15) | fleece (`pull` 0.50) | full range across all six |
+| --- | --- | --- | --- | --- |
+| 05_wordmark_caps | 130×180 | p90 step 3.8750 | p90 step **4.5178** | 3.8750 – 4.5178 |
+| 01_flat_2color_logo | 100×100 | 6,200 st / 7.88 min | **4,913 st / 6.27 min** | 4,913 – 6,200 st |
+| 07_circular_badge | 130×180 | 17,178 st / 22.64 min | **14,464 st / 19.08 min** | 14,160 (jersey) – 17,178 (denim) st; 18.78 – 22.64 min |
+
+> **A second correction, thirty minutes after the first.** The table above initially said 100×100 for
+> all three fixtures. Two of them run at 130×180. I was caught by the labelling guard written in
+> response to the *first* error — `run_quality_bench` now prints `[fabric @ hoop]` on every line, and
+> the badge came back `[cotton @ 130x180]` while my table said otherwise.
+>
+> Two labelling errors in two hours, in the corrections to a labelling problem. That is the argument
+> for the structural guard rather than for care.
+
+**This finding outlives the task: every headline number in this engagement is a cotton number.**
+The badge's machine-minutes run **18.78 – 22.64** across the six fabrics — a 3.86-minute spread,
+17.0 % of the maximum. Denim → fleece alone is 22.64 → 19.08, 15.7 %. The **22.65 machine-minute**
+figure quoted throughout this series is the *cotton* reading (22.63 at this hoop), and it sits near
+the top of that band. Nothing reported was wrong; nothing carried its fabric label either — and the
+physical-units tranche will move each fabric differently.
+
+Note also that **fleece is not the minimum**: jersey is, on the badge, despite a lower `pull_mm`.
+Fabric response is not monotone in pull, because `row_mm` and `satin_mm` move too — another reason a
+single-fabric number cannot be extrapolated.
 
 **A trap pinned rather than left to mislead:** `p90_step_mm` is **flat across every fabric** on
 fill-dominated fixtures (3.9750 on 01, 3.9975 on 07). That is not a broken measurement — fill rows

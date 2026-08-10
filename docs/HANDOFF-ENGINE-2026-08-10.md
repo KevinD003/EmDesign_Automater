@@ -1,5 +1,15 @@
 # Handoff — StitchIQ digitizing engine, 2026-08-10
 
+> **MEASUREMENT CONDITIONS.** Every stitch count and machine-minute figure in this document was
+> measured on **cotton**, at each fixture's bench hoop — `07_circular_badge` and most others at
+> **130×180**, `01_flat_2color_logo` and `04_thin_line_outline` at **100×100**. That was the only
+> fabric the bench could run until `224b850` added a fabric axis, and it is not a neutral choice:
+> re-measured across six fabrics at the same hoops, the badge spans **18.78–22.64 machine-minutes**
+> and **14,160–17,178 stitches**. Fabric alone moves the headline by ~17%, so a figure below is a
+> point on that band, not a property of the design. `run_quality_bench` now refuses to print a
+> headline without its fabric and hoop.
+
+
 > **SUPERSEDED by `docs/CONSOLIDATED-REPORT-2026-08-10.md`.** Numbers in this file predate a
 > fact-check that corrected six of them; the annulus figures below (2,151 points / 13,059.6px /
 > 98.2%) are among the wrong ones — the real values are 2,149 / 3,968.1px / −94.1%.
@@ -39,7 +49,7 @@ Corpus, canonical bench parameters (`scripts/run_quality_bench.py :: FIXTURE_PAR
 | | before this engagement | now |
 |---|---:|---:|
 | corpus stitches | 97,590 | **65,004** |
-| badge (07) machine-minutes | 47.0 | **22.65** |
+| badge (07) machine-minutes, cotton @ 130×180 | 47.0 | **22.65** |
 | badge trims | 76 | 28 |
 | coverage, all ten, both paths | 99.1–100% | **99.3–100%** |
 | digitize/rebuild ratio within 5% | 8 of 10 | **9 of 10** |
@@ -114,7 +124,7 @@ Options, in my order of preference, none started:
    object model, `params_hash` provenance, B2's transforms.
 2. **Per-branch decisions within one object.** Smaller, but makes `stitch_type` a lie at object level
    and the Studio shows `stitch_type` to the user.
-3. **Leave it.** Coverage is 100%, the badge is 22.65 min, this costs ~155 travel stitches and five
+3. **Leave it.** Coverage is 100%, the badge is 22.65 min (cotton @ 130×180), this costs ~155 travel stitches and five
    over-20 mm jumps.
 
 **The survey is done and it weakens option 3.** 13 of 24 measurable objects are bimodal, so

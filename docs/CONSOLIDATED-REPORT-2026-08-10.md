@@ -1,5 +1,15 @@
 # StitchIQ digitizing engine — consolidated engagement report
 
+> **MEASUREMENT CONDITIONS.** Every stitch count and machine-minute figure in this document was
+> measured on **cotton**, at each fixture's bench hoop — `07_circular_badge` and most others at
+> **130×180**, `01_flat_2color_logo` and `04_thin_line_outline` at **100×100**. That was the only
+> fabric the bench could run until `224b850` added a fabric axis, and it is not a neutral choice:
+> re-measured across six fabrics at the same hoops, the badge spans **18.78–22.64 machine-minutes**
+> and **14,160–17,178 stitches**. Fabric alone moves the headline by ~17%, so a figure below is a
+> point on that band, not a property of the design. `run_quality_bench` now refuses to print a
+> headline without its fabric and hoop.
+
+
 **One document, whole engagement.** Every prior report is folded in here in order, with later
 corrections applied in place, so a reviewer never reads a claim that was subsequently retracted.
 Where an earlier report said something now known to be false, this document says so and gives the
@@ -161,7 +171,7 @@ no coverage; it is pure reordering:**
 
 | | badge (07) |
 |---|---|
-| machine-minutes, net of trim | **47.0 → 22.65** (−52%) |
+| machine-minutes, net of trim (cotton @ 130×180) | **47.0 → 22.65** (−52%) |
 | stitches | 35,077 → 17,183 |
 | trims | 76 → 28 |
 | corpus digitize stitches | 97,590 → 65,004 (−33.4%) |

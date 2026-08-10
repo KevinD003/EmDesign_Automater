@@ -1,5 +1,15 @@
 # The classification smell — mechanism, before any fix
 
+> **MEASUREMENT CONDITIONS.** Every stitch count and machine-minute figure in this document was
+> measured on **cotton**, at each fixture's bench hoop — `07_circular_badge` and most others at
+> **130×180**, `01_flat_2color_logo` and `04_thin_line_outline` at **100×100**. That was the only
+> fabric the bench could run until `224b850` added a fabric axis, and it is not a neutral choice:
+> re-measured across six fabrics at the same hoops, the badge spans **18.78–22.64 machine-minutes**
+> and **14,160–17,178 stitches**. Fabric alone moves the headline by ~17%, so a figure below is a
+> point on that band, not a property of the design. `run_quality_bench` now refuses to print a
+> headline without its fabric and hoop.
+
+
 > ## ⚠ RETRACTION, 2026-08-10 — read this before anything below
 >
 > **§7's central premise is FALSE and its recommendation is withdrawn.** Three judges re-measured it
@@ -204,7 +214,7 @@ Three options, in my order of preference:
 2. **Let one object carry a per-branch decision** — satin on branches under the cap, fill on branches
    over it — instead of one verdict per object. Smaller change, keeps the object model intact, but
    makes `stitch_type` a lie at the object level and the Studio shows `stitch_type` to the user.
-3. **Leave it.** The current output is not broken: coverage is 100% and the badge is 22.65 min. This
+3. **Leave it.** The current output is not broken: coverage is 100% and the badge is 22.65 min (cotton @ 130×180). This
    object costs ~155 travel stitches and five over-20 mm jumps. On the corpus as it stands, the prize
    is small.
 

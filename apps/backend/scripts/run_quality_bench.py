@@ -406,6 +406,39 @@ def build_grid(results: list[FixtureResult], out_dir: Path, tag: str) -> Path:
     return path
 
 
+def _conditions(params: dict) -> str:
+    """``fabric @ hoop`` — refuses rather than printing a number without them.
+
+    THIS GUARD EXISTS BECAUSE OF A SPECIFIC FAILURE. Every number this bench has
+    ever printed was a COTTON number at one of two hoops, and none of them said
+    so. "22.65 machine-minutes" travelled through four reports and was quoted to
+    the owner as a headline improvement; measured across the fabric axis the same
+    fixture runs 18.78–22.64 minutes, so that figure is one point near the top of
+    a 17% band that fabric alone moves. Nothing was wrong; nothing was labelled.
+
+    Then the fabric axis's OWN summary mislabelled a badge figure as fleece when
+    it was jersey — in the same commit that established the need for labelling.
+    A number is not safe because it was measured. It is safe when it carries what
+    it is a measurement OF.
+    """
+    fabric = params.get("fabric")
+    hoop = params.get("hoop")
+    missing = [k for k, v in (("fabric", fabric), ("hoop", hoop)) if not v]
+    if missing:
+        raise SystemExit(
+            f"refusing to report a headline without {' and '.join(missing)}: "
+            f"{params!r}. An unlabelled number is how '22.65 minutes' became a "
+            f"fact — see `_conditions`."
+        )
+    return f"{fabric} @ {hoop}"
+
+
+def _headline(r: FixtureResult) -> str:
+    """One fixture's console line, conditions first."""
+    return (f"[{_conditions(r.params)}] {r.stitch_count:,} st · "
+            f"{r.color_count} colors · {r.object_count} obj · {r.runtime_s}s")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--tag", default="v1-baseline", help="output name/folder under docs/benchmarks (default: v1-baseline)")
@@ -429,10 +462,7 @@ def main() -> int:
         print(f"▸ {path.stem} … ", end="", flush=True)
         r = run_fixture(path, out_dir)
         results.append(r)
-        print(
-            f"ERROR {r.error}" if not r.ok
-            else f"{r.stitch_count:,} st · {r.color_count} colors · {r.object_count} obj · {r.runtime_s}s"
-        )
+        print(f"ERROR {r.error}" if not r.ok else _headline(r))
         (out_dir / f"{r.fixture}.json").write_text(json.dumps(asdict(r), indent=2) + "\n")
 
     grid = build_grid(results, out_dir, args.tag)
@@ -442,6 +472,17 @@ def main() -> int:
         "rng_seed": RNG_SEED,
         "fixture_count": len(results),
         "failed": [r.fixture for r in results if not r.ok],
+        # The conditions every number in this file was measured under. `totals`
+        # sums across fixtures, so without this the aggregate carries no record
+        # of the fabric or hoop it belongs to — and the aggregate is exactly what
+        # gets quoted. Computed through `_conditions`, so a fixture missing
+        # either one fails the run rather than producing an unlabelled total.
+        "conditions": {
+            "fabrics": sorted({r.params["fabric"] for r in results
+                               if _conditions(r.params)}),
+            "hoops": sorted({r.params["hoop"] for r in results}),
+            "per_fixture": {r.fixture: _conditions(r.params) for r in results},
+        },
         "totals": {
             "stitches": sum(r.stitch_count for r in ok),
             "objects": sum(r.object_count for r in ok),
