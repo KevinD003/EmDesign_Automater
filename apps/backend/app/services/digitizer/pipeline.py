@@ -38,6 +38,7 @@ from app.services.digitizer.constants import (
     DEFAULT_MAX_COLORS,
     DETAIL_DEFER_MAX_MM2,
     DETAIL_EMBED_SHARE,
+    DIGITIZE_RNG_SEED,
     DROPPED_SHARE_WARN,
     FILL_BORDER_MIN_MM2,
     FILL_UNDERLAY_ANGLE_OFFSET_DEG,
@@ -152,6 +153,32 @@ def digitize_image(
 
     import cv2
     import numpy as np
+
+    # DETERMINISM (CP1, 2026-08-10). The same upload MUST produce the same
+    # design, and before this line it did not.
+    #
+    # `_palette_centers` calls `cv2.kmeans(..., KMEANS_PP_CENTERS)` with no
+    # seed, so k-means++ draws from OpenCV's THREAD-LOCAL RNG. `routers/
+    # digitize.py` declares its handler with a plain `def`, so FastAPI runs it
+    # on the anyio threadpool, whose workers are reused — the RNG state carried
+    # from one customer's request straight into the next. Four byte-identical
+    # uploads on one worker returned 6/6/6/5 colour stops and
+    # 8,694/8,755/8,673/8,486 stitches: four different products from one file.
+    #
+    # Why it was never caught: every bench script and test calls
+    # `cv2.setRNGSeed(RNG_SEED)` BEFORE `digitize_image`, so the harness was
+    # supplying the determinism the library owed. Production had no harness.
+    # Seeding here moves that guarantee inside the library, where it belongs,
+    # and makes the result independent of whatever ran on this thread before.
+    #
+    # The constant is the harness's own RNG_SEED. That is deliberate: callers
+    # that already seed with it see byte-identical output, so this fix carries
+    # no re-pin and no baseline churn — it only removes the variation nobody
+    # wanted. A per-image seed was considered and rejected; the requirement is
+    # that one image always gives one answer, and a fixed seed states that
+    # plainly. `_split_bimodal_clusters` already seeds this way, which is why
+    # the SUB-split was reproducible while the main palette was not.
+    cv2.setRNGSeed(DIGITIZE_RNG_SEED)
 
     # Alpha-aware decode (CTO A15/N2) — rationale on _decode_image_bgr.
     img = _decode_image_bgr(data)

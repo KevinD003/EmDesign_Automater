@@ -795,6 +795,21 @@ SATIN_PREGATE_SLACK = 1.5
 SATIN_MAX_UNCOVERED = 0.35
 
 
+# Seed applied at the top of `digitize_image` so ONE UPLOAD ALWAYS YIELDS ONE
+# DESIGN (CP1, 2026-08-10). OpenCV's k-means++ draws from a THREAD-LOCAL RNG and
+# FastAPI reuses anyio threadpool workers, so without this a customer's result
+# depended on whose request ran before theirs on that thread. Measured on four
+# byte-identical uploads: 6/6/6/5 colour stops, 8,694/8,755/8,673/8,486 stitches.
+#
+# The value matches `run_quality_bench.RNG_SEED`, and that is load-bearing
+# rather than cosmetic: every bench script and test already seeds with it before
+# calling `digitize_image`, so seeding again inside with the same number leaves
+# the RNG exactly where those harnesses were putting it. Their output is
+# byte-identical, which is why closing this defect needs no re-pin. CHANGING
+# THIS NUMBER WILL MOVE EVERY COMMITTED BASELINE.
+DIGITIZE_RNG_SEED = 20260728
+
+
 TANGENT_WINDOW = 3        # samples each side used to estimate stroke direction
 
 
