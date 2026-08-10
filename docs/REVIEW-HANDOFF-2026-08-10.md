@@ -265,7 +265,14 @@ Real customer artwork. Everything provable today rests on **3 photographs**. A f
 uploads, run through `run_corpus100.py`'s measurement path and inspected by eye, would tell us more
 about production quality than any amount of work on the existing fixtures.
 
-A separate generalised competitor-gap investigation — colour selection, shading and gradients, shape
-fidelity, size scaling, underlay and pull compensation, stitch direction, silent detail loss — was
-run against this codebase; its ranked findings are the natural next document to read alongside this
-one.
+A separate generalised competitor-gap investigation ran against this codebase: 41 agents over eight
+quality dimensions, each finding independently re-checked by a second agent asked to refute it.
+**31 defects confirmed, all 31 verified as generalised.** Results in
+`docs/QUALITY-DEFECTS-2026-08-10.md` — read it next.
+
+The single most important one for a reviewer: **CP1, the colour plan is non-deterministic.**
+`cv2.kmeans` is called unseeded, drawing from OpenCV's thread-local RNG, and the digitize endpoint is
+a plain `def` so FastAPI dispatches it to a reused threadpool worker — RNG state carries from one
+customer's request to the next. Four byte-identical uploads on the same worker returned 5/7/6/7
+colour stops and 8,288/8,864/8,825/8,705 stitches. **This must be fixed before any other A/B
+measurement in this document can be trusted, including the parity trade-off in §3.**
