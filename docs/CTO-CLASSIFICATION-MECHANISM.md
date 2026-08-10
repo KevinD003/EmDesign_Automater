@@ -1,5 +1,39 @@
 # The classification smell — mechanism, before any fix
 
+> ## ⚠ RETRACTION, 2026-08-10 — read this before anything below
+>
+> **§7's central premise is FALSE and its recommendation is withdrawn.** Three judges re-measured it
+> independently — radial run-length over 1,440 rays, exact local thickness, and area distribution —
+> and all three agree: badge Satin 3 is a **single unbroken ~7.1mm ring over 82–84% of its
+> circumference**. Only 2.0–2.2% of its area sits in runs ≤3mm, and **no ray has a largest run
+> ≤3mm**. 80–89% of the area is over the cap.
+>
+> **There are no "letter-gap slivers that genuinely are satin".** That population does not exist. I
+> asserted it from a sector-median table without ever measuring run lengths, and the whole
+> "the object has two answers, so the unit is wrong" argument rests on it. Everything in §7 that
+> weighs preserving satin on those slivers is void.
+>
+> **§8's option 3 — "leave it, coverage is 100%" — is also wrong, and the error is mine twice
+> over.** My coverage metric (0.35mm at 6px/mm) was too coarse to see the failure. Measured on
+> emitted stitches, badge Satin 3 ships **6.96% bare fabric — 108mm², 14 patches, largest hole
+> 16.38mm²** — as a regular comb of radial slots. `08` seq 2 ships **12.95%**. Navy thread on cream
+> backing reads those slots as white. That is a shipping defect, not an acceptable trade.
+>
+> **What is still good below:** §§1–6 stand — the region is correctly segmented, the cap is correctly
+> set, `median_w` really is a sample-count median that fragmentation skews, `_extend_branch_ends` and
+> `SATIN_MAX_UNCOVERED` really are refuted, and Fill 2 really is the control that isolates the cause
+> to axis fragmentation. The diagnosis of *why the number is wrong* survives. My inference about
+> *what the shape is* did not.
+>
+> **Superseded by:** an **area-over-cap satin veto** in `generation.spine_satin` — veto when the
+> fraction of region area whose local thickness exceeds `SATIN_MAX_W_MM` is over threshold. Measured
+> separation: 0.000000 on all 13 correct satins, 0.558–0.798 on all 4 misclassified, 0.894–1.000 on
+> all 8 tatami. **Acceptance is coverage, not machine-minutes** — machine time gets worse by design
+> (corpus +7.5%, badge ~22.6 → 25.1).
+>
+> **Sequenced behind** the Zhang-Suen parity fix, because that defect made every measurement in this
+> document a coin flip on any object near a threshold. See `docs/CTO-P1-PARITY.md`.
+
 **Your question was: is the medial-axis width test admitting a region it shouldn't, or is the region
 itself wrong upstream in segmentation? The answer is neither, and the object has no single correct
 answer.**

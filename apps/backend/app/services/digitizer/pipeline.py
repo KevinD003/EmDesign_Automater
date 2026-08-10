@@ -49,6 +49,7 @@ from app.services.digitizer.constants import (
     MIN_FEATURE_W_MM,
     MIN_REGION_MM2,
     MIN_STITCH_MM,
+    NO_AXIS_REASONS,
     OUTLINE_RUN_MM,
     PLAN_MAX_COLORS,
     SATIN_MAX_W_MM,
@@ -677,9 +678,11 @@ def digitize_image(
                     skeleton_satin_used += 1
                     if attempt.remainder_tatami:
                         skeleton_partial_tatami += 1
-                elif reason != "no_medial_axis":
-                    # A freckle that has no axis at all is not a "fallback" —
-                    # a tiny fill was always the right answer for it.
+                elif reason not in NO_AXIS_REASONS:
+                    # A shape with no axis at all is not a "fallback" — tatami
+                    # was always the right answer for it, whether it is a speck
+                    # or a disc. Both no-axis reasons are excluded; see
+                    # NO_AXIS_REASONS for why they are named in one place.
                     skeleton_tatami_fallback += 1
             is_satin = skel_pts is not None
             _CLASSIFICATION_LOG.append(

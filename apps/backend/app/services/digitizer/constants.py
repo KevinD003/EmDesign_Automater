@@ -795,6 +795,32 @@ SATIN_PREGATE_SLACK = 1.5
 SATIN_MAX_UNCOVERED = 0.35
 
 
+# A region can thin to NOTHING — no medial axis, no width samples, so every
+# width-based statistic reads zero and any detector built on one is blind to it.
+# Two very different shapes land there and this only decides WHICH NAME they get;
+# both are tatami either way. Under this area it is a speck (a freckle, a
+# catchlight, a punctuation dot) -> `no_medial_axis`. Over it, the shape is
+# compact enough that its medial axis is genuinely a point — a disc — and it gets
+# `compact_no_axis` so a survey can tell the two apart instead of raising a false
+# alarm, which is what happened on 2026-08-10.
+#
+# Measured on the bench corpus: the actual specks are 2.6 and 5.2mm², and the one
+# compact region is 168mm² (`09_nonuniform_background` seq 1, a 14.6mm disc that
+# sews correctly at 100% coverage). 25mm² is roughly the middle of that interval
+# on a log scale — a disc about 5.6mm across — chosen mid-gap rather than at an
+# edge, the same discipline the A>cap threshold is being picked under.
+NO_AXIS_SPECK_MM2 = 25.0
+
+# The two reasons above, as one name. `pipeline.py` excludes them from its
+# tatami-FALLBACK counter — neither is a satin attempt that failed, so counting
+# them would inflate the number that exists to say "satin was tried and did not
+# work". Shared rather than written out at each site: two string literals in two
+# modules is precisely the drift STEP 3c was spent removing, and when this arm
+# was split in two the pipeline's `reason != "no_medial_axis"` would otherwise
+# have started counting discs as fallbacks in silence.
+NO_AXIS_REASONS = ("no_medial_axis", "compact_no_axis")
+
+
 TANGENT_WINDOW = 3        # samples each side used to estimate stroke direction
 
 
