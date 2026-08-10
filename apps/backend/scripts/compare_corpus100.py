@@ -40,14 +40,46 @@ WORSE_IF_UP = {
     "over_limit": "stitches over the 12.7mm machine limit",
     "density_flags": "cells flagged as over-dense",
 }
-# Metrics where a FALL is bad. Interior coverage is a percentage; 0.1 point of
-# jitter is not a regression, so it carries a tolerance.
+# Metrics where a FALL is bad.
 WORSE_IF_DOWN = {
     "interior": "interior coverage %",
 }
-COVERAGE_TOL = 0.1
-# Reported for context, never graded.
+# `interior` is NOT always a percentage. `measure_stitch_quality` returns None
+# when a shape is thinner than 2x EROSION_MM and so has no interior at all --
+# it is all edge band -- and `run_corpus100.py` stores that as -1.0. Arithmetic
+# on the sentinel is meaningless: the first version of this file reported
+# `C45_thin_border 100.0 -> -1.0` as a 101-point coverage drop and, worse,
+# `-1.0 -> 0.0` as an IMPROVEMENT on two other designs. A shape gaining or
+# losing its interior is a STRUCTURAL change and gets its own category.
+NA_SENTINEL = -1.0
+# Coverage genuinely moves when stitch placement changes, so a tolerance is
+# needed. This one is MEASURED, not chosen: across the 96 comparable designs of
+# the Zhang-Suen parity comparison — a change that only reorders thinning and
+# should therefore be near-neutral — the absolute coverage delta distributes
+#
+#     p50 0.00   p75 0.10   p90 0.20   p95 0.30   max 1.20
+#
+# with 97% of designs inside 0.35. Sitting the tolerance just above p95 isolates
+# the three designs that genuinely moved (B00_crop +1.2, C23_monogram -0.9,
+# B39_recolour +0.4) and treats the rest as placement jitter. An earlier version
+# used 0.1 picked a priori and reported 12 "regressions", nine of them on real
+# artwork, all of which were 0.1-0.3 points and half of which had a matching
+# improvement elsewhere — the same error as setting a quality band from a single
+# reading. Re-derive this from a fresh near-neutral comparison if the pipeline's
+# placement noise changes.
+COVERAGE_TOL = 0.35
+# Reported for context, never graded as better/worse — more stitches is not
+# inherently bad and fewer is not inherently good.
 CONTEXT = ("stitches", "objects", "colors", "trims", "jumps", "seconds")
+
+# ...but a change in OBJECT COUNT is never noise. It means classification or
+# segmentation reached a different answer about what the artwork contains, and
+# on a near-neutral change that is worth a human look even when every graded
+# metric holds. C45_thin_border went 2 objects/4,141 stitches -> 3/5,952 (+44%)
+# under the parity fix and was caught only incidentally, through the interior
+# sentinel; nothing here was grading it. A large stitch swing on an UNCHANGED
+# object count is the same signal from the other side.
+STITCH_SWING_FRAC = 0.15
 
 
 def tier_of(rec: dict, name: str) -> str:
@@ -101,7 +133,7 @@ def main() -> int:
         elif b_err and not c_err:
             fixed_errors.append(n)
 
-    regressions, improvements = [], []
+    regressions, improvements, structural = [], [], []
     per_tier: dict[str, dict] = {}
 
     for n in names:
@@ -117,6 +149,14 @@ def main() -> int:
                 agg[k][0] += bv
                 agg[k][1] += cv
 
+        bo, co = num(b, "objects"), num(c, "objects")
+        if bo is not None and co is not None and bo != co:
+            structural.append((t, n, "object count", bo, co))
+        bs, cs = num(b, "stitches"), num(c, "stitches")
+        if (bs and cs is not None and bo == co
+                and abs(cs - bs) / bs > STITCH_SWING_FRAC):
+            structural.append((t, n, f"stitches moved {(cs - bs) / bs * 100:+.0f}%", bs, cs))
+
         for k, label in WORSE_IF_UP.items():
             bv, cv = num(b, k), num(c, k)
             if bv is None or cv is None or bv == cv:
@@ -124,7 +164,17 @@ def main() -> int:
             (regressions if cv > bv else improvements).append((t, n, label, bv, cv))
         for k, label in WORSE_IF_DOWN.items():
             bv, cv = num(b, k), num(c, k)
-            if bv is None or cv is None or abs(cv - bv) <= COVERAGE_TOL:
+            if bv is None or cv is None:
+                continue
+            b_na, c_na = bv == NA_SENTINEL, cv == NA_SENTINEL
+            if b_na or c_na:
+                if b_na != c_na:
+                    # Not gradable as a number. Losing an interior means every
+                    # object went sub-1.2mm; gaining one means the reverse.
+                    structural.append((t, n, "HAD an interior, now none" if c_na
+                                       else "had NO interior, now has one", bv, cv))
+                continue
+            if abs(cv - bv) <= COVERAGE_TOL:
                 continue
             (regressions if cv < bv else improvements).append((t, n, label, bv, cv))
 
@@ -161,18 +211,25 @@ def main() -> int:
         for t, n, label, bv, cv in sorted(rows):
             print(f"  [{t:14s}] {n:34s} {label}: {bv} -> {cv}")
 
+    show(structural, "STRUCTURAL — interior appeared or vanished, look at these by eye")
+    print()
     show(regressions, "REGRESSIONS")
     print()
     show(improvements, "improvements")
 
     hard = [r for r in regressions if r[0].startswith(("A", "B"))]
+    hard += [r for r in structural if r[0].startswith(("A", "B"))]
     print()
     if new_errors:
         print(f"FAIL — {len(new_errors)} new error(s)")
         return 1
     if hard:
-        print(f"FAIL — {len(hard)} regression(s) on real or real-derived artwork (tier A/B)")
+        print(f"FAIL — {len(hard)} regression(s) or structural change(s) on real or "
+              f"real-derived artwork (tier A/B)")
         return 1
+    if structural:
+        print(f"LOOK — {len(structural)} structural change(s) on tier C. Not blocking, "
+              f"but an interior appearing or vanishing is never noise.")
     if regressions:
         print(f"PASS with note — {len(regressions)} regression(s), all on tier C parametric artwork. "
               "Worth reading, not necessarily blocking.")
