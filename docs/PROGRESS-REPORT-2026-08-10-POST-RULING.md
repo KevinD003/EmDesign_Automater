@@ -2,7 +2,21 @@
 
 **For review.** Self-contained: a reviewer needs this file, `CTO-RULING-2026-08-10.md` (the
 instructions being executed) and `CONSOLIDATED-REPORT-2026-08-10.md` (the state before it). Picks up
-exactly where the ruling left off and covers everything to `9918397`.
+exactly where the ruling left off and covers everything to `ecad056`.
+
+## Revision 2 — what changed since the version that was reviewed
+
+Revision 1 covered `a95df3e` … `9918397` and was reviewed. Three things came back, and this revision
+folds them in rather than appending:
+
+1. **The reviewer found a defect in the DET3 work that revision 1 presented as complete.**
+   Anti-aliased alpha — every logo any real tool exports — still had its artwork deleted. Root cause,
+   fix and measurements are §5.4. The claim in revision 1 that DET3 closed the transparent-PNG case
+   was **wrong for the common case**.
+2. **My own §7.1.2 was wrong.** The "90 unattributed stitches" are excluded by design, not by
+   defect. Corrected in place, with the real adjacent defect that diagnosis turned up.
+3. Rulings arrived on all four questions and the priority order was revised. §8 now records the
+   answers and the order rather than the questions.
 
 ## Provenance rule, applied throughout
 
@@ -31,8 +45,9 @@ code path it measured.
 | — | — | classification width survey re-run on the stable skeleton | priority 1 |
 | 2 | `bedc998` | UP1 — satin's per-side pull compensation, both halves | priority 2 |
 | 3 | `9918397` | DET3 — substrate removal, all four parts | priority 3 |
+| 4 | `ecad056` | DET3 completion — a declared foreground **is** the foreground; + ruling Q2 | revised order 1 |
 
-All three are shipped-code changes affecting every upload. Both CI lanes were run to completion
+All four are shipped-code changes affecting every upload. Both CI lanes were run to completion
 before each commit; no commit was pushed on a partial verification.
 
 | commit | lane 1 (default) | lane 2 (`STITCHIQ_NO_REBUILD_PASSTHROUGH=1`) |
@@ -40,6 +55,7 @@ before each commit; no commit was pushed on a partial verification.
 | `a95df3e` | 1221 passed | 1215 passed |
 | `bedc998` | 1221 passed | 1215 passed |
 | `9918397` | 1229 passed | 1223 passed |
+| `ecad056` | 1231 passed | 1225 passed |
 
 ---
 
@@ -100,6 +116,10 @@ the site.** Most of the density there predates the fix and comes from `Satin 1`.
 
 ### 2.3 The gate now discriminates cause
 
+> **Superseded in part by ruling Q2 (§5.5, `ecad056`).** `max_per_disc` is now the PRIMARY bound and
+> `max_per_cell` is kept loose and labelled a grid artefact. The discriminator and `p99` below are
+> unchanged. The shape of the argument stands; the bound that carries it moved.
+
 - `p99_per_cell <= 6` — **kept verbatim**; the real density-shift detector, and it did not move.
 - `max_per_disc <= 26` — **new**; translation-invariant, so unlike `max_per_cell` it cannot be a grid
   artefact.
@@ -147,8 +167,14 @@ objects have an **area-weighted** width over the 4.5 mm cap, not one:
 | 08_mascot_detail seq 1 | 3.70 | **5.61** | — | **no** |
 | 08_mascot_detail seq 2 | 3.00 | **4.88** | — | **no** |
 
-A veto built on `true_w` misses both mascot objects. Built on `areaW` it catches all three. That is
-the threshold input the ruling asked to be set on the stable skeleton.
+A veto built on `true_w` misses both mascot objects. Built on `areaW` it catches all three.
+
+> **My recommendation here was OVERRULED, and correctly — see Q3 in §8.** `areaW` is a dispersion
+> statistic computed from the same density-biased samples as the median it is meant to check, and it
+> **fires on two correctly-classified tatami objects** (07 seq 1 at 1.38, seq 10 at 1.49). It agreed
+> with my three satins by luck. The veto will use the local-thickness area-over-cap fraction
+> instead, which measures 0.000000 on all 13 correctly-classified satins. The survey data below
+> stands; the statistic I proposed to build on it does not.
 
 ---
 
@@ -300,6 +326,56 @@ sewn everything.
 No baseline or lock moved: the bench is entirely opaque input, so the rule's behaviour there is
 unchanged by construction.
 
+### 5.4 DET3 was incomplete — anti-aliased alpha (`ecad056`)
+
+**Found by the reviewer, not by me, in work I had presented as finished.** Redrawing §5.1's fixture
+with `cv2.LINE_AA` instead of `cv2.LINE_8` — same geometry, one flag — regressed it to zero.
+Reproduced on the shipped code before changing anything:
+
+| | composited unique colours | declared mask | stitches | objects |
+| --- | --- | --- | --- | --- |
+| `LINE_8` | 1 | 32,937 px | 1,960 | 2 |
+| `LINE_AA` | 65 | 34,733 px | **0** | **0** |
+
+The declaration was **detected in both**, and `substrate_removed_mm2` was 0.0 in both — so the
+substrate exemption shipped in `9918397` worked exactly as designed, and the artwork died anyway.
+
+**Root cause, stated generally.** Anti-aliasing blends an edge pixel's RGB toward zero as well as its
+alpha, so compositing over white yields a grey ramp at every edge. Those greys open extra k-means
+clusters; the white interior stays indistinguishable from the white page; and the corner-average
+background heuristic deletes the design *through the other door*, with no channel reporting it —
+which is the exact deletion DET3 exists to prevent.
+
+**The declared mask exempted the substrate rule but did not constrain segmentation.** A file that
+states which pixels are artwork must have that statement honoured by the segmentation stage too:
+declared pixels are foreground, and a background heuristic does not get to overrule the file.
+`fg_mask` is now the declared mask for alpha input exactly as it already was for SVG.
+
+| | before `ecad056` | after |
+| --- | --- | --- |
+| `LINE_8` | 1,960 st / 2 obj | 2,006 st / 2 obj |
+| `LINE_AA` | **0 st / 0 obj** | **1,982 st / 2 obj** |
+
+`LINE_8` moves because its foreground is now the file's exact declaration rather than a neural
+matte — the same reason vector input never used the matte.
+
+Two tests: the `LINE_AA` variant, asserting the same **object count** as the hard-edged fixture (the
+two differ by a few hundred edge pixels, so only the structure must agree); and a structural test
+pinning that the mask which exempts the substrate rule **is** the foreground, because the two uses
+sit a hundred lines apart in different branches and honouring one without the other is this bug.
+
+**Why this matters beyond one fixture:** every logo exported from Illustrator, Photoshop, Figma or
+Canva has anti-aliased edges. The hard-edged transparent PNG my original fixture used is the rare
+case, and it was the only case the shipped fix covered.
+
+### 5.5 Ruling Q2 applied in the same commit
+
+The density gate's primary bound moves to the grid-free `max_per_disc`, which is translation
+invariant. `max_per_cell` is a grid artefact by construction — demonstrated twice in the very
+investigation that produced it (§2.2, §6.1) — so it is kept loose and labelled, because every
+committed baseline and the corpus runner record it. `p99_per_cell <= 6` verbatim; tie-off
+discriminator retained.
+
 ---
 
 ## 6. Process failures in this stretch
@@ -328,6 +404,19 @@ rest credible.
    literal string `"(pull_mm / 2.0) / mm_per_px"`, so correcting UP1 failed it. Worth generalising:
    a source-text assertion pins the *spelling*, and the spelling of a buggy line is not a contract.
 
+5. **I shipped DET3 as complete when it covered only the rare case, and reported it that way.**
+   The failure was not the missed code path; it was the fixture. I chose a hard-edged shape,
+   measured a clean 0 → 1,960, and did not ask whether the fixture resembled real input. Every logo
+   from every real design tool is anti-aliased. A headline number is only as general as the fixture
+   that produced it, and I did not state — or check — the limits of mine. The reviewer found it in
+   one variation.
+
+6. **My own §7.1.2 was a wrong diagnosis, stated confidently.** I reported the 90 unattributed
+   stitches as "per-object counts are wrong somewhere" and marked it blocking. They are lock
+   stitches, excluded deliberately, and `_lock_stream`'s docstring says so in as many words. I had
+   read the count difference and inferred a defect instead of reading the function that produces it.
+   Corrected in §7.1.2, along with the real defect sitting next to it.
+
 ---
 
 ## 7. Open items
@@ -338,15 +427,36 @@ rest credible.
    trees, untouched by anything here, and the larger half of the corpus's worst density site. Never
    examined. This is a satin column geometry question — the inner side of a tight turn re-using its
    pivot — not a flag-level question.
-2. **`sum(object.stitch_count)` is 8,001 against 8,091 actual penetrations on fixture 08** — 90
-   unattributed, on both trees. It did not affect anything above, because the probe checked the
-   totals and fell back to whole-stream attribution rather than inventing object boundaries. It
-   **blocks the real-artwork comparison harness**, which the ruling specifies must measure per-object
-   stitch-type agreement against an expert machine file.
+2. **Per-object stitch attribution for the comparison harness.** *(Premise corrected — revision 1
+   had this wrong.)*
+
+   Revision 1 reported `sum(object.stitch_count)` = 8,001 against 8,091 actual penetrations as
+   "per-object counts are wrong somewhere". **They are not.** The 90 are lock stitches — tie-offs
+   and tie-ins added by `_lock_stream` as a post-pass over the assembled stream, after per-object
+   counts are computed. Its docstring states the exclusion is deliberate: *"they describe the
+   object's own stitching, not its plumbing."* Nothing is miscounted.
+
+   **The real defect is next to it.** `pipeline.py:1008` passes `stitch_start=obj_start` into
+   `DesignObject`, commented *"Provenance for the B1.5 pass-through: where this object's stitches
+   are"*. `DesignObject` has no such field, and Pydantic v2's default `extra='ignore'` discards the
+   argument **silently** — verified: absent from `model_fields`, `hasattr` is `False`. The
+   pass-through actually works off `params_hash`. The line is dead and its comment misleads anyone
+   who reads it as evidence that stitch positions are recorded.
+
+   This also explains, cleanly, why the density probe in §2.2 reported
+   `object_attribution_trusted: False` and had to fall back to whole-stream attribution — and why
+   the +3 delta it localised turned out to be a lock.
+
+   So the work is **not** "fix wrong counts". It is a penetration→object map that survives
+   `_lock_stream`'s insertions and attributes each lock to the object it terminates, which is what
+   per-object stitch-type agreement against an expert machine file requires.
 3. **The bench is entirely cotton.** It structurally understates UP1 by 2.5× and cannot see
-   fabric-dependent defects at all.
+   fabric-dependent defects at all. **Escalated by the reviewer** — a fabric axis must exist before
+   the physical-units tranche or that tranche is tuned blind. Folded into order item 3 (§8).
 
 ### 7.2 Remaining from the ruling
+
+> **Sequencing is now set by the revised order in §8.** This list is the inventory; §8 is the order.
 
 - **SH2** — bare-fabric moats, up to 443 mm² at a 200 mm hoop, with `TEXTURE_RETRY_UNCOVERED`
   re-derived rather than assumed.
@@ -355,8 +465,8 @@ rest credible.
 - **The real-artwork landing site** — a loader for real job pairs as a corpus tier kept strictly
   separate from A/B/C; a comparison harness against the expert's machine file; and
   `build_corpus100.py` made reproducible on a fresh checkout.
-- **Deferred**: the area-over-cap veto (5.3) — its threshold input is now measured, §3.1 above; 1c;
-  3e-i, which must not overlap a stream-altering change.
+- **Deferred**: the area-over-cap veto (5.3) — statistic now ruled, see Q3 in §8; 1c; 3e-i, which
+  goes after the physical-units tranche because SH2 and that tranche both move streams.
 - **Stays open, unabsorbed**: 5.2 (+6 trim divergence), 5.4 (knockout policy), 5.5 (veto dissent).
 
 ### 7.3 Diagnosed but not yet fixed — `build_corpus100.py`
@@ -378,16 +488,34 @@ shrinking, and give each tier its own seeded generator.
 
 ---
 
-## 8. Questions for the reviewer
+## 8. Rulings received, and the revised order
 
-1. **§4.5** — the badge fidelity band 0.32 → 0.34 is the only judgement call landed here. Aggregate
-   divergence improved and the residual is attributed to the contour round trip, which is 3e-i's
-   territory and fenced off by the ruling. Is deferring correct, or should 3e-i be unblocked?
-2. **§2.3** — the density gate now trades a weaker count bound for a cause test. Is "a flagged cell
-   must contain a coordinate revisit in its neighbourhood" the right contract, or should
-   `DENSITY_FLAG_PER_CELL` move to the grid-free measure outright?
-3. **§3** — the ruling's expectation that the flagged set would change is refuted. The area-over-cap
-   veto's threshold should therefore be set on `areaW`, not `true_w` (§3.1). Confirm before it is
-   built.
-4. **§7.1.2** — the 90 unattributed stitches block the comparison harness. Should that be pulled
-   ahead of SH2?
+Revision 1's four questions were answered. Recorded here so the decisions travel with the work.
+
+| Q | ruling | status |
+| --- | --- | --- |
+| Q1 — 3e-i | **Defer, as landed.** A 46-stitch object at ±7 % on a contour round trip is noise. 3e-i's only safety property is "must not change either path's stream", and SH2 *and* the physical-units contract both move streams — so 3e-i goes **after** the physical-units tranche. | accepted, no change needed |
+| Q2 — density gate | **Primary bound moves to the grid-free `max_per_disc`; keep the revisit discriminator; keep `p99_per_cell <= 6` verbatim.** `max_per_cell` is a grid artefact by construction. | **done, `ecad056`** (§5.5) |
+| Q3 — veto statistic | **Neither `areaW` nor `true_w`.** Use the local-thickness area-over-cap fraction, `dilate(EDT > cap/2, disk(cap/2))`. Measured separation: **0.000000** on all 13 correctly-classified satins, **0.558–0.798** on all 4 misclassified, **0.894–1.000** on all 8 tatami — any threshold in 0.01–0.55 is identical, so take the middle. `areaW` is a dispersion statistic computed from the same density-biased samples as the median it is meant to check, and it **fires on two correctly-classified tatami objects** (07 seq 1 at 1.38, seq 10 at 1.49); it agreed with my three satins by luck. Ship with a regression asserting 0.000000 on the 13 known-good satins so corpus growth cannot erode the margin. | pending, after the physical-units tranche |
+| Q4 — attribution | **Pull ahead of SH2.** It blocks the comparison harness, which is the instrument for the binding constraint. | next (§7.1.2, premise corrected) |
+
+**On §4.3 (the all-cotton bench), escalated by the reviewer:** it is a corpus defect worth more than
+revision 1 gave it. The bench cannot see *any* fabric-dependent behaviour — it understated UP1 by
+2.5× and will understate the entire physical-units contract the same way. A fabric axis must exist
+before that tranche or it will be tuned blind. **Plan:** fold the fabric axis into the landing-site
+work (order item 3) rather than leaving it to the tranche itself, so the instrument exists before it
+is needed.
+
+### Revised order
+
+1. ~~DET3 completion (anti-aliased alpha)~~ — **done, `ecad056`** (§5.4)
+2. Per-object stitch attribution (§7.1.2)
+3. Real-artwork landing site — loader, comparison harness, `build_corpus100.py` reproducible
+   (§7.3 diagnosis is complete; the fix is to be written) **+ the fabric axis**
+4. SH2, with `TEXTURE_RETRY_UNCOVERED` re-derived
+5. The physical-units contract as its own tranche, re-pinned above a 133 mm hoop
+
+Then the veto (Q3 statistic), then 1c, then 3e-i.
+
+Unchanged and still open, unabsorbed: 5.2 (+6 trim divergence), 5.4 (knockout policy), 5.5 (veto
+dissent).
