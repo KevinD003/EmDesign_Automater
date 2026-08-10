@@ -38,6 +38,25 @@ were the leading hypothesis of either the CTO or me at the time.
 specifically to confirm it.** Treat every unverified claim here — including mine — accordingly.
 Everything below is either measured with a reproduction command, or explicitly labelled unverified.
 
+### This document was itself fact-checked, and it failed in six places
+
+Six agents cross-checked every number here against the code, git history and the source reports.
+**30 issues, 6 must-fix.** All are corrected in place above; the corrections are marked where they
+sit. The two that a reviewer should note:
+
+| what was wrong | why it matters |
+|---|---|
+| The annulus "before" figures (§2.6) came from a **reimplementation** of the old algorithm, not from running it — overstating the defect **3.3×** | The same wrong numbers had been reported to the CTO, committed to `CTO-1B-BOUSTROPHEDON.md`, and baked into a test docstring. Corrected in all three. |
+| "The originals came from a scratch directory that no longer exists" | The directory exists and holds all three photographs. The conclusion (corpus unreproducible) was right; the stated cause was invented. |
+
+Also corrected: badge 17,181 → **17,183**; a "59 mm counter diameter" that appears in no measurement;
+13.3 px/mm presented as a constant when it is derived per upload; and every command in PART 7, which
+was missing the `.venv/bin/python` prefix the scripts require.
+
+**The lesson generalises beyond this document:** the gates in this repo catch regressions in code and
+caught almost nothing about the *evidence* the reports rest on. A number that was never re-derived
+from a running system is the least trustworthy artefact here, and there were several.
+
 ---
 
 ## PART 1 — What actually runs for a customer upload
@@ -109,7 +128,11 @@ saving was real, not an artefact of ignoring the trims that replace travel.
 Reported *partial* rather than guessing: four candidate mechanisms refuted by measurement (rows 1–4
 of Part 0), ~100 of 171 jumps still unattributed. The CTO completed it: on an annular component a
 serpentine row splits into two runs and the fill connects them **straight across the counter**. The
-59 mm median was the badge ring's counter diameter.
+measured jump median on badge Satin 3 was **42.31 mm** at the router call and 44.46 mm at the core
+output; on a ring of this size that is the scale of a straight crossing, which is what identified the
+mechanism. *(An earlier draft said "the 59 mm median was the counter diameter". No source records a
+59 mm figure and the counter diameter was never measured; the identification rested on the 42–44 mm
+median, not on a diameter.)*
 
 ### 2.6 The engagement's main win (`docs/CTO-1B-BOUSTROPHEDON.md`)
 
@@ -118,18 +141,28 @@ left-run → right-run across the hole once per row, and `_route_travel` sewed a
 each time. Rows are now split into **monotone cells** at critical rows where the run count changes;
 each cell is sewn to completion; cells are visited nearest-first.
 
-Isolated on a 300 px annulus, **identical point count before and after — 2,151 — so the fix removes
+Isolated on a 300 px annulus, **identical point count before and after — 2,149 — so the fix removes
 no coverage; it is pure reordering:**
 
 | | points | jumps | over 100 px | total jump distance |
 |---|---:|---:|---:|---:|
-| old | 2,151 | 78 | 68 | 13,059.6 px |
-| new | 2,151 | 15 | **0** | **233.9 px** |
+| old | 2,149 | 44 | 24 | 3,968.1 px |
+| new | 2,149 | 15 | **0** | **233.9 px** |
+
+> **CORRECTED 2026-08-10 after fact-check.** The `old` row previously read 2,151 / 78 / 68 /
+> 13,059.6 px, and the reduction was quoted as 98.2%. Those figures came from a REIMPLEMENTATION of
+> the pre-1b algorithm rather than from running it: my probe toggled the serpentine direction per
+> *segment* and skipped the `segs.sort()`, where the shipped code sorted and toggled per *row*. That
+> manufactured extra long jumps and **overstated the defect by 3.3×**. The numbers above come from
+> executing `fills.py` at commit `98ce364` (the last touch before 1b) against the same probe. True
+> reduction in total jump distance is **−94.1%**, and hole crossings **24 → 0**. The fix, the
+> mechanism and every pipeline-level number below are unaffected — those were measured by running the
+> real pipeline before and after, not by reimplementation.
 
 | | badge (07) |
 |---|---|
 | machine-minutes, net of trim | **47.0 → 22.65** (−52%) |
-| stitches | 35,077 → 17,181 |
+| stitches | 35,077 → 17,183 |
 | trims | 76 → 28 |
 | corpus digitize stitches | 97,590 → 65,004 (−33.4%) |
 | coverage, all ten, both paths | 99.3–100%, none lost |
@@ -250,14 +283,23 @@ The "100-design corpus" is **not** 100 designs of variety:
 | 47 "parametric" | 13 hard-coded shape classes → ~29 distinct layouts |
 
 **There are 3 real photographs in the entire backend test suite.** A fourth committed file is a
-pixel-identical duplicate. The originals came from a scratch directory that no longer exists, so
-`build_corpus100.py` **cannot be re-run on a fresh checkout**.
+pixel-identical duplicate. `build_corpus100.py` **cannot be re-run on a fresh checkout** — and the
+reason is worse than a missing input. Its three source photographs live in an EPHEMERAL SESSION
+SCRATCH DIRECTORY outside the repo, not in version control; and even with them present the script
+hard-aborts (`C01_hairline_linework: only 0.000% of the canvas differs from the background`). The
+corpus is therefore **unreproducible by anyone, including on the machine that built it**.
+*(An earlier draft said the scratch directory no longer exists. It does, and still holds all three
+files — the sources are pixel-identical to the committed A01/A02/A03. The conclusion holds; the
+stated cause did not.)*
 
 I repeated the corpus's own tier labels without opening them and told the owner "13 real". That was
 wrong in the way that matters.
 
-Scale gap worth internalising: the badge everything was tuned on is **17,181 stitches / 22 objects**;
-the real peacock photograph is **42,449 stitches / 335 objects**.
+Scale gap worth internalising: the badge everything was tuned on is **17,183 stitches / 22 objects**;
+the real peacock photograph is **42,449 stitches / 335 objects** (measured in the 2026-08-10
+baseline run; that JSON lives in session scratch, not the repo, so a reviewer cannot re-check it
+without re-running `run_corpus100.py`. The committed `scripts/corpus100-part48.json` records an
+older run of the same design at 37,204 / 335).
 
 ---
 
@@ -316,12 +358,19 @@ wide satin as a test of the rule, not a nuisance.
 5. **Shipped a comparer with three defects**, all found by running it for real: arithmetic on an
    N/A sentinel (a 101-point "coverage collapse", and `-1.0 → 0.0` reported as an *improvement*), a
    tolerance picked rather than measured, and object count not graded at all.
-6. **Twice leaned toward explaining away a failing gate** (Part 0 rows 7 and 8). Both times the
-   measurement went the other way.
-7. **`250e850` shipped formally-deferred work undisclosed**, and the Atelier frontend workstream was
+6. **Three times leaned toward explaining away a failing gate or measurement** (Part 0 rows 7, 8
+   and 9); rows 8 and 9 were live gate failures. Every time, the measurement went the other way.
+7. **Reported a headline number from a reimplementation rather than from running the code** — the
+   annulus "before" figures in §2.6, overstated 3.3×. Caught by this document's own fact-check, not
+   by any gate. It is the same error as an earlier one in this engagement, where I hand-wrote a
+   criterion instead of importing it and produced a stricter rule than the original.
+8. **`250e850` shipped formally-deferred work undisclosed**, and the Atelier frontend workstream was
    absent from a report. Owner-directed, but it belonged in the report regardless.
 
-The gates caught 1, 4 and 5. That is the system working, and the reason not to weaken it.
+The gates caught 1 and 4. Item 5 was caught by running the tool for real, and item 7 by an
+adversarial fact-check of this document. Nothing caught 2, 3 or 6. That distribution is itself the
+finding: gates catch regressions in code, and catch almost nothing about the *evidence* a report
+rests on.
 
 ---
 
@@ -329,18 +378,26 @@ The gates caught 1, 4 and 5. That is the system working, and the reason not to w
 
 | what | command |
 |---|---|
-| ten-fixture bench | `scripts/run_quality_bench.py` |
-| 100-image corpus | `scripts/run_corpus100.py --workers 3 --json out.json` (~15 min) |
-| compare corpus runs | `scripts/compare_corpus100.py base.json cand.json` |
-| classification widths | `scripts/measure_classification_width.py` |
+| ten-fixture bench | `.venv/bin/python scripts/run_quality_bench.py` |
+| 100-image corpus | `.venv/bin/python scripts/run_corpus100.py --workers 3 --json out.json` (~15 min) |
+| compare corpus runs | `.venv/bin/python scripts/compare_corpus100.py base.json cand.json` |
+| classification widths | `.venv/bin/python scripts/measure_classification_width.py` |
 | default lane | `pytest tests -q` (~14 min) |
 | second lane | `STITCHIQ_NO_REBUILD_PASSTHROUGH=1 pytest tests -q` (~13 min) |
 | stream locks | `STITCH_LOCK_WRITE=1 pytest tests/test_swarm_perf_lock.py -q` — refuses a band-violating re-pin |
-| renders | `scripts/visual_regression.py [--update]` — SSIM gate 0.995 |
-| determinism | `pytest tests/test_digitize_is_deterministic.py -q` |
+| renders | `.venv/bin/python scripts/visual_regression.py [--update]` — SSIM gate 0.995 |
+| determinism | `.venv/bin/python -m pytest tests/test_digitize_is_deterministic.py -q` |
 
-Digitize rasters at **13.3 px/mm** — measured. An earlier report said "~18" by reading it off
-constants; that is corrected.
+All paths are relative to `apps/backend/`. The scripts are mode 644 with no shebang, so they must be
+run through the venv interpreter — `scripts/foo.py` alone gives `Permission denied`.
+
+**The digitize raster is not a constant.** `pipeline.py` derives it per upload:
+`mm_per_px = min(hoop_w/iw, hoop_h/ih) * 0.9`, then divides by the granularity upscale (capped 2×)
+and by any downscale to `_MAX_WORK_PX = 1200`. 13.3 px/mm is the figure **for the standard 640×640
+bench fixtures at their bench hoops** — it is not a property of the engine, and it changes with hoop
+and source size. Earlier reports quoted "~18 px/mm" read off constants (wrong) and then "13.3 px/mm"
+as though universal (right value, wrong scope). SZ1 and SZ2 in the defect report are consequences of
+exactly this derivation.
 
 **When a real improvement lands, re-cut the quality bands.** The badge's band was 55 machine-minutes
 against a 47 reading; at 22.65 that band would wave the entire pre-fix regression back through.

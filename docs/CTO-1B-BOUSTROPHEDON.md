@@ -34,11 +34,18 @@ Same 300 px annulus, row 4 px, step 6 px, old code vs new:
 
 | | points | jumps | over 100px | median | total jump distance |
 |---|---:|---:|---:|---:|---:|
-| old | 2,151 | 78 | **68** | 193.0 px | **13,059.6 px** |
-| new | 2,151 | 15 | **0** | 9.8 px | **233.9 px** |
+| old | 2,149 | 44 | **24** | 112.0 px | **3,968.1 px** |
+| new | 2,149 | 15 | **0** | 9.8 px | **233.9 px** |
 
-**The point count is identical.** The fix removes no coverage — it is pure reordering. Total jump
-distance falls 98.2% and every hole crossing goes.
+> **CORRECTED 2026-08-10.** This table previously read 2,151 / 78 / 68 / 193.0 / 13,059.6 for `old`
+> and claimed a 98.2% reduction. Those came from a REIMPLEMENTATION of the pre-1b algorithm, not
+> from running it — my probe toggled the serpentine direction per *segment* and skipped
+> `segs.sort()`, where the shipped code sorted and toggled per *row*, manufacturing extra long
+> jumps and overstating the defect 3.3×. Above are measurements from executing `fills.py` at
+> `98ce364`. **Everything else in this report is unaffected**: the badge and corpus figures were
+> measured by running the real pipeline before and after.
+
+**The point count is identical.** The fix removes no coverage — it is pure reordering. Total jump distance falls **94.1%** and every hole crossing goes.
 
 ---
 

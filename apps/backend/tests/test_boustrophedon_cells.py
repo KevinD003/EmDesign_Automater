@@ -9,8 +9,8 @@ detour around the hole rim.
 
 Measured on badge Satin 3 before the fix: 171 jumps handed to the router,
 median 42.31mm, 104 of them over 20mm — and 16,989 manufactured travel
-stitches, 80% of the object. The median is the counter's diameter, which is
-what identified the mechanism.
+stitches, 80% of the object. That median, on a shape of this size, is what
+identified the mechanism.
 
 The fix is the classic boustrophedon decomposition: split the rows into
 monotone CELLS at the critical rows where the run count changes, sew each cell
@@ -101,11 +101,17 @@ class TestFillDoesNotCrossTheHole:
     def test_no_long_jump_across_an_annulus(self):
         """Measured old vs new on this 300px annulus, row 4px, step 6px:
 
-            old   2151 points   78 jumps   68 over 100px   median 193.0px   total 13059.6px
-            new   2151 points   15 jumps    0 over 100px   median   9.8px   total   233.9px
+            old   2149 points   44 jumps   24 over 100px   median 112.0px   total 3968.1px
+            new   2149 points   15 jumps    0 over 100px   median   9.8px   total  233.9px
+
+        CORRECTED 2026-08-10. This block previously read 2151/78/68/193.0/13059.6 for `old`. Those
+        numbers came from a REIMPLEMENTATION of the pre-1b algorithm rather than from running it —
+        the probe toggled the serpentine direction per SEGMENT and skipped `segs.sort()`, where the
+        shipped code sorted and toggled per ROW. That manufactured extra long jumps and overstated
+        the defect 3.3x. Above is measured by executing fills.py at commit 98ce364.
 
         The point count is IDENTICAL — the fix is pure reordering, it removes no
-        coverage. Total jump distance falls 98.2%, and every hole crossing goes.
+        coverage. Total jump distance falls 94.1%, and every hole crossing goes.
 
         The 15 remaining jumps are not cell transitions. Twelve are serpentine
         turns INSIDE a cap cell, where a circle's run width grows by more than
@@ -131,7 +137,7 @@ class TestFillDoesNotCrossTheHole:
         long_moves = [d for d in jumps if d > 20]
         assert len(long_moves) <= 3, f"long moves {[round(d) for d in long_moves]}"
         # 233.9px measured; 500 leaves room for a pitch tweak but not for the
-        # mechanism coming back (13,059px).
+        # mechanism coming back (3,968px before the fix).
         assert sum(jumps) < 500, f"total jump distance {sum(jumps):.0f}px"
 
     def test_coverage_is_preserved(self):
