@@ -35,15 +35,19 @@ def _png(img) -> bytes:
     return buf.tobytes()
 
 
-def _white_art_on_transparent(h: int = 500, w: int = 500) -> bytes:
+def _white_art_on_transparent(h: int = 500, w: int = 500, *, line=cv2.LINE_8) -> bytes:
     """A white ring and bar on a fully transparent field.
 
     Composited onto white — which is what the decoder must do to get a colour
     for every pixel — this is indistinguishable from a blank page. The alpha
     channel is the only thing that says otherwise.
+
+    ``line`` selects hard (``LINE_8``) or anti-aliased (``LINE_AA``) edges. That
+    one flag is the difference between the only kind of transparent PNG that has
+    hard edges and every logo any real tool exports.
     """
     rgba = np.zeros((h, w, 4), np.uint8)
-    cv2.circle(rgba, (250, 250), 170, (255, 255, 255, 255), 26)
+    cv2.circle(rgba, (250, 250), 170, (255, 255, 255, 255), 26, lineType=line)
     cv2.rectangle(rgba, (200, 230), (300, 270), (255, 255, 255, 255), -1)
     return _png(rgba)
 
@@ -69,6 +73,62 @@ def test_white_artwork_on_transparent_is_not_deleted_as_the_garment():
     assert d.objects, "no objects survived"
     assert d.substrate_removed_mm2 == 0.0, (
         "the substrate rule ran on input that declares its own foreground"
+    )
+
+
+def test_anti_aliased_edges_do_not_change_the_outcome():
+    """The case the first cut of DET3 MISSED, and the common one.
+
+    Exempting the substrate rule was not enough. Anti-aliasing blends an edge
+    pixel's RGB toward zero as well as its alpha, so compositing over white
+    yields a grey ramp at every edge; those greys open extra k-means clusters,
+    the white interior stays indistinguishable from the white page, and the
+    corner-average background heuristic deletes the artwork through the OTHER
+    door — with no channel reporting it. Measured on this fixture, one flag
+    apart, after the substrate half of DET3 had shipped:
+
+        LINE_8    1 composited colour    1,960 stitches   2 objects
+        LINE_AA  65 composited colours       0 stitches   0 objects
+
+    The declaration now constrains SEGMENTATION as well: declared pixels are
+    foreground, and the background heuristic does not get to overrule a
+    statement the file made. Asserted on the object count rather than the stitch
+    count, because the two fixtures are genuinely different shapes by a few
+    hundred edge pixels and only the STRUCTURE has to agree.
+    """
+    hard = digitize_image(_white_art_on_transparent(line=cv2.LINE_8),
+                          "cotton", "100x100", 4)
+    aa = digitize_image(_white_art_on_transparent(line=cv2.LINE_AA),
+                        "cotton", "100x100", 4)
+
+    assert aa.stitch_count > 0, (
+        "anti-aliased artwork on a transparent background was still deleted — "
+        "the declaration must constrain segmentation, not only the substrate rule"
+    )
+    assert len(aa.objects) == len(hard.objects), (
+        f"anti-aliasing changed the design's structure: {len(hard.objects)} "
+        f"objects hard-edged vs {len(aa.objects)} anti-aliased"
+    )
+    # Neither may be quietly rescued by the substrate rule instead.
+    assert hard.substrate_removed_mm2 == 0.0
+    assert aa.substrate_removed_mm2 == 0.0
+
+
+def test_a_declaration_is_the_foreground_not_merely_an_exemption():
+    """Structural: the same mask that exempts the substrate rule must BE the
+    foreground. Pinned because the two uses are in different functions a hundred
+    lines apart, and honouring one without the other is exactly the bug above."""
+    import inspect
+
+    from app.services.digitizer import pipeline
+
+    src = inspect.getsource(pipeline.digitize_image)
+    assert "fg_mask = declared_mask" in src, (
+        "the declared mask no longer sets the foreground, so a background "
+        "heuristic can overrule what the file stated"
+    )
+    assert "if declared_mask is None and" in src, (
+        "the substrate rule no longer keys on the declaration"
     )
 
 

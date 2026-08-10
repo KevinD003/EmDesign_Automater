@@ -718,15 +718,19 @@ def test_density_corpus_health_is_pinned():
     # change that piles fill into a cell has no coordinate revisit and fails
     # here, where the old form would have passed it at 13.
     #
-    # `max_per_cell` is grid-anchored and provably translation-dependent (see
-    # `_max_per_disc`'s docstring), so the grid-free measure is pinned beside it
-    # and is the one to believe.
-    assert 6 <= m["max_per_cell"] <= 14
-    assert m["p99_per_cell"] <= 6, "p99 moving is a density shift; a lone max is not"
+    # THE PRIMARY BOUND IS THE GRID-FREE ONE (CTO ruling, Q2). `max_per_cell`
+    # buckets into cells anchored at the origin, so where a cluster falls
+    # relative to a cell boundary changes the number — a grid artefact by
+    # construction, demonstrated twice in this very investigation. It is still
+    # asserted, loosely, because every committed baseline and the corpus runner
+    # record it and a wild swing in it is still worth hearing about; but
+    # `max_per_disc` is the one that means something, and it is pinned tight.
     assert m["max_per_disc"] <= 26, (
         "translation-invariant peak rose above the measured lock-plus-pivot "
         "site; unlike max_per_cell this cannot be a grid artefact"
     )
+    assert m["p99_per_cell"] <= 6, "p99 moving is a density shift; a lone max is not"
+    assert 6 <= m["max_per_cell"] <= 16, "grid-anchored, so loose by design"
     assert m["flagged_cells"] <= 1
     for cell in _flagged_cells(design, m):
         assert _has_tieoff_signature(design, cell), (

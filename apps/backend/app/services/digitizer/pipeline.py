@@ -204,10 +204,9 @@ def digitize_image(
     else:
         img, alpha_mask = decoded_raster
     # An alpha channel and an SVG's mask are the same kind of thing: the file
-    # SAYING what is artwork, rather than us inferring it (DET3). Both exempt
-    # the input from the substrate rule below, which exists only because a
-    # raster foreground is a guess.
-    declared_mask = svg_mask if svg_mask is not None else alpha_mask
+    # SAYING what is artwork, rather than us inferring it (DET3). `declared_mask`
+    # is bound once below, AFTER the rescales, because `alpha_mask` has to follow
+    # the image onto the work grid before anything can index the two together.
 
     hoop_w, hoop_h = _parse_hoop(hoop_size)
     ih, iw = img.shape[:2]
@@ -271,10 +270,28 @@ def digitize_image(
     # pixel of that colour anywhere in the frame, which is what removed fixture
     # 02's white type and fixture 08's cream muzzle while keeping fixture 09's
     # background. See services/segmentation.py.
-    if svg_mask is not None:
-        # Vector input carries its own EXACT foreground — no neural matte, no
-        # substrate heuristics, none of the guesswork Parts 1/21/22 patched.
-        fg_mask, seg_method = svg_mask, "svg-vector"
+    if declared_mask is not None:
+        # THE FILE ALREADY SAID WHICH PIXELS ARE ARTWORK, so nothing here gets a
+        # vote (DET3, completed). Vector input carries its own EXACT foreground
+        # — no neural matte, no substrate heuristics, none of the guesswork
+        # Parts 1/21/22 patched — and an alpha channel is the same statement.
+        #
+        # Exempting the SUBSTRATE rule was not enough, and the first cut of DET3
+        # stopped there. Anti-aliasing blends an edge pixel's RGB toward zero as
+        # well as its alpha, so compositing a transparent PNG over white yields a
+        # grey ramp at every edge; those greys open extra k-means clusters, the
+        # white interior stays indistinguishable from the white page, and the
+        # corner-average background heuristic deletes the artwork through the
+        # other door — with no channel reporting it, which is precisely what DET3
+        # exists to stop. Measured on one fixture, one flag apart:
+        #
+        #   cv2.LINE_8    1 composited colour    1,960 stitches   2 objects
+        #   cv2.LINE_AA  65 composited colours       0 stitches   0 objects
+        #
+        # Every logo exported from Illustrator, Photoshop, Figma or Canva has
+        # anti-aliased edges. The hard-edged case is the rare one.
+        fg_mask = declared_mask
+        seg_method = "svg-vector" if svg_mask is not None else "alpha-declared"
     else:
         fg_mask, seg_method = segmentation.foreground_mask(img, data)
     if fg_mask.shape[:2] != (ih, iw):
