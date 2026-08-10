@@ -156,7 +156,64 @@ def density_metrics(design) -> dict:
         "flag_at": DENSITY_FLAG_PER_CELL,
         "flagged_cells": sum(1 for n in counts if n >= DENSITY_FLAG_PER_CELL),
         "hottest": hot,
+        "max_per_disc": _max_per_disc(design),
     }
+
+
+def _max_per_disc(design, radius_mm: float | None = None) -> int:
+    """Densest neighbourhood, measured WITHOUT a grid.
+
+    `max_per_cell` above buckets into cells anchored at the origin, so where a
+    cluster of penetrations falls relative to a cell boundary changes the
+    number. That is a real weakness, not a nitpick: a tie-off is DELIBERATELY
+    3-4 penetrations inside a thread width, and when one straddles a line the
+    count splits arbitrarily between two cells. Measured on fixture 08, the same
+    lock site read `13 + 12` before a change that only reordered thinning and
+    `14 + 12` after — the peak crossed the boundary and tripped a flag set at
+    14, while the neighbourhood total moved 25 -> 26 and p99 did not move at all.
+    An hour went into deciding whether that was a real regression. It was not.
+
+    This counts, for every penetration, how many penetrations lie within
+    `radius_mm` of it, and returns the largest. Translating the artwork cannot
+    change the answer, so a flag built on it means "the fabric is genuinely
+    being perforated here" rather than "a cluster happened to land on a line".
+
+    Reported ALONGSIDE `max_per_cell` rather than replacing it: the cell figure
+    is what every committed baseline and the corpus runner already record, and
+    silently redefining a metric that gates re-pins is exactly the move this
+    project has been burned by. Callers should prefer this one for judgements.
+
+    Spatial hash, so cost is O(n * neighbours) rather than O(n^2) — fixture 08
+    is ~8,000 penetrations and the naive form is 64M distance tests.
+    """
+    from collections import defaultdict
+
+    r = DENSITY_CELL_MM if radius_mm is None else radius_mm
+    pts = [(s.x, s.y) for s in design.stitches if _cmd(s) == "STITCH"]
+    if not pts:
+        return 0
+
+    buckets: dict[tuple[int, int], list[tuple[float, float]]] = defaultdict(list)
+    for x, y in pts:
+        buckets[(int(x / r), int(y / r))].append((x, y))
+
+    r2 = r * r
+    best = 0
+    for (bx, by), members in buckets.items():
+        # Every point within r of a member lies in this bucket or one of the 8
+        # around it, because the bucket side IS r.
+        near: list[tuple[float, float]] = []
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                near.extend(buckets.get((bx + dx, by + dy), ()))
+        for px, py in members:
+            n = 0
+            for qx, qy in near:
+                ddx, ddy = qx - px, qy - py
+                if ddx * ddx + ddy * ddy <= r2:
+                    n += 1
+            best = max(best, n)
+    return best
 
 
 def penetration_metrics(design, pitch_mm: float, floor_mm: float) -> dict:
