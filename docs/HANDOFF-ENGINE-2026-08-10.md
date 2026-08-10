@@ -113,9 +113,20 @@ Options, in my order of preference, none started:
 3. **Leave it.** Coverage is 100%, the badge is 22.65 min, this costs ~155 travel stitches and five
    over-20 mm jumps.
 
-**Open question to the CTO, unanswered as of this handoff:** should a survey run first, of how many
-of the ten fixtures contain a bimodal-width object at all? If it is only this one, option 3 is
-defensible. `measure_classification_width.py` with no `--only` produces exactly that survey.
+**The survey is done and it weakens option 3.** 13 of 24 measurable objects are bimodal, so
+bimodality alone is ordinary and is not a usable detector. The discriminator is **`areaW / judged`**
+— how far the sample-count median sits from what the shape's area says. Among objects sewn as satin:
+`08` seq 2 at 1.63×, `08` seq 1 at 1.52× (1,601 mm², 61 branches), `07` seq 3 at 1.36×, `03` seq 1 at
+1.31× with half its band over the cap. A correctly-measured object reads 1.00×. **Four objects across
+three fixtures show the signature, two of them over 1,500 mm²** — the badge is just the one where an
+independent radial measure proves it.
+
+Cheap interim if the full fix is not wanted yet: log `areaW/judged` in `_CLASSIFICATION_LOG` so the
+corpus can be watched without changing any behaviour.
+
+**Unrelated anomaly the survey turned up, recorded and not investigated:** `09_nonuniform_background`
+seq 1 is a **168 mm² region with zero medial-axis branches**, falling out as `no_medial_axis` — the
+path meant for freckles. The corpus's other `no_medial_axis` regions are 2.6 and 5.2 mm².
 
 ---
 

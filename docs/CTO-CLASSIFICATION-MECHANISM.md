@@ -174,10 +174,52 @@ Three options, in my order of preference:
    object costs ~155 travel stitches and five over-20 mm jumps. On the corpus as it stands, the prize
    is small.
 
-I lean 1, but I would want to measure how many of the ten fixtures have a bimodal-width object at all
-before spending that. **Say which, and whether you want that survey first.**
+I lean 1. **I ran the survey rather than asking for permission to measure** — it is measurement, not a
+fix — and it changes the answer. See §8.
 
 Meanwhile 1c is unblocked and I will take it next unless you redirect.
+
+---
+
+## 8. The survey — this is not badge-only
+
+`scripts/measure_classification_width.py`, all ten fixtures, every region over 50 mm².
+`areaW` weights each axis sample by the strip of shape it stands for; `true` is the radial measure and
+is only defined for ring-like regions.
+
+**13 of the 24 measurable objects have a bimodal width distribution.** Bimodality is ordinary — a
+serif stem meeting a slab, a script stroke with a swash. So bimodality alone is *not* the defect, and
+a detector built on it would fire constantly.
+
+What separates a harmless bimodal object from this one is **`areaW / judged`** — how far the
+sample-count median sits from what the shape's area says. Among objects sewn as **SATIN**:
+
+| fixture | seq | area mm² | judged | areaW | ratio | true | over cap |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 08_mascot_detail | 2 | 103.1 | 3.00 | 4.88 | **1.63×** | – | – |
+| 08_mascot_detail | 1 | 1,601.5 | 3.70 | 5.61 | **1.52×** | – | – |
+| **07_circular_badge** | **3** | **1,551.9** | **3.62** | **4.92** | **1.36×** | **6.98** | **97%** |
+| 03_gradient_soft_subject | 1 | 792.9 | 3.12 | 4.09 | 1.31× | 4.49 | **50%** |
+| 04_thin_line_outline | 1 | 130.6 | 0.67 | 0.67 | 1.00× | 0.70 | 0% |
+
+The bottom row is what a correctly-measured object looks like. **The badge is not the only instance —
+it is the one where I can prove it with an independent radial measure.** `03` seq 1 has half its band
+over the cap and is a milder version of the same thing. `08` seq 1 is 1,601 mm² judged satin at
+3.70 mm with an area-weighted 5.61 mm across 61 branches, which is the fragmentation signature again;
+I have not confirmed it with a second measure because the shape is not ring-like.
+
+So option 3 — leave it — is **weaker than I implied when I offered it**. Four objects across three
+fixtures show the signature, two of them over 1,500 mm². I would revise my recommendation to option 1
+and, if you want a cheap interim, adding `areaW/judged` to the classification log so the corpus can be
+watched without changing any behaviour.
+
+### One unrelated anomaly the survey turned up
+
+`09_nonuniform_background` seq 1 is a **168 mm² region with zero medial-axis branches and zero
+samples** — it falls out as `no_medial_axis`, the branch meant for "a freckle, a catchlight, a
+punctuation dot". The other `no_medial_axis` regions in the corpus are 2.6 and 5.2 mm². A 168 mm²
+region reaching that path is not a freckle and something is wrong. **Recorded, not investigated** —
+it is not part of this question and I am not folding it in.
 
 **5c stays open and unabsorbed** — nothing here touches the +6 trim divergence, and nothing here
 explains it.
