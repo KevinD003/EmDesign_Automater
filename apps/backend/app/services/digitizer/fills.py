@@ -387,79 +387,198 @@ def _fill_by_component(region, row_px: int, max_step_px: int, connect_px: float,
     return out
 
 
+def _row_points(a: float, b: float, y: float, phase: float, step: float, guard: float):
+    """Penetrations for ONE run of one row, from x=a to x=b (either direction).
+
+    Extracted so the cell filler and any future caller share one implementation
+    — this is the machinery the stagger grid and the machine-cap repair live in,
+    and a second copy of it is exactly the drift STEP 0 spent its time removing.
+    """
+    import math
+
+    lo, hi = (a, b) if a < b else (b, a)
+    inner = []
+    s = lo + phase * step
+    while s < hi:
+        if lo + guard <= s <= hi - guard:
+            inner.append(s)
+        s += step
+    if a > b:
+        inner.reverse()
+    # ceil() end-gap repair (CTO A6/C8): the stagger grid + end guard leaves the
+    # span from a row end to its nearest kept penetration unbounded by `step` —
+    # worst case step*(1+2*guard), measured 15.9mm on a 75mm fill at the 12.7mm
+    # machine cap, i.e. OVER the cap. Any over-step gap is subdivided into
+    # ceil(gap/step) parts. The split points carry the row's own stagger PHASE:
+    # unstaggered equal splits put the two legs of an out-and-back row pair —
+    # a thin tongue nearly parallel to the rows — needle-into-needle, measured
+    # 0.146mm same-side pairs on fixture 07's Fill 2, and
+    # `_drop_floor_reversals` cannot repair a retrace whose merged stitch would
+    # exceed the machine cap.
+    row = [float(a), *(float(s) for s in inner), float(b)]
+    filled: list[float] = [row[0]]
+    for nxt in row[1:]:
+        gap = abs(nxt - filled[-1])
+        if gap > step:
+            n = math.ceil(gap / step)
+            base, d = filled[-1], nxt - filled[-1]
+            ks = [k + phase for k in range(n)] if phase > 1e-9 else range(1, n)
+            filled.extend(base + d * k_ / n for k_ in ks)
+        filled.append(nxt)
+    return [(float(s), float(y)) for s in filled]
+
+
+def _boustrophedon_cells(rows):
+    """Split scanned rows into MONOTONE CELLS (CTO 1b).
+
+    ``rows`` is [(y, [(x0, x1), ...]), ...] with each row's runs sorted by x.
+    Returns a list of cells, each [(y, (x0, x1)), ...] in increasing y.
+
+    A cell is a maximal band of rows over which the region is a single
+    uninterrupted run — the classic boustrophedon decomposition. Cells break at
+    the CRITICAL ROWS where the run count changes: where a hole opens, a run
+    splits in two, or two runs merge.
+
+    WHY THIS EXISTS. `_scanline_fill` used to walk every row emitting each of
+    its runs back to back. On an annulus that means the row above the counter is
+    one run, and every row beside the counter is two — so the fill hopped from
+    the left run to the right run ACROSS THE HOLE, once per row, then hopped
+    back. Measured on badge Satin 3: 113 such connections, median 59.3mm, which
+    is the counter's diameter. `_route_travel` then dutifully converted each one
+    into a sewn detour around the rim, manufacturing 16,989 stitches — 80% of
+    the object. Part 13 fixed the equivalent hop BETWEEN disconnected
+    components; the hop WITHIN one concave component was never addressed.
+    """
+    cells: list[list] = []
+    open_cells: dict[int, int] = {}  # index into `prev` runs -> cell index
+
+    prev: list[tuple[int, int]] = []
+    for y, segs in rows:
+        # Which previous runs does each current run touch, and vice versa?
+        fwd = [[j for j, q in enumerate(prev) if not (s[1] < q[0] or q[1] < s[0])]
+               for s in segs]
+        back: list[list[int]] = [[] for _ in prev]
+        for i, js in enumerate(fwd):
+            for j in js:
+                back[j].append(i)
+
+        nxt_open: dict[int, int] = {}
+        for i, s in enumerate(segs):
+            js = fwd[i]
+            # Continue the same cell only on a clean 1:1 correspondence. A run
+            # born from a split (one predecessor feeding several), or formed by
+            # a merge (several predecessors), starts a new cell — those are the
+            # critical rows.
+            if len(js) == 1 and len(back[js[0]]) == 1 and js[0] in open_cells:
+                ci = open_cells[js[0]]
+            else:
+                ci = len(cells)
+                cells.append([])
+            cells[ci].append((y, s))
+            nxt_open[i] = ci
+        prev, open_cells = segs, nxt_open
+    return cells
+
+
 def _scanline_fill(region, row_px: int, max_step_px: int, connect_px: float):
     """Boustrophedon scanline fill of a filled-contour mask.
 
     Returns [(x_px, y_px, is_jump)] — stitch points row by row, alternating
-    direction; long runs subdivided on a STAGGERED grid; far row-to-row moves
-    flagged as jumps.
+    direction; long runs subdivided on a STAGGERED grid; far moves flagged as
+    jumps.
+
+    Rows are grouped into monotone CELLS first (see `_boustrophedon_cells`), each
+    cell is sewn to completion, and cells are visited nearest-first entering at
+    whichever end is closer. Two runs of the same row are never joined across a
+    gap that leaves the region.
 
     Interior penetrations sit on an absolute grid offset by the row's place in
-    the FILL_STAGGER_ROWS cycle — measured from the segment's absolute left end,
-    not its travel start, so the stagger diagonal runs one way across the whole
-    fill instead of herringboning with the serpentine direction.
+    the FILL_STAGGER_ROWS cycle, keyed to the ROW'S OWN INDEX rather than a
+    per-cell counter — measured from the segment's absolute left end, not its
+    travel start — so the stagger diagonal runs one way across the whole fill
+    instead of restarting at every cell boundary.
     """
-    import math
-
     import numpy as np
 
-    pts: list[tuple[float, float, bool]] = []
     h = region.shape[0]
-    left_to_right = True
-    row_idx = 0
     step = max(1.0, float(max_step_px))
     guard = _STAGGER_END_GUARD * step
+
+    rows = []
     for y in range(0, h, row_px):
         cols = np.flatnonzero(region[y])
         if cols.size == 0:
             continue
-        phase = (row_idx % FILL_STAGGER_ROWS) / FILL_STAGGER_ROWS
-        row_idx += 1
-        # Split the row into contiguous runs (handles concave shapes/holes).
         splits = np.flatnonzero(np.diff(cols) > 1)
-        runs = np.split(cols, splits + 1)
-        segs = [(int(rn[0]), int(rn[-1])) for rn in runs if rn.size >= 2]
-        if not segs:
-            continue
-        segs.sort(key=lambda s: s[0], reverse=not left_to_right)
-        for x0, x1 in segs:
+        segs = [(int(rn[0]), int(rn[-1])) for rn in np.split(cols, splits + 1) if rn.size >= 2]
+        if segs:
+            rows.append((y, segs))
+    if not rows:
+        return []
+
+    y_first = rows[0][0]  # the region's own grid origin, for the stagger phase
+
+    cells = _boustrophedon_cells(rows)
+    cells = [c for c in cells if c]
+    if not cells:
+        return []
+
+    def entries(cell):
+        """Every point a cell can actually START on: (flip, left_to_right, point).
+
+        Four of them — enter at the cell's first row or its last (`flip`), and at
+        that row's left end or its right end (`left_to_right`). Scoring by the
+        run's MIDPOINT instead, as a first cut of this did, systematically
+        mis-ranks wide cells: the traversal always begins at a run END, so a
+        midpoint score can pick the cell whose far end you land on. Measured on a
+        rasterised annulus it left one 86px entry among otherwise sub-20px moves.
+        """
+        for flip, (y, s) in ((False, cell[0]), (True, cell[-1])):
+            for ltr in (True, False):
+                yield flip, ltr, (float(s[0] if ltr else s[1]), float(y))
+
+    pts: list[tuple[float, float, bool]] = []
+    remaining = list(range(len(cells)))
+    here: tuple[float, float] | None = None
+
+    while remaining:
+        if here is None:
+            pick, flip, ltr0 = remaining[0], False, True
+        else:
+            best = None
+            for idx in remaining:
+                for f, l, e in entries(cells[idx]):
+                    d = _dist(here, e)
+                    if best is None or d < best[0]:
+                        best = (d, idx, f, l)
+            _d, pick, flip, ltr0 = best
+        remaining.remove(pick)
+
+        cell = cells[pick][::-1] if flip else cells[pick]
+        left_to_right = ltr0
+        for y, (x0, x1) in cell:
+            # Stagger phase follows the row's place in the REGION'S OWN grid, not
+            # its position within the cell — so the diagonal stays continuous
+            # across a cell boundary instead of restarting at every critical row.
+            #
+            # Anchored at `y_first`, NOT at absolute canvas y. A first cut of
+            # this used `y // row_px` and reintroduced the STEP 3a defect through
+            # a different door: `_scanline_angled` short-circuits to this
+            # function below 0.5 degrees WITHOUT cropping, so absolute y made the
+            # fill depend on where the object sat on the canvas. Caught by
+            # `test_the_shallow_angle_shortcut_is_still_position_independent` —
+            # a bar translated by six whole row pitches came out with 89 points
+            # against 88. Subtracting the region's own first scanned row makes
+            # the phase translation-invariant while keeping it geometric.
+            phase = (((y - y_first) // max(row_px, 1)) % FILL_STAGGER_ROWS) / FILL_STAGGER_ROWS
             a, b = (x0, x1) if left_to_right else (x1, x0)
-            first = not pts or _dist(pts[-1], (a, y)) > connect_px
-            pts.append((float(a), float(y), first))
-            lo, hi = (a, b) if a < b else (b, a)
-            inner = []
-            s = lo + phase * step
-            while s < hi:
-                if lo + guard <= s <= hi - guard:
-                    inner.append(s)
-                s += step
-            if a > b:
-                inner.reverse()
-            # ceil() end-gap repair (CTO A6/C8): the stagger grid + end guard
-            # leaves the span from a row end to its nearest kept penetration
-            # unbounded by `step` — worst case step*(1+2*guard), measured
-            # 15.9mm on a 75mm fill at the 12.7mm machine cap, i.e. OVER the
-            # cap. Any over-step gap in [a, inner..., b] is subdivided into
-            # ceil(gap/step) parts, each <= step. The split points carry the
-            # row's own stagger PHASE (fractions (k+phase)/n, all parts still
-            # <= gap/n): unstaggered equal splits put the two legs of an
-            # out-and-back row pair — a thin tongue nearly parallel to the
-            # rows — needle-into-needle, measured 0.146mm same-side pairs on
-            # fixture 07's Fill 2, and `_drop_floor_reversals` cannot repair a
-            # retrace whose merged stitch would exceed the machine cap.
-            row = [float(a), *(float(s) for s in inner), float(b)]
-            filled: list[float] = [row[0]]
-            for nxt in row[1:]:
-                gap = abs(nxt - filled[-1])
-                if gap > step:
-                    n = math.ceil(gap / step)
-                    base, d = filled[-1], nxt - filled[-1]
-                    ks = [k + phase for k in range(n)] if phase > 1e-9 else range(1, n)
-                    filled.extend(base + d * k_ / n for k_ in ks)
-                filled.append(nxt)
-            for s in filled[1:]:
-                pts.append((float(s), float(y), False))
-        left_to_right = not left_to_right
+            row_pts = _row_points(a, b, y, phase, step, guard)
+            jump = not pts or _dist(pts[-1], row_pts[0]) > connect_px
+            pts.append((row_pts[0][0], row_pts[0][1], jump))
+            pts.extend((x, yy, False) for x, yy in row_pts[1:])
+            left_to_right = not left_to_right
+        here = (pts[-1][0], pts[-1][1])
+
     return pts
 
 

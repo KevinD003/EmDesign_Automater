@@ -240,10 +240,23 @@ def _skeleton_branches(skel, min_len: int = 2, win=None):
     pt_list, neighbours = _skeleton_adjacency(skel, win)
     if not pt_list:
         return []
-    pts = set(pt_list)  # raster insertion order — see `_skeleton_adjacency`
+    # `dict.fromkeys`, not `set`. The comment here used to read "raster insertion
+    # order — see `_skeleton_adjacency`", which a `set` does not have: it was
+    # asserting the very property the container destroyed. `_skeleton_adjacency`
+    # is explicit that "the caller's set must be built from it IN THAT ORDER —
+    # set iteration order decides branch discovery order, hence stitch order",
+    # and both this container and `nodes` below were plain sets, so discovery ran
+    # in tuple-hash order. That is stable for a given CPython build and so never
+    # showed up as flakiness, but it is not a property to rely on, and it means
+    # branch cuts are chosen by hash rather than by geometry. `_order_branches`
+    # (Part 13) sorts the RESULT by adjacency — measured, that leaves total
+    # inter-branch travel unchanged at 0.0% — so this is a determinism fix on its
+    # own merits, not a travel one, and it is deliberately not part of 1b.
+    pts = dict.fromkeys(pt_list)  # raster order, O(1) membership
 
     degree = {p: len(neighbours[p]) for p in pts}
     nodes = {p for p, d in degree.items() if d != 2}  # endpoints + junctions
+    node_order = [p for p in pts if p in nodes]  # walk them top-left first
     branches: list[list[tuple[int, int]]] = []
     seen_edges: set[frozenset] = set()
 
@@ -258,7 +271,7 @@ def _skeleton_branches(skel, min_len: int = 2, win=None):
             path.append(cur)
         return path
 
-    for node in nodes:
+    for node in node_order:
         for nb in neighbours[node]:
             edge = frozenset((node, nb))
             if edge in seen_edges:

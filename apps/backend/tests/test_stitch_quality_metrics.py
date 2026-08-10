@@ -567,7 +567,17 @@ def test_density_corpus_health_is_pinned():
     # stitching. That is the intended trade: an unlocked end unravels, and the
     # flag level at 14 still means "a second full layer on the worst healthy
     # cell". flagged_cells == 0 remains the invariant that must never move.
-    assert 6 <= m["max_per_cell"] <= 12
+    #
+    # 13 after CTO 1b (12 without rembg — the documented path split), measured
+    # both ways. It is ONE cell: the hottest moved 0.4mm, from (35.8, 65.2) to
+    # (35.8, 64.8), and gained a penetration. p99_per_cell is UNCHANGED at 5 and
+    # flagged_cells is still 0, so this is not a density shift — the fill's cell
+    # decomposition re-entered near an existing lock site. Recorded rather than
+    # waved through, because THE MARGIN TO THE FLAG IS NOW ONE. If a later
+    # change puts a 14 here, that is a genuine "second full layer" on a real
+    # cell and must be investigated, not re-pinned.
+    assert 6 <= m["max_per_cell"] <= 13
+    assert m["p99_per_cell"] <= 6, "p99 moving is a density shift; a lone max is not"
     assert m["flagged_cells"] == 0
 
 

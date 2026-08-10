@@ -4,13 +4,21 @@ Both functions were pure Python set/dict loops over skeleton pixels. The rewrite
 moved neighbour discovery into `_skeleton_adjacency` (vectorised occupancy
 gathers, windowed nonzero scan) and let `_prune_spurs` hand its window down.
 
-Branch ORDER is stitch order: `_skeleton_branches` iterates `for node in nodes`
-over a SET, so the discovery sequence follows tuple-hash order, feeds
-`_order_branches` and `seen_edges`, and any difference in the emitted list —
-order, direction or content — moves stitches. These tests therefore compare the
-full branch lists for identity, not just their contents as a set.
+Branch ORDER is stitch order: discovery feeds `_order_branches` and
+`seen_edges`, and any difference in the emitted list — order, direction or
+content — moves stitches. These tests therefore compare the full branch lists
+for identity, not just their contents as a set.
 
-The references below are the pre-optimization bodies copied verbatim.
+The references below are the pre-optimization bodies copied verbatim, WITH ONE
+DELIBERATE DEVIATION. Both the original and the shipped function iterated
+`for node in nodes` over a SET, so discovery ran in tuple-hash order — stable
+for a given CPython build, which is why this lock never caught it, but chosen by
+hash rather than by geometry, and directly contrary to `_skeleton_adjacency`'s
+own docstring ("the caller's set must be built from it IN THAT ORDER"). That was
+fixed on its own merits alongside CTO 1b; the reference tracks the fix, keeping
+raster order in the two containers that decide discovery sequence. Everything
+else here is verbatim, because the neighbour-discovery rewrite is what the lock
+is actually for and it remains independently re-implemented below.
 """
 
 import numpy as np
@@ -22,7 +30,11 @@ from app.services import digitizer as D
 
 
 def _reference_branches(skel, min_len: int = 2):
-    pts = {(int(x), int(y)) for y, x in zip(*np.nonzero(skel))}
+    # `dict.fromkeys`, not a set comprehension — see the note on discovery order
+    # in the module docstring. `np.nonzero` yields raster order and this keeps
+    # it; everything else in this body is the pre-optimization code verbatim,
+    # because what the lock exists to check is the neighbour-discovery rewrite.
+    pts = dict.fromkeys((int(x), int(y)) for y, x in zip(*np.nonzero(skel)))
     if not pts:
         return []
 
@@ -40,6 +52,7 @@ def _reference_branches(skel, min_len: int = 2):
 
     degree = {p: len(neighbours(p)) for p in pts}
     nodes = {p for p, d in degree.items() if d != 2}
+    node_order = [p for p in pts if p in nodes]
     branches: list[list[tuple[int, int]]] = []
     seen_edges: set[frozenset] = set()
 
@@ -54,7 +67,7 @@ def _reference_branches(skel, min_len: int = 2):
             path.append(cur)
         return path
 
-    for node in nodes:
+    for node in node_order:
         for nb in neighbours(node):
             edge = frozenset((node, nb))
             if edge in seen_edges:

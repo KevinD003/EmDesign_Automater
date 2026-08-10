@@ -228,20 +228,41 @@ def test_editing_the_ring_does_not_reopen_the_counter(ring):
 
 
 def test_the_crossing_probe_would_catch_a_regression(ring):
-    """Guard the guard: with the pad forced back to rebuild's old pull-only
-    value, the counter reopens. Without this, a probe that silently stopped
-    measuring would read as a pass."""
+    """Guard the guard: with BOTH defenses removed, the counter reopens.
+    Without this, a probe that silently stopped measuring would read as a pass.
+
+    THERE ARE NOW TWO DEFENSES, AND THIS CONTROL HAS TO DISABLE BOTH.
+    Originally there was one — `travel_route_pad_px` — and forcing it back to
+    rebuild's old pull-only value produced 98 crossings. CTO 1b added a second,
+    upstream: `_boustrophedon_cells` stops the fill from ever emitting a
+    left-run-to-right-run connection across the counter, so the router is never
+    asked to bridge the hole and a too-generous pad has almost nothing to route
+    through it. With only the pad forced, this control now reads **2**.
+
+    That is not the probe going blind — it is the defect it was written for
+    having largely ceased to exist upstream. But accepting the 2 would have
+    quietly retired the control, so it now also restores the pre-1b emission
+    order: one cell holding every run in row-major order, which is exactly what
+    `_scanline_fill` used to produce. The assertion again means what it says.
+    """
+    from app.services.digitizer import fills as fills_mod
     from app.services.digitizer import rebuild as rebuild_mod
 
-    original = rebuild_mod.travel_route_pad_px
+    original_pad = rebuild_mod.travel_route_pad_px
+    original_cells = fills_mod._boustrophedon_cells
     rebuild_mod.travel_route_pad_px = lambda pull_mm, mm_per_px: max(
         2, round(float(pull_mm) / mm_per_px)
     )
+    fills_mod._boustrophedon_cells = lambda rows: [
+        [(y, seg) for y, segs in rows for seg in segs]
+    ]
     try:
         regressed = _counter_crossings(rebuild_design(_edited(ring)))
     finally:
-        rebuild_mod.travel_route_pad_px = original
+        rebuild_mod.travel_route_pad_px = original_pad
+        fills_mod._boustrophedon_cells = original_cells
     assert regressed > 20, (
-        f"forcing the old 2px pad produced only {regressed} crossings — the "
-        f"probe is no longer sensitive to the defect it was written for"
+        f"forcing the old 2px pad AND the old row-major fill order produced "
+        f"only {regressed} crossings — the probe is no longer sensitive to the "
+        f"defect it was written for"
     )

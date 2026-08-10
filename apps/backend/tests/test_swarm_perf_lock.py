@@ -57,24 +57,42 @@ LOCK_FIXTURES: dict[str, dict] = {
 }
 
 # Quality bands for THIS lock's configuration, which is not the bench's — the
-# colour counts and hoops differ, so the numbers do too. Measured 2026-08-09:
+# colour counts and hoops differ, so the numbers do too.
 #
 #   fixture                 stitches  sub-0.5mm  sub-0.3mm  max stitch  machine-min
+#   -- measured 2026-08-09, before CTO 1b --
 #   04_thin_line_outline       1,861       0.0%       0.0%      4.20mm         2.7
 #   05_wordmark_caps           1,844       0.4%       0.2%      4.30mm         2.7
 #   06_wordmark_script         1,763       6.2%       0.9%      3.20mm         2.6
 #   07_circular_badge         35,091      14.6%       1.1%      6.05mm        47.0
+#   -- measured 2026-08-10, after CTO 1b (boustrophedon cell decomposition) --
+#   04_thin_line_outline       1,874       0.1%       0.0%      4.23mm         2.7
+#   05_wordmark_caps           1,878       1.0%       0.2%      4.30mm         2.8
+#   06_wordmark_script         1,793       5.1%       1.0%      4.72mm         2.7
+#   07_circular_badge         17,291       3.2%       0.3%      6.05mm        22.8
 #
-# The badge is the worst fixture in the corpus and its band says so rather than
-# certifying it: 20% sub-floor is set to catch a RETURN of the pixel floor
-# (which reads 29.9% here), not to bless 14.6%.
+# THE BADGE'S BANDS ARE RE-CUT, NOT CARRIED OVER. They were 20% / 4% / 55.0
+# against readings of 14.6% / 1.1% / 47.0 — deliberately loose, because at the
+# time the badge WAS the corpus's worst fixture and the band was set to catch a
+# return of the 2px pixel floor (29.9%) rather than to bless 14.6%. After 1b it
+# reads 3.2% / 0.3% / 22.8, and those same bands would now wave through the
+# entire pre-1b regression: 47 machine-minutes passes a 55-minute band. A gate
+# that cannot fail is not a gate — the same reasoning that made
+# STITCH_LOCK_WRITE refuse a violating re-pin in the first place — so the badge
+# is re-cut to 8% / 1.5% / 28.0. That still clears the pixel floor's 29.9% by a
+# wide margin and still leaves ~23% headroom on machine time, but it will not
+# sit quietly through a drift back toward either 34.4 or 47.
+#
+# 06's sub-floor comes down 12% -> 8% on the same reasoning (5.1% measured).
+# 04 and 05 are unchanged: their behaviour did not move and their bands were
+# already close to their readings.
 #
 # (max sub-0.5mm share, max sub-0.3mm share, max machine-minutes)
 QUALITY_BANDS: dict[str, tuple[float, float, float]] = {
     "04_thin_line_outline": (0.05, 0.02, 3.5),
     "05_wordmark_caps": (0.05, 0.02, 3.5),
-    "06_wordmark_script": (0.12, 0.03, 3.5),
-    "07_circular_badge": (0.20, 0.04, 55.0),
+    "06_wordmark_script": (0.08, 0.03, 3.5),
+    "07_circular_badge": (0.08, 0.015, 28.0),
 }
 
 # A machine stop per trim; the same figure the bench harness uses, so a routing
