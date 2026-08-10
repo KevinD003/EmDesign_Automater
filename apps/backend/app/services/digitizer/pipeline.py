@@ -1001,13 +1001,20 @@ def digitize_image(
                     stitch_count=count,
                     contour=outline,
                     holes=hole_outlines,
-                    # Provenance for the B1.5 pass-through: where this object's
-                    # stitches are, and a fingerprint of the parameters that
-                    # produced them. Filled in below, once the object exists to
-                    # hash.
-                    stitch_start=obj_start,
                 )
             )
+            # Provenance for the B1.5 pass-through: a fingerprint of the
+            # parameters that produced this object, hashed once it exists.
+            #
+            # A `stitch_start=obj_start` argument used to sit in the constructor
+            # above, and the comment claimed it recorded "where this object's
+            # stitches are". `DesignObject` has no such field, so Pydantic's
+            # default `extra="ignore"` discarded it SILENTLY — the value never
+            # reached the model and no caller ever read one. Removed rather than
+            # implemented: the index it carried would be invalidated anyway by
+            # `_lock_stream`, which inserts tie-offs into the assembled stream
+            # afterwards, and nothing needs it. The pass-through has always
+            # worked off `params_hash` alone.
             objects[-1].params_hash = object_params_hash(objects[-1])
 
         if this_stop is not None:  # cluster produced no stitchable objects → no phantom stop
