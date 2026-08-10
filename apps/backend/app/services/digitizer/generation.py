@@ -39,7 +39,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from app.services.digitizer.constants import (
-    NO_AXIS_SPECK_MM2,
     SATIN_MAX_UNCOVERED,
     SATIN_MAX_W_MM,
 )
@@ -106,27 +105,9 @@ def spine_satin(region, *, mm_per_px: float, spacing_px: int, max_step_px: int,
     # cannot cover it, so its uncovered share stays high and it correctly is not
     # satin. This is what stops broad fills being forced into columns.
     if not cand:
-        # NO AXIS SAMPLES AT ALL. This arm used to be labelled "a freckle, a
-        # catchlight, a punctuation dot" and carried no size test, which made it
-        # a blind spot rather than a case: `median_w` and the sample count are
-        # both zero here, so EVERY width-based statistic — the classifier's
-        # median, and any detector built on top of it — is structurally unable
-        # to see these objects at all.
-        #
-        # They are not all freckles. `09_nonuniform_background` seq 1 reaches
-        # this arm at 168mm²: a 14.6mm disc, whose medial axis genuinely IS a
-        # single point, and which sews correctly at 100% coverage. The corpus's
-        # actual freckles are 2.6 and 5.2mm². Both belong here — tatami is right
-        # for a disc and right for a speck — but they are different cases and a
-        # survey that cannot distinguish them will keep raising false alarms
-        # (this one cost a round trip).
-        #
-        # So the arm now says which it is. The decision is unchanged: not satin
-        # either way. `axis_pts` is empty in both, so callers already treat the
-        # width as absent rather than as zero.
-        area_mm2 = region_px * mm_per_px * mm_per_px
-        reason = "no_medial_axis" if area_mm2 < NO_AXIS_SPECK_MM2 else "compact_no_axis"
-        viable = False
+        # Too small to reduce to a 1D axis at all — a freckle, a catchlight, a
+        # punctuation dot.
+        reason, viable = "no_medial_axis", False
     elif median_w > SATIN_MAX_W_MM:
         reason, viable = "wider_than_satin_cap", False
     elif uncovered > SATIN_MAX_UNCOVERED:
