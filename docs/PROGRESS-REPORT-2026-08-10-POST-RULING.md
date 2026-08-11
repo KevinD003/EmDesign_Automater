@@ -2,7 +2,19 @@
 
 **For review.** Self-contained: a reviewer needs this file, `CTO-RULING-2026-08-10.md` (the
 instructions being executed) and `CONSOLIDATED-REPORT-2026-08-10.md` (the state before it). Picks up
-exactly where the ruling left off and covers everything to `8bfdf40`.
+exactly where the ruling left off and covers everything to `87b14cc`.
+
+## Revision 5 — what changed since revision 4
+
+Revision 4 was verified: the reviewer reproduced the six-fabric sweep independently and confirmed
+both corrections exact in both directions, including non-monotonicity in `pull_mm`.
+
+1. **`Satin 1`'s column-end pivot is investigated** — mechanism established, no fix written, and one
+   question left explicitly open rather than guessed. §14, full detail in
+   `SATIN1-PIVOT-MECHANISM-2026-08-10.md`.
+2. **The verification discipline is now a hard rule**, arising from process failure #11. §10.
+3. §12.1 gains the reviewer's addition: the coverage-on-expert-file reading is reported **first and
+   on its own**, before any comparison number.
 
 ## Revision 4 — what changed since revision 3
 
@@ -76,9 +88,12 @@ code path it measured.
 | 6 | `1551fc4` | real job-pair loader + expert comparison harness | landing site |
 | 7 | `224b850` | fabric axis on the bench | landing site |
 | 8 | `8bfdf40` | headline numbers labelled structurally; retroactive doc pass | directive 1 |
+| 9 | `87b14cc` | `Satin 1` pivot — mechanism investigated, no fix | next action |
 
-Commits 1–4 are shipped-code changes affecting every upload; 5–8 are the instrument and its labelling. Both CI lanes
-were run to completion before each commit; no commit was pushed on a partial verification.
+Commits 1–4 are shipped-code changes affecting every upload; 5–8 are the instrument and its
+labelling; 9 is documentation only. Both CI lanes were run to completion before each code commit,
+and from failure #11 onward the `N passed` **summary line** was read rather than the tail — a lane
+without one did not run (§10.1).
 
 | commit | lane 1 (default) | lane 2 (`STITCHIQ_NO_REBUILD_PASSTHROUGH=1`) |
 | --- | --- | --- |
@@ -763,6 +778,21 @@ Applied to this stretch: the hoops in §9.5 are **inspected** — read from `FIX
 why error #10 was caught. "Fleece is the softest so it must be the minimum" was **inherited from
 nothing at all**; it was not in a spec, I assumed it.
 
+### 10.1 Verification discipline — a hard rule after failure #11
+
+The reviewer's judgement: *"Process failure #11 is the most important item in this report."* "Both
+lanes green" is the load-bearing claim under every commit in this series, no gate can catch a false
+one, and it was briefly untrue. Two rules follow, and they are absolute:
+
+1. **Never chain the verification command with anything that can short-circuit it.** The lanes run as
+   their own command. `ruff && pytest` is banned — ruff exiting non-zero on a finding means pytest
+   never starts, and the output still *looks* like a completed run.
+2. **Read the summary line, not the tail.** A lane without an `N passed` line **did not run**. For a
+   verification claim, "inspected" means reading the pass/fail line — not recognising the shape of
+   the output.
+
+From here every report states which line was read.
+
 It has already produced four defects that passed their own tests. Applied to §9:
 
 - **§9.2** — the reproducibility check ran on one machine against pinned
@@ -825,10 +855,12 @@ Set by the reviewer, recorded here so it is not re-derived from severity rank la
 **The moment any job pair exists, run the measurement pass. One pair is enough; do not batch it
 behind other work.** Produce a short findings document answering only:
 
-1. **What does our coverage metric read on the EXPERT's file?** This is metric *calibration*, not
-   comparison — if we read 96% on a master digitizer's file, the metric is wrong and the file is
-   fine. The reviewer's point, sharper than the reason the test was written for: it is the one
-   reading that **cannot be gamed by tuning**. Answer it before drawing any comparison conclusion.
+1. **What does our coverage metric read on the EXPERT's file?** **Reported FIRST and ON ITS OWN,
+   before any comparison number.** This is metric *calibration*, not comparison — if we read 96 % on
+   a master digitizer's file, the metric is wrong and the file is fine. The reviewer's point, sharper
+   than the reason the test was written for: it is the one reading that **cannot be gamed by
+   tuning**. If it comes back implausible, **every other number in the document is suspect and the
+   correct output is a metric fix, not a comparison.**
 2. How far apart are we on stitch count, colours, machine-minutes, trims?
 3. Which of the 31 known defects actually fire on real artwork, and at what rate?
 4. What does the difference image show that no metric caught?
@@ -869,15 +901,85 @@ number in the hundreds.
 
 ## 13. Owed and not done
 
-Stated plainly rather than listed a fourth time.
+Stated plainly rather than listed a fifth time.
 
-- **`Satin 1`'s column-end pivot** — ~17 penetrations in one 0.5 mm disc, the larger half of the
-  corpus's worst density site, pre-existing on both trees (§2.2, §7.1.1). It has appeared in three
-  reports without being investigated, and I said in the last exchange that I would take it this
-  stretch and then did not — the labelling work consumed it. It is a bounded question (why a satin
-  column zigzag re-uses one pivot at the inner side of a tight turn), the probe machinery from §2.2
-  already exists, and it is **the next action**, ahead of SH2.
 - **SH2** — `TEXTURE_RETRY_UNCOVERED` re-derived against the corrected `emitted_mask`, with the
-  derivation shown rather than the value assumed at 0.19. Not started.
+  derivation shown rather than the value assumed at 0.19. **Not started; next.**
+- **`Satin 1`'s pivot** — mechanism now established (§14). One question left open, deliberately: it
+  decides which of two fixes is right, and guessing it would produce a plausible wrong fix.
 - Still unabsorbed: 5.2 (+6 trim divergence, mechanism still a hypothesis), 5.4 (knockout policy),
   5.5 (veto dissent).
+
+---
+
+## 14. `Satin 1`'s column-end pivot — mechanism (`87b14cc`)
+
+Listed in three progress reports without being investigated; promised once and not delivered. Now
+investigated. **Mechanism only, no fix**, as directed. Full detail:
+`SATIN1-PIVOT-MECHANISM-2026-08-10.md`.
+
+### 14.1 It is a pivot, not a dense stroke
+
+Measured on the emitted stream in **design millimetres**, fixture `08_mascot_detail`,
+**cotton @ 130×180**:
+
+| quantity | value |
+| --- | --- |
+| penetrations inside the 0.5 mm disc | 25 |
+| **column ends landing in the disc** | **42** |
+| distinct far ends of those columns | 31 |
+| **angular span of the columns** | **175.6°** |
+| column length | 0.707 – 6.946 mm |
+
+Forty-two satin columns converge on one 0.5 mm spot from very nearly a half turn, their outer ends
+sweeping an arc across 31 positions. The columns *rotate about* this point.
+
+### 14.2 The mitre that should prevent it fires on 19 % of stalled stations
+
+The codebase already names this failure, in `_mitre_stalled_side` — *"every one of those columns
+wants its INNER end on the reflex point, so the inner penetrations pile into a spot far tighter than
+the floor allows"* — and resolves it by laying inner ends along the corner's bisector. Instrumented
+on the shipped `_mitre_one_side`, across the whole fixture:
+
+| outcome | stations |
+| --- | --- |
+| **`run_too_short`** (`run < MITRE_MIN_STALLED`) | **4,731** |
+| `axis_not_advancing` | 548 |
+| `step_from_partner_short` | 6 |
+| `step_to_partner_short` | 5 |
+| **mitred** | **258** of 1,329 stalled (**19 %**) |
+
+`floor_px` 3.077, `min_len_px` 5.0, 5,698 stations. The dominant refusal by an order of magnitude is
+`run_too_short`: the mitre acts only inside a run of `MITRE_MIN_STALLED` **consecutive** stalled
+stations.
+
+### 14.3 The one thing not established — and why it was not guessed
+
+**Whether this pivot is one branch or several is untested.** The hypothesis — that `_mitre_one_side`
+sees only one branch's endpoint array and is therefore structurally blind to columns arriving from
+*different* branches at one point — was attempted, and the attempt **abandoned as unsound**.
+
+Column endpoints are produced in `_skeleton_satin_hires`'s **upscaled** pixel space, so locating the
+site among them needs a scale conversion. A validation check against the design's own stitch extents
+**refuted the conversion**: endpoints mapped to x 27.49–279.14 mm on a design spanning
+26.95–93.05 mm, and the factor is not even uniform (279/93 = 3.00, 223/91.5 = 2.44) because the
+upscale is chosen per call from the stroke width. A branch count computed through it would have been
+fiction, so it was **discarded rather than reported**.
+
+Everything in §14.1 and §14.2 is in design mm on the emitted stream and does not depend on it.
+
+**That unknown decides the fix**, which is why none is proposed:
+
+| if… | the fix is |
+| --- | --- |
+| the mitre *declined* here | relax `MITRE_MIN_STALLED` — cheap, contained, testable |
+| the mitre *cannot see* this | a cross-branch pass — a design change |
+
+Settling it needs the hi-res scale captured **per `_column_ends` call**. One number.
+
+### 14.4 Fixture limits
+
+One site, one object, one **synthetic** fixture at one fabric and hoop. No real artwork has been
+measured, so whether real logos produce pivots of this severity is unknown. The mitre statistics are
+**design-wide** and establish that `run_too_short` dominates overall — they do **not** establish
+which guard declined at *this* site, which is the same open question as §14.3.
