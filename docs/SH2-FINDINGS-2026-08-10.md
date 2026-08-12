@@ -77,5 +77,13 @@ how a constant gets tuned to noise. Not attempted.
 Ten synthetic flat fixtures plus four parametric corpus images, all cotton, at 100×100 and 130×180.
 No photograph and no real artwork was measured. Real exports carry anti-aliased edges at widths this
 threshold sits directly among, so the halo-versus-transition boundary is exactly where real artwork
-is most likely to behave differently from these fixtures — and C24, the case that drove rule A, is a
-generated rectangle grid with no real-world analogue in the corpus.
+is most likely to behave differently from these fixtures.
+
+**CORRECTION.** This section previously dismissed C24, the case that drove rule A, as "a
+generated rectangle grid with no real-world analogue in the corpus". That conflated its
+APPEARANCE with its MECHANISM, and only the appearance is synthetic. A flat region deleted
+because its colour fell midway between two palette centres is what happens whenever artwork
+carries more distinct colours than the palette budget — and CB2 measured **38 of 100 corpus
+designs exceeding the stop bound at the default request**. The wholesale-deletion case is
+real, which is why the stricter two-owned-neighbours variant that loses C24 is insufficient
+rather than merely conservative.

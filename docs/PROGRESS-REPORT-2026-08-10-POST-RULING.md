@@ -851,6 +851,20 @@ one, and it was briefly untrue. Two rules follow, and they are absolute:
 
 From here every report states which line was read.
 
+### 10.2 Two-run diff on a red tree — the control that replaced the flake hunt
+
+Adopted after the flake resisted identification across four full runs (§19). It defends against the
+failure mode whether or not that particular flake is ever found:
+
+> **On any red tree, the failure set must be diffed across TWO runs before any test is classified as
+> an expected re-pin. A test appearing in one run and not the other is never a re-pin — it is
+> quarantined and named.**
+
+This is cheaper and more durable than identification. The danger was never a flaky test as such; it
+was a flaky failure landing inside the set that gets waved through as "expected", which is exactly
+where the one observed instance appeared.
+
+
 It has already produced four defects that passed their own tests. Applied to §9:
 
 - **§9.2** — the reproducibility check ran on one machine against pinned
@@ -1357,3 +1371,70 @@ Two independent clean-tree runs earlier in the stretch also gave `1265 passed`.
 identification, and the count should not be mistaken for progress on the question that was asked. The
 experiment that directly observes it — re-apply SH2 rule A, three **sequential** full runs, diff the
 failure sets (~51 min) — remains unrun.
+
+---
+
+## 19. The flake: the direct experiment ran, did not identify it, and is now a control
+
+Ruled: run the sequential experiment once, then stop hunting and convert it to a process control.
+Both halves done.
+
+### 19.1 The experiment
+
+SH2 rule A re-applied **as apparatus only** — it is disqualified (18.4 % object loss against a 14 %
+band) and was reverted afterwards; nothing from it reached `main`. Its signature was verified by
+measurement rather than assumed, since it was reconstructed from the description rather than restored
+from a stash: `01_flat_2color_logo` moves `d42892c0…`/8,969 → `df9670e7…`/8,852.
+
+| run | condition | result | failure set |
+| --- | --- | --- | --- |
+| 1 | sequential | `15 failed, 1250 passed` | baseline |
+| 2 | sequential | `15 failed, 1250 passed` | **identical** |
+| 3 | sequential | `15 failed, 1250 passed` | **identical** |
+| 4 | **concurrent** with lane 2 | `15 failed, 1250 passed` | **identical** |
+| — | lane 2, concurrent | `15 failed, 1244 passed` | — |
+
+**Four full runs, one failure set.** The flake did not reproduce sequentially *or* under the
+concurrent condition it was originally observed in.
+
+### 19.2 What the counts said, and the reasoning error they exposed
+
+15 versus the original 16 is fully explained: the reconstruction exports `_own_thick_blend`, so
+`test_facade_reexports_every_definition` passes. That left the original pair as **alone → 16,
+concurrent → 17**, which pointed back at concurrency — and is why run 4 was added.
+
+Worth recording as a reasoning error of mine: I had refuted two *mechanisms* of concurrency (a
+shared-file race that cannot flip a verdict; CPU contention that measurably does not bite) and
+treated that as refuting the *association* with concurrency. It does not. Disproving the explanations
+one happens to think of is not disproving the correlation. Run 4 tested the association directly and
+it, too, came back negative.
+
+### 19.3 Standing position, stated no larger than the evidence
+
+- The clean tree is stable at **1,265 passed** across repeated runs.
+- The rule-A tree is stable at **15 failures, identical sets**, across four runs including a
+  concurrent one.
+- The flake has been observed **exactly once**, among failures, on a tree carrying a rejected
+  experimental change, through a truncated file.
+
+That is a materially smaller claim than "the suite is nondeterministic", and it is the claim the docs
+now make. It also remains possible that one of the two defects fixed while hunting — the ONNX pin or
+the atomic diff write — removed it; that is untested and not asserted.
+
+### 19.4 The durable answer
+
+§10.2: on any red tree, diff the failure set across two runs before classifying anything as an
+expected re-pin. A test in one set and not the other is quarantined and named, never waved through.
+That defends the actual danger — a flaky failure hiding inside the "expected" set — whether or not
+this flake is ever identified.
+
+### 19.5 Two doc corrections, both claims relayed without their conditions
+
+- `QUALITY-DEFECTS-2026-08-10.md` said the SH2 fix was "measured to leave hard-edged flat art
+  bit-identical". Never measured, and false for the thickness rule (`01` moves 6,165 → 6,221). Now
+  corrected in place, including that it *is* true for the stricter variant.
+- `SH2-FINDINGS-2026-08-10.md` dismissed C24 as "a generated rectangle grid with no real-world
+  analogue". That conflated appearance with mechanism. A flat region deleted because its colour fell
+  between two centres fires whenever artwork exceeds the palette budget — **CB2: 38 of 100 corpus
+  designs**. Corrected, with the consequence stated: the two-owned-neighbours variant that loses C24
+  is insufficient, not merely conservative.
