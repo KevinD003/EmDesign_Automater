@@ -2,7 +2,17 @@
 
 **For review.** Self-contained: a reviewer needs this file, `CTO-RULING-2026-08-10.md` (the
 instructions being executed) and `CONSOLIDATED-REPORT-2026-08-10.md` (the state before it). Picks up
-exactly where the ruling left off and covers everything to `87b14cc`, plus the resolutions in §15.
+exactly where the ruling left off and covers everything to `84440fb`.
+
+## Revision 6 — what changed since revision 5
+
+1. **SH2 was attempted and NOT shipped.** Three candidate rules, all measured, all refuted for
+   different reasons. No code landed; `main` is unchanged. §16, detail in
+   `SH2-FINDINGS-2026-08-10.md`.
+2. **Three process failures**, #12–#14, one of which briefly hid a red test suite behind a green
+   exit code.
+3. **An unidentified flaky test** — two full runs of one tree gave 17 and 16 failures over an
+   identical 1,265 total.
 
 ## Revision 5 — what changed since revision 4
 
@@ -89,9 +99,11 @@ code path it measured.
 | 7 | `224b850` | fabric axis on the bench | landing site |
 | 8 | `8bfdf40` | headline numbers labelled structurally; retroactive doc pass | directive 1 |
 | 9 | `87b14cc` | `Satin 1` pivot — mechanism investigated, no fix | next action |
+| 10 | `22d1dbb` | four resolutions; sequencing reversed, `5c` retired | review |
+| 11 | `84440fb` | **SH2 findings — three rules measured, NO CODE LANDED** | order item 1 |
 
 Commits 1–4 are shipped-code changes affecting every upload; 5–8 are the instrument and its
-labelling; 9 is documentation only. Both CI lanes were run to completion before each code commit,
+labelling; 9–11 are documentation only. **No shipped-code change has landed since `ecad056`.** Both CI lanes were run to completion before each code commit,
 and from failure #11 onward the `N passed` **summary line** was read rather than the tail — a lane
 without one did not run (§10.1).
 
@@ -503,6 +515,24 @@ rest credible.
     "lane" was four lines of lint output. I reported it as running. Noticed only because the tail did
     not look like pytest. A command that reports success for the wrong reason is worse than one that
     fails: the claim "both lanes green" is the load-bearing claim in every commit here.
+
+12. **I piped the verification command through `tail`, and it hid a red suite behind a green exit
+    code.** The background task reported **"exit code 0"** for a run with 17 failures, because a
+    pipeline's status is `tail`'s, not pytest's — and `| tail -12` also truncated the evidence file
+    to twelve lines, so I could see only 11 of the 17 failures and nearly reasoned about the failure
+    set from an incomplete list. I caught it only because §10.1 makes me read the summary line rather
+    than trust the exit code. **The rule now extends: do not CHAIN and do not PIPE the lanes.** A
+    pipe destroys both the status and the evidence.
+
+13. **I inverted the meaning of my own threshold.** I believed a smaller value would be *less*
+    aggressive and preserve flat art; the parameter is a MINIMUM THICKNESS TO OWN, so a smaller
+    value owns *more*. Measurement refuted me within one run (08: 8,024 → 7,694). Had I not run the
+    experiment I would have shipped the worse constant believing it the safer one.
+
+14. **I diffed against a stale artefact.** Comparing SH2 to `v2-swarm-summary.json` — 41,126 stitches
+    and `machine_minutes: n/a`, predating many landed changes — produced "+60.6 % stitches and two
+    classification flips". All fiction. The provenance rule already says to build "before" from a
+    worktree at the parent commit; I reached for a committed JSON because it was to hand.
 
 ---
 
@@ -920,8 +950,11 @@ number in the hundreds.
 
 Stated plainly rather than listed a fifth time.
 
-- **SH2** — `TEXTURE_RETRY_UNCOVERED` re-derived against the corrected `emitted_mask`, with the
-  derivation shown rather than the value assumed at 0.19. **Not started; next.**
+- **SH2** — attempted, three rules measured, **none shippable**. §16.
+  `TEXTURE_RETRY_UNCOVERED` remains underived; it needs DET2's corrected `emitted_mask` first, and
+  DET2 is unfixed.
+- **An unidentified flaky test** — 17 vs 16 failures on an identical tree. Worth finding before it
+  is used to explain away a real failure.
 - **`Satin 1`'s pivot** — mechanism now established (§14). One question left open, deliberately: it
   decides which of two fixes is right, and guessing it would produce a plausible wrong fix.
 - Still unabsorbed: **5.2** (+6 trim divergence at the G4 configuration, mechanism still a
@@ -1063,3 +1096,91 @@ bit-identical; the gradient and `C24_many_colours` moats close.
 
 `TEXTURE_RETRY_UNCOVERED` is then re-derived against the corrected `emitted_mask`, with the derivation
 shown. **Not implemented, and not claimed as implemented.**
+
+---
+
+## 16. SH2 — attempted, measured, not shipped (`84440fb`)
+
+Order item 1. **No code landed.** Three candidate rules were built and measured; each is refuted by a
+different fixture. Full detail in `SH2-FINDINGS-2026-08-10.md`.
+
+### 16.1 The defect, confirmed with the pipeline's own numbers
+
+`planning.py` runs the ambiguous-blend cut only `if not is_textured`, while the Part 29 seam fill
+that would re-own those `-1` pixels sits inside `if is_textured:` — unreachable on exactly the path
+that creates the damage.
+
+| fixture | unowned foreground | pipeline's own `uncovered_px` |
+| --- | --- | --- |
+| 03_gradient_soft_subject | **11.96 %** | **0.00 %** |
+| C24_many_colours | **15.60 %** | 12.53 % |
+| C11_many_colours | 6.30 % | 2.66 % |
+
+Fixture 03 loses 11.96 % of its foreground to nobody while the pipeline reports **0.00 % uncovered**.
+That gap is **DET2's inflated `emitted_mask`, measured directly** rather than argued — the damage is
+invisible to the very gate meant to catch it.
+
+### 16.2 Three rules, three refutations
+
+`_own_thick_blend` extracts the seam fill and runs it unconditionally. What varies is which `-1`
+pixels earn ownership. All figures `[cotton @ per-fixture hoop]`, "before" from a worktree at
+`22d1dbb`:
+
+| rule | 01 hard-edged | 05_wordmark_caps | 03 unowned | C24 unowned |
+| --- | --- | --- | --- | --- |
+| baseline | 6,165 | 1,802 | 11.96 % | 15.60 % |
+| **A** thickness ≥ 0.4 mm | 6,221 | 1,914 (**+6.2 %**) | **0.81 %** | **0.22 %** |
+| **B** thickness ≥ 1 aa px | 6,268 | 1,881 | 0.00 % | 0.22 % |
+| **C** A + ≥2 owned neighbours | **6,165 identical** | 1,827 | **0.81 %** | 15.33 % **lost** |
+
+**A** closes both moats but grows glyphs. `05_wordmark_caps` is a ONE-colour wordmark whose halo
+borders ink on one side and unowned background on the other; owning it drove the rebuild fidelity
+probe to an **18.4 % object loss against a 14 % band**. Growing shapes by a pixel per side is the
+precise effect the ambiguous cut was written to prevent, so A trades this defect for its predecessor.
+
+**B** was tried on a reasoning error (#13 below) and refuted: 08 goes 8,024 → 7,694, 07 goes
+17,174 → 17,656, both worse than A.
+
+**C** enforces the cut's own definition — a blend is between TWO colours — and makes hard-edged art
+bit-identical. It **loses C24**, whose unowned region is not a band at all but a **whole rectangle
+deleted wholesale**, bordered by background, with no second owned neighbour.
+
+### 16.3 What the three jointly establish
+
+The population is three things, and no single scalar separates them:
+
+| case | shape | must be |
+| --- | --- | --- |
+| halo round a glyph | thin, one owned neighbour | left unowned |
+| transition band | thick, two owned neighbours | owned |
+| wholesale-deleted region (C24) | large area, may have one neighbour | owned |
+
+A rule combining thickness with "two owned neighbours **or** area over a floor" would cover all
+three. **Not attempted** — fitting a second threshold against ten synthetic fixtures at the end of a
+session is how a constant gets tuned to noise.
+
+### 16.4 Also established
+
+- **No classification flipped** under rule A: `satin_share` identical on all ten fixtures. Corpus
+  cost +1.8 % machine-minutes.
+- The defect doc's claim that this fix "leaves hard-edged flat art bit-identical" is **inherited and
+  false for A** (01 is hard-edged — 3 distinct source colours — and moved), though **true for C**.
+- **`TEXTURE_RETRY_UNCOVERED` was not re-derived.** It needs DET2's corrected `emitted_mask` first.
+  Under every variant 0 of 14 fixtures cross 0.19, so none mis-fires the photographic rescue — a
+  narrower statement than the derivation the ruling asked for.
+
+### 16.5 Fixture limits
+
+Ten synthetic flat fixtures plus four parametric corpus images, all **cotton**, at 100×100 and
+130×180. No photograph and no real artwork measured. Real exports carry anti-aliased edges at widths
+this threshold sits directly among, so the halo-versus-transition boundary is exactly where real
+artwork is most likely to diverge from these fixtures — and **C24, the case that drove rule A, is a
+generated rectangle grid with no real-world analogue in the corpus.**
+
+### 16.6 Verification
+
+Both lanes read by summary line: **`16 failed, 1249 passed`** (default) and
+**`16 failed, 1243 passed`** (no-rebuild-passthrough). Red, so nothing shipped. Of the 16, 13 were
+expected re-pins (4 stream locks, 8 visual baselines, 1 gate meta-test downstream of a stale
+baseline) and 3 were genuine: a missing facade export, plus the two `05_wordmark_caps` fidelity
+failures above.
