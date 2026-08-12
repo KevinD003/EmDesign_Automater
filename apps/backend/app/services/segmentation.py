@@ -101,10 +101,47 @@ def _rembg_session():
     try:
         from rembg import new_session
 
-        _SESSION = new_session("u2net")
+        _SESSION = new_session("u2net", sess_options=_deterministic_session_options())
     except Exception:  # noqa: BLE001 - no network / no model cache
         _SESSION = None
     return _SESSION
+
+
+def _deterministic_session_options():
+    """ONNX pinned to one thread and sequential execution, or None if unavailable.
+
+    REPRODUCIBLE INFERENCE, ON PURPOSE. Every one of the ten bench fixtures takes
+    the rembg path — measured, not assumed — so the learned segmentation decides
+    the foreground for the whole corpus, and CP1 already established that a
+    customer re-running one upload must get one product. Left at ONNX's defaults,
+    the matte is computed with multi-threaded reductions whose ORDER is not
+    guaranteed, so bit-identical output is a property of the machine's load
+    rather than of the code.
+
+    It was NOT observed to vary: nine digitizes of one fixture — three on an idle
+    box, six during a concurrent full test suite, all in separate processes —
+    produced one stitch hash. This pins the guarantee anyway, because "did not
+    vary on this box today" is not the same claim as "cannot vary".
+
+    MEASURED FREE. Pinning changes nothing about the answer, only its
+    reproducibility: the foreground masks for 03, 01 and 08 are byte-identical
+    with and without it (hashes 022849c6…, ea356a5c…, a99c9226…). Had they
+    differed this would have been a stream-altering change needing a full re-pin,
+    which is why it was measured before being adopted rather than after.
+
+    Returns None when onnxruntime cannot be imported, so the caller falls back to
+    rembg's own default rather than losing segmentation entirely.
+    """
+    try:
+        import onnxruntime as ort
+
+        opts = ort.SessionOptions()
+        opts.intra_op_num_threads = 1
+        opts.inter_op_num_threads = 1
+        opts.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+        return opts
+    except Exception:  # noqa: BLE001 - fall back to rembg's default session
+        return None
 
 
 def _flood_mask(img):

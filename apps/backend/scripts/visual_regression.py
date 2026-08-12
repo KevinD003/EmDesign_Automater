@@ -23,6 +23,7 @@ everyone to ignore the harness.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -130,8 +131,20 @@ def compare(name: str, actual, write_diff: bool = True) -> dict:
         mask = np.any(expected != actual, axis=2)
         flag[mask] = (0, 0, 255)
         strip = np.hstack([expected, actual, flag])
-        cv2.imwrite(str(DIFF_DIR / f"{name}.png"), strip)
-        verdict["diff"] = str(DIFF_DIR / f"{name}.png")
+        # WRITTEN ATOMICALLY, because two test lanes are routinely run at once
+        # and both fail the same fixture. `cv2.imwrite` straight to the final
+        # path let the second writer interleave with the first, so the strip a
+        # human opens to decide "is this change intended?" could be a torn file.
+        # It cannot flip an assertion — the verdict above is already computed —
+        # but the artefact it corrupts is the one used to JUDGE a re-pin, which
+        # is the same class of problem as a flaky test. A temporary file per
+        # process plus `os.replace` keeps the path predictable (the failure
+        # message prints it) while making the write indivisible.
+        final = DIFF_DIR / f"{name}.png"
+        tmp = DIFF_DIR / f".{name}.{os.getpid()}.tmp.png"
+        cv2.imwrite(str(tmp), strip)
+        os.replace(tmp, final)
+        verdict["diff"] = str(final)
     return verdict
 
 
