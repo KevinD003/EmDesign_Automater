@@ -2,7 +2,15 @@
 
 **For review.** Self-contained: a reviewer needs this file, `CTO-RULING-2026-08-10.md` (the
 instructions being executed) and `CONSOLIDATED-REPORT-2026-08-10.md` (the state before it). Picks up
-exactly where the ruling left off and covers everything to `84440fb`.
+exactly where the ruling left off and covers everything to `ccd45a3`.
+
+## Revision 7 — what changed since revision 6
+
+1. **Hypothesis C (ONNX/rembg nondeterminism) tested and refuted** — but its precondition question
+   produced a finding worth having, and the hardening was adopted anyway. §18.
+2. **Two real defects fixed** (`ccd45a3`): ONNX inference pinned, and the visual diff strip made
+   atomic.
+3. **The flake is still not identified.** Three hypotheses refuted is not an identification.
 
 ## Revision 6 — what changed since revision 5
 
@@ -101,6 +109,8 @@ code path it measured.
 | 9 | `87b14cc` | `Satin 1` pivot — mechanism investigated, no fix | next action |
 | 10 | `22d1dbb` | four resolutions; sequencing reversed, `5c` retired | review |
 | 11 | `84440fb` | **SH2 findings — three rules measured, NO CODE LANDED** | order item 1 |
+| 12 | `85306ff` | item 0 — flaky test narrowed, two hypotheses refuted | order item 0 |
+| 13 | `ccd45a3` | ONNX inference pinned; visual diff strip written atomically | order item 0 |
 
 Commits 1–4 are shipped-code changes affecting every upload; 5–8 are the instrument and its
 labelling; 9–11 are documentation only. **No shipped-code change has landed since `ecad056`.** Both CI lanes were run to completion before each code commit,
@@ -117,6 +127,7 @@ without one did not run (§10.1).
 | `1551fc4` | 1252 passed | 1246 passed |
 | `224b850` | 1258 passed | 1252 passed |
 | `8bfdf40` | 1265 passed | 1259 passed |
+| `ccd45a3` | 1265 passed | 1259 passed |
 
 `1551fc4` and `224b850` were split rather than committed together, because the lanes that verified
 the harness had **started before** the fabric-axis files were copied in and never collected their
@@ -953,8 +964,14 @@ Stated plainly rather than listed a fifth time.
 - **SH2** — attempted, three rules measured, **none shippable**. §16.
   `TEXTURE_RETRY_UNCOVERED` remains underived; it needs DET2's corrected `emitted_mask` first, and
   DET2 is unfixed.
-- **An unidentified flaky test** — 17 vs 16 failures on an identical tree. Worth finding before it
-  is used to explain away a real failure.
+- **The unidentified flaky test** — three hypotheses refuted (§17, §18), not identified. The
+  experiment that would name it is specified in §17.6 and unrun.
+- **Two doc corrections owed**, both from claims relayed without their conditions:
+  `QUALITY-DEFECTS-2026-08-10.md` states the SH2 fix was "measured to leave hard-edged flat art
+  bit-identical" — never measured, and false for rule A (6,165 → 6,221); and
+  `SH2-FINDINGS-2026-08-10.md` dismisses C24 as having "no real-world analogue", when its
+  MECHANISM — a flat region deleted because its colour fell midway between two centres — fires
+  whenever artwork exceeds the palette budget, which CB2 measured on 38/100 corpus designs.
 - **`Satin 1`'s pivot** — mechanism now established (§14). One question left open, deliberately: it
   decides which of two fixes is right, and guessing it would produce a plausible wrong fix.
 - Still unabsorbed: **5.2** (+6 trim divergence at the G4 configuration, mechanism still a
@@ -1247,3 +1264,96 @@ hypothesis A out of the picture), and diff the failure sets. ~51 minutes. Not ru
 **Why this matters more than it looks:** the flake appeared *among failing tests* on a red tree —
 the exact set that gets classified as "expected re-pin". A flake that hides there is a flake that
 gets waved through.
+
+---
+
+## 18. Hypothesis C — ONNX nondeterminism: refuted, and hardened anyway (`ccd45a3`)
+
+Third hypothesis for the flake (§17). **Refuted.** Two real defects fixed on the way, neither of
+them the flake.
+
+### 18.1 The precondition question, answered — and it is the reassuring answer
+
+Before testing the hypothesis: does the determinism suite actually exercise the learned path, or does
+the texture gate route flat synthetic art down the OpenCV fallback? If the latter, the learned path
+had never been determinism-tested at all — a finding regardless of the flake.
+
+Measured through `segmentation.foreground_mask` rather than inferred:
+
+| fixture | path | | fixture | path |
+| --- | --- | --- | --- | --- |
+| 01_flat_2color_logo | **rembg** | | 06_wordmark_script | **rembg** |
+| 02_logo_fine_text_3color | **rembg** | | 07_circular_badge | **rembg** |
+| 03_gradient_soft_subject | **rembg** | | 08_mascot_detail | **rembg** |
+| 04_thin_line_outline | **rembg** | | 09_nonuniform_background | **rembg** |
+| 05_wordmark_caps | **rembg** | | 10_low_contrast_subject | **rembg** |
+
+**All ten.** The learned path is fully covered; the determinism suite's two fixtures both take it.
+
+### 18.2 The hypothesis — refuted
+
+Preconditions held: `segmentation.py` set **no** `SessionOptions`, so ONNX ran with default
+multi-threaded reductions whose order is not guaranteed. The existing determinism test only repeats
+uploads **in one process in isolation**, which cannot see cross-process or under-load variation.
+
+Stitch-stream hash, separate processes each time:
+
+| condition | runs | distinct hashes |
+| --- | --- | --- |
+| idle box, `03_gradient_soft_subject` | 3 | **1** |
+| during a concurrent full suite, `03` | 4 | **1** |
+| during a concurrent full suite, `01` | 2 | **1** |
+
+Nine digitizes, two fixtures, six of them under load — one hash each. **ONNX nondeterminism does not
+reproduce here.**
+
+### 18.3 Hardened regardless, and measured free BEFORE adopting
+
+`_deterministic_session_options()` pins `intra_op_num_threads=1`, `inter_op_num_threads=1`,
+`ORT_SEQUENTIAL`, returning None if `onnxruntime` cannot be imported so segmentation degrades to
+rembg's default rather than being lost. The reasoning recorded in the docstring: *"did not vary on
+this box today" is not the same claim as "cannot vary"*.
+
+**The measurement that mattered was the one checking my own fix was cheap.** Pinning changes reduction
+order, so had it changed the MATTE it would have changed every fixture's stream and required a full
+re-pin — hardening masquerading as a one-liner. It does not:
+
+| fixture | mask hash, default | mask hash, pinned |
+| --- | --- | --- |
+| 03_gradient_soft_subject | `022849c6c269ee91` | **identical** |
+| 01_flat_2color_logo | `ea356a5cfec54419` | **identical** |
+| 08_mascot_detail | `a99c92262c77285b` | **identical** |
+
+and the shipped path still hashes `6e7d51ec…` after the change. Measured before adopting, not
+discovered in the lanes.
+
+### 18.4 The diff strip is now atomic
+
+`visual_regression.compare()` wrote `tests/visual/diffs/<name>.png` directly — shared, non-`tmp_path`
+— whenever a fixture failed, and two lanes are routinely run at once and fail the same fixture. Now a
+per-process temp file plus `os.replace`: predictable path (the failure message prints it), indivisible
+write. It cannot flip an assertion, but the artefact it corrupted is **the one used to judge re-pins**,
+which is the same class of problem as the flake.
+
+### 18.5 Fixture limits
+
+Nine runs, two fixtures, one machine, one `onnxruntime`/`rembg` version, load from a single concurrent
+suite on **4 CPUs**. This establishes that ONNX was **not the cause here** — not that it is
+deterministic in general. A different execution provider, a GPU, or a many-core host could all
+behave differently, which is precisely why the pin is worth having despite the negative result.
+
+### 18.6 Verification
+
+Read from untruncated files, no chain, no pipe:
+
+- lane 1 (default) — **`1265 passed, 2 skipped, 2 deselected, 3 xfailed, 1 warning`**
+- lane 2 (`STITCHIQ_NO_REBUILD_PASSTHROUGH=1`) — **`1259 passed, 8 skipped, 2 deselected, 3 xfailed, 1 warning`**
+
+Two independent clean-tree runs earlier in the stretch also gave `1265 passed`.
+
+### 18.7 Standing state of item 0
+
+**Three hypotheses refuted, two defects fixed, flake NOT identified.** Refutations are not an
+identification, and the count should not be mistaken for progress on the question that was asked. The
+experiment that directly observes it — re-apply SH2 rule A, three **sequential** full runs, diff the
+failure sets (~51 min) — remains unrun.
