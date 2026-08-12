@@ -2,7 +2,7 @@
 
 **For review.** Self-contained: a reviewer needs this file, `CTO-RULING-2026-08-10.md` (the
 instructions being executed) and `CONSOLIDATED-REPORT-2026-08-10.md` (the state before it). Picks up
-exactly where the ruling left off and covers everything to `87b14cc`.
+exactly where the ruling left off and covers everything to `87b14cc`, plus the resolutions in §15.
 
 ## Revision 5 — what changed since revision 4
 
@@ -610,13 +610,30 @@ before that tranche or it will be tuned blind. **Done in `224b850`** (§9.5), fo
 site so the instrument exists before it is needed — and it immediately showed that every headline
 number in this series is a cotton number.
 
-### Revised order (current)
+### Revised order (current, after the sequencing reversal)
 
 1. ~~Real-artwork landing site + the fabric axis~~ — **done**, `0361344` / `1551fc4` / `224b850` (§9)
-2. **SH2**, with `TEXTURE_RETRY_UNCOVERED` re-derived rather than assumed ← **in progress**
-3. The physical-units contract as its own tranche, re-pinned above a 133 mm hoop
+2. **SH2** — `TEXTURE_RETRY_UNCOVERED` re-derived against the corrected `emitted_mask`, derivation
+   shown, not assumed at 0.19. ← **next**
+3. **The A>cap veto** — moved AHEAD of the physical-units tranche, see below. ~1 day.
+4. The physical-units contract as its own tranche, **across the fabric axis, per fabric**, re-pinned
+   above a 133 mm hoop.
 
-Then the veto (Q3 statistic), then 1c, then 3e-i.
+Then 1c, then 3e-i.
+
+**The veto moved forward, and this reversed a ruling.** A later ruling had placed it *after* the
+physical-units tranche. I argued that contradicted the same ruling's own safety property: it forbade
+overlapping the veto with 3e-i because *"a forbidden refactor diff [would be] indistinguishable from
+an intended classification diff"* — and the physical-units tranche moves **every fixture and every
+fabric differently** (§9.5), so the veto's intended 3-of-10 classification diff landing on top of it
+is that same indistinguishability, worse. The veto also does not *need* the tranche: **A>cap is pure
+region geometry**, `dilate(EDT > cap/2, disk(cap/2))` on the raw mask, with no dependence on pitch,
+pull compensation or units. Accepted, with one condition traced by the reviewer and now binding:
+
+> The physical-units work must take **float pacing**, not grid-snapping. Grid-snap
+> (`mm_per_px' = row_mm / round(row_mm / mm_per_px)`) changes `mm_per_px`, re-rasters the region, and
+> **would** move A>cap. If grid-snap is taken for any reason, the A>cap survey is re-run afterwards
+> and that is stated.
 
 Superseded: DET3 completion (done, `ecad056`) was item 1 of the previous order; per-object
 attribution was item 2 and is now closed as having no possible consumer.
@@ -907,8 +924,10 @@ Stated plainly rather than listed a fifth time.
   derivation shown rather than the value assumed at 0.19. **Not started; next.**
 - **`Satin 1`'s pivot** — mechanism now established (§14). One question left open, deliberately: it
   decides which of two fixes is right, and guessing it would produce a plausible wrong fix.
-- Still unabsorbed: 5.2 (+6 trim divergence, mechanism still a hypothesis), 5.4 (knockout policy),
-  5.5 (veto dissent).
+- Still unabsorbed: **5.2** (+6 trim divergence at the G4 configuration, mechanism still a
+  hypothesis), **5.4** (knockout policy), **5.5** (the A>cap dissent).
+  *"5c" is not a fifth item — it was §5c in `CTO-1B-BOUSTROPHEDON` and became 5.2 when the
+  consolidated report absorbed it. The label is dropped so it stops reading as one.*
 
 ---
 
@@ -983,3 +1002,64 @@ One site, one object, one **synthetic** fixture at one fabric and hoop. No real 
 measured, so whether real logos produce pivots of this severity is unknown. The mitre statistics are
 **design-wide** and establish that `run_too_short` dominates overall — they do **not** establish
 which guard declined at *this* site, which is the same open question as §14.3.
+
+---
+
+## 15. Four resolutions from the last review
+
+Three of the four were the reviewer's own errors, self-identified. Recorded because the corrections
+change the plan and the record.
+
+### 15.1 A re-sent ruling — reconciled, not re-executed
+
+An earlier ruling was re-sent whose two P1 items had already shipped in `a95df3e`. Verified before
+responding rather than assumed: `skeleton.py:63` reads `((row + col) % 2)` with line 29 recording the
+old `(row + col + y0 + x0) % 2`, and `generation.py:137` splits the no-axis arm on area via
+`NO_AXIS_SPECK_MM2`. The width survey had also been re-run — and **refuted** that ruling's
+expectation that the four flagged objects would change (§3).
+
+### 15.2 Sequencing — my objection upheld, a later ruling reversed
+
+The A>cap veto now goes **after SH2 and before the physical-units tranche**. Reasoning and the binding
+float-pacing condition are in §8. The reviewer independently traced the independence claim:
+`spine_satin` requires the region **undilated**, so classification runs on the raw mask, and every
+item in the physical-units contract changes emission or dilation rather than that mask.
+
+### 15.3 "18 of 24" versus my 13 — mine stands
+
+The 18 came from an agent under a condition that was dropped in relay: artwork built at 1200 px so
+`_MIN_WORK_PX == _MAX_WORK_PX` and **no resampling occurs**, deliberately isolating parity. A second
+investigator on the same fleet reported 14 through the ordinary path. **The figure of record is
+13 of 24, full pipeline** — the number that describes real behaviour. The reviewer's own note: they
+relayed a figure without its condition one exchange after ruling that an unlabelled number is how
+"22.65 minutes" became a fact.
+
+That is the third instance this stretch of the same failure — a number travelling without the
+conditions that make it true — and the first two were mine (§6, #9 and #10).
+
+### 15.4 "5c" was never a fifth item
+
+It was §5c in `CTO-1B-BOUSTROPHEDON` and became **5.2** when the consolidated report absorbed it —
+the same +6 trim divergence at the G4 configuration. The label is dropped throughout so it stops
+reading as an extra open item. Unabsorbed remains exactly: **5.2, 5.4, 5.5**, plus the A>cap dissent.
+
+### 15.5 `Satin 1` — resolved and deferred
+
+The question §14.3 left open is settled, **by the reviewer's measurement and not mine**: no value of
+`MITRE_MIN_STALLED` moves the site, which eliminates "the mitre declined" and leaves **cross-branch
+blindness** — `_mitre_one_side` sees one branch's endpoint array at a time. A per-branch pass cannot
+fix it. That makes the fix a design change rather than a threshold, so it is deferred behind SH2, the
+veto and the physical-units tranche. `SATIN1-PIVOT-MECHANISM-2026-08-10.md` is updated.
+
+### 15.6 SH2 — designed, not yet built
+
+Read the code this stretch; the fix is now specific. `planning.py` runs the ambiguous-blend cut only
+`if not is_textured`, while the seam fill that would re-own those `-1` pixels sits inside
+`if is_textured:` — unreachable on exactly the path that creates the damage. The fix is to extract the
+seam fill and run it **unconditionally**, gating ownership on the `-1` band's **local thickness**
+(`2 × EDT` of the `-1` mask) instead of on `is_textured`: discard bands at or below one anti-alias
+width (~`up_f` px), own everything thicker. Hard-edged flat art carries ≤1 px bands and stays
+bit-identical; the gradient and `C24_many_colours` moats close.
+
+`TEXTURE_RETRY_UNCOVERED` is then re-derived against the corrected `emitted_mask`, with the derivation
+shown. **Not implemented, and not claimed as implemented.**

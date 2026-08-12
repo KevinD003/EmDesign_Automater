@@ -82,7 +82,21 @@ not depend on that conversion.
   calibrated on `max_per_cell`, and the two are not interchangeable (see
   `DENSITY-LOCK-SITE-2026-08-10.md`).
 
-## What would settle it
+## RESOLVED — cross-branch blindness (added after review)
+
+**The open question below was settled by the reviewer, not by me.** Their measurement:
+**no value of `MITRE_MIN_STALLED` moves this site.** That eliminates the "the mitre merely declined"
+branch of the table below and leaves the other: `_mitre_one_side` sees one branch's endpoint array at
+a time and is **structurally blind** to columns arriving from *different* branches at the same point.
+A per-branch pass cannot fix it; a cross-branch pass is a design change.
+
+**Status: deferred**, mechanism settled. The fix is a design change rather than a threshold, so it is
+not a one-day item and does not belong in front of SH2, the A>cap veto, or the physical-units tranche.
+
+The section below is kept as written, because the reason I could not settle it myself — a refuted
+coordinate conversion — is worth preserving.
+
+## What would have settled it from here
 
 1. Capture the hi-res scale factor **per `_column_ends` call** — it is chosen inside
    `_skeleton_satin_hires` from `stroke_mm / mm_per_px` — and redo the branch attribution properly.
