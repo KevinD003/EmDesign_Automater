@@ -105,3 +105,37 @@ safety assertion.
    matters on its own: the CTO's real-artwork comparison harness is specified to measure
    **per-object stitch-type agreement** against an expert machine file, and that reconciliation
    depends on per-object counts being right.
+
+---
+
+## Addendum — the exact slice, after a reviewer could not reproduce the tie-off
+
+A reviewer read `JUMP@8071` as a **stream** index, stepped forward from it, and got
+0.700 / 0.610 / 0.611 returning to (29.867, 63.830) — not the figures quoted above. Re-measured on
+the tree the claim was made about (`a95df3e`, the parity tree: 8,170 stream entries, 8,091
+penetrations).
+
+**Both readings are exact. They are two different tie-offs inside the same jump-delimited run.**
+
+| | the reviewer's | this document's |
+| --- | --- | --- |
+| position | stream 8072–8075 | **penetration 8048–8052** = stream 8123–8127 |
+| steps | 0.700 / 0.610 / 0.610 | 0.617 / 0.342 / 0.700 / 0.610 / 0.610 |
+| returns to | (29.867, 63.830) = stream 8072 | **(36.006, 64.803) = pen 8049** |
+
+Every figure above is confirmed. `stream[8071]` **is** a `JUMP`, and it **is** the last non-STITCH
+before stream 8123 — there is no intervening jump, trim or colour change across that whole run — so
+"entered by `JUMP@8071`" is true of this cluster as well.
+
+**What was wrong was not a number but a locator.** Naming the entering jump is true and
+insufficient: the run holds 51 penetrations before the cluster in question, and two tie-offs within
+it share the sub-signature 0.700 / 0.610 / 0.610, so a reader who steps forward from the jump lands
+on the wrong one and sees three of five values match.
+
+**THE SLICE, stated so it is reproducible.** `pen = [s for s in design.stitches if _cmd(s) ==
+"STITCH"]` — JUMP, TRIM and COLOR_CHANGE excluded — then `pen[8048:8053]`, steps between consecutive
+entries of that list. Penetration indices, not stream indices. The two spaces differ by 79 entries
+here and the document quoted both in one sentence without saying which was which.
+
+**Generalises:** an index is not a location unless the index SPACE is named. Every future stream
+citation states which list it indexes and gives both indices where they differ.

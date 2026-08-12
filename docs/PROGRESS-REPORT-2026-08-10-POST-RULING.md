@@ -851,6 +851,23 @@ one, and it was briefly untrue. Two rules follow, and they are absolute:
 
 From here every report states which line was read.
 
+### 10.3 Refuting a mechanism is not refuting a correlation
+
+Promoted from §19.2 at the reviewer's direction, because it has now caught both of us:
+
+> **Disproving the explanations one happens to think of is not disproving the correlation.**
+
+I refuted two *mechanisms* of concurrency — a shared-file race that cannot flip a verdict, and CPU
+contention that measurably does not bite — and treated the association with concurrency as refuted
+along with them. It was not; it took a fourth run to test the association itself.
+
+### 10.4 An index is not a location unless its space is named
+
+From the tie-off discrepancy (§20). `pen[8048]` and `stream[8048]` differ by 79 entries on one
+fixture, and a document that quotes a stream index and a penetration-space measurement in the same
+sentence is not reproducible even when every number in it is exact. **Every stream citation names
+which list it indexes, and gives both indices where they differ.**
+
 ### 10.2 Two-run diff on a red tree — the control that replaced the flake hunt
 
 Adopted after the flake resisted identification across four full runs (§19). It defends against the
@@ -1438,3 +1455,46 @@ this flake is ever identified.
   between two centres fires whenever artwork exceeds the palette budget — **CB2: 38 of 100 corpus
   designs**. Corrected, with the consequence stated: the two-owned-neighbours variant that loses C24
   is insufficient, not merely conservative.
+
+---
+
+## 20. The tie-off discrepancy — resolved: two tie-offs, two index spaces
+
+A reviewer could not reproduce the tie-off figures in `DENSITY-LOCK-SITE-2026-08-10.md`, getting
+0.700 / 0.610 / 0.611 returning to (29.867, 63.830) where the document says
+0.617 / 0.342 / 0.700 / 0.610 / 0.610 returning to (36.006, 64.803).
+
+**Both are exact.** Re-measured on the tree the claim was made about — `a95df3e`, the parity tree,
+8,170 stream entries / 8,091 penetrations. (Neither figure reproduces on current `main`, which has
+8,106 / 8,024 because UP1 and DET3 moved the stream since; that alone would have wasted a reviewer's
+afternoon.)
+
+| | reviewer | document |
+| --- | --- | --- |
+| position | stream 8072–8075 | **penetration 8048–8052** = stream 8123–8127 |
+| steps | 0.700 / 0.610 / 0.610 | 0.617 / 0.342 / 0.700 / 0.610 / 0.610 |
+| returns to | (29.867, 63.830) = stream 8072 | (36.006, 64.803) = pen 8049 |
+
+Two different tie-offs **inside the same jump-delimited run**, sharing the sub-signature
+0.700 / 0.610 / 0.610 — which is why three of five values matched and it looked like one disputed
+measurement.
+
+`stream[8071]` **is** a JUMP and **is** the last non-STITCH before stream 8123, with no intervening
+jump, trim or colour change, so "entered by `JUMP@8071`" is true of the document's cluster too. **The
+error was a locator, not a number.** Naming the entering jump is true and insufficient when the run
+holds 51 penetrations before the cluster and contains two tie-offs.
+
+**Correction issued in place** in `DENSITY-LOCK-SITE-2026-08-10.md`, stating the reproducible slice:
+`pen = [s for s in design.stitches if _cmd(s) == "STITCH"]`, then `pen[8048:8053]` — penetration
+indices, JUMP/TRIM/COLOR_CHANGE excluded. The two spaces differ by 79 entries at that point.
+
+Generalised as a standing rule, §10.4.
+
+### 20.1 On the reviewer's four wrong probes
+
+The reviewer reported building four ad-hoc probes this stretch, all wrong before being fixed, and
+drew the conclusion that private probes are unreviewable by construction. That is right, and this
+document is evidence for it in the other direction: the numbers here were correct and still cost a
+reviewer three failed attempts, because they were emitted by a scratchpad probe rather than by the
+shipped quality script. **A measurement worth reporting is worth shipping.** First application:
+DET2's unowned-foreground measurement ships in `measure_stitch_quality.py`, not in a probe.
