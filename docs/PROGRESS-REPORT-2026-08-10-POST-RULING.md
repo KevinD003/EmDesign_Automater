@@ -1184,3 +1184,66 @@ Both lanes read by summary line: **`16 failed, 1249 passed`** (default) and
 expected re-pins (4 stream locks, 8 visual baselines, 1 gate meta-test downstream of a stale
 baseline) and 3 were genuine: a missing facade export, plus the two `05_wordmark_caps` fidelity
 failures above.
+
+---
+
+## 17. Item 0 — the flaky test: two hypotheses refuted, one defect found, not yet named
+
+**Status: NOT identified.** Recorded in full because a nondeterministic suite makes "both lanes
+green" unfalsifiable, and because two plausible explanations are now eliminated rather than left
+hanging.
+
+### 17.1 What is being explained
+
+Two full runs of one tree (the red SH2 tree) gave **17 failed / 1,248 passed** and
+**16 failed / 1,249 passed** — an identical 1,265 total, one test flipping.
+
+### 17.2 Hypothesis A — concurrent lanes racing on a shared file. REFUTED as the cause.
+
+It did surface **a real defect**: `visual_regression.compare()` writes
+`tests/visual/diffs/<name>.png`, a shared non-`tmp_path` location, whenever a fixture fails. Two
+concurrent lanes both failing the same fixture write that file simultaneously. It **cannot flip an
+assertion** — the verdict is computed before the write — so it corrupts the diff strip a human reads
+to judge whether a change was intended, not the result. Worth fixing; not the flake.
+
+### 17.3 Hypothesis B — wall-clock assertions under CPU contention. REFUTED by measurement.
+
+This box has **4 CPUs**, and two full suites have been run concurrently on it throughout the
+engagement. Several tests assert wall-clock budgets (`test_event_loop_lag` on a lag ratio,
+`test_part48_trim_routing` on a 3-second bound, the rate-limit suite). Measured:
+
+| condition | result |
+| --- | --- |
+| timing tests alone | 35 passed, 71.4 s |
+| timing tests during a concurrent full suite, run 1 | 35 passed, 43.7 s |
+| timing tests during a concurrent full suite, run 2 | 35 passed, 40.1 s |
+
+They not only pass under load, they run **faster** than in isolation — so the box was not saturated
+the way the hypothesis assumed. Refuted.
+
+### 17.4 Clean tree
+
+A full suite on the clean tree, itself under concurrent load: **`1265 passed`**, zero failures. The
+flake does **not** manifest on green, which is why it cannot be hunted on the current tree.
+
+### 17.5 Where it is narrowed to
+
+The truncated file held the **last 11 lines** of a sorted-by-execution-order failure list, and those
+11 are exactly the last 11 of the complete 16-failure list. For the other run to have had 17, the
+extra failure must sort **at or before `test_swarm_perf_lock::test_stitch_stream_locked[05]`**.
+
+The stream lock covers exactly four fixtures (04, 05, 06, 07), all four of which failed — complete
+coverage, so "another lock should have failed" is eliminated. That leaves, as the strongest
+candidates, a second parametrisation of the two tests that were **already marginal**:
+`test_probe6_regenerating_reproduces_the_design` (6 fixtures, 1 failed) and
+`test_editing_a_satin_design_keeps_every_object`. Both measure per-object stitch loss against a
+band — precisely where a marginal case flips.
+
+### 17.6 The experiment that would settle it
+
+Re-apply SH2 rule A, run the full suite three times **sequentially** (not concurrently, to keep
+hypothesis A out of the picture), and diff the failure sets. ~51 minutes. Not run.
+
+**Why this matters more than it looks:** the flake appeared *among failing tests* on a red tree —
+the exact set that gets classified as "expected re-pin". A flake that hides there is a flake that
+gets waved through.
