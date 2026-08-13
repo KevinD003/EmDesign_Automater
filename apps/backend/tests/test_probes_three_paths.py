@@ -241,11 +241,32 @@ from pathlib import Path
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "quality_bench"
 
 # (stem, colours, min total ratio, max total ratio, max single-object loss)
+#
+# SINGLE-OBJECT LOSS IS IN PENETRATION SPACE since 2026-08-16. The bands were
+# originally fitted on stream spans (the per-object history quoted above is
+# span-space history and stays correct for what it describes). Re-derived
+# rather than carried: each band keeps the absolute headroom it carried over
+# its own measurement, rounded up to 0.01 — measured both-spaces on a clean
+# tree at 62b42b0, worst per-object loss span -> penetration:
+#
+#   01  -0.35% -> -0.33%   0.10 -> 0.10        05  -3.00% -> -1.03%   0.14 -> 0.13
+#   04  -2.60% -> -0.38%   0.12 -> 0.10        06  -9.69% -> -10.31%  0.20 -> 0.21
+#   07 -32.61% -> -34.09%  0.34 -> 0.36        02 -20.00% -> -15.38%  0.27 -> 0.23
+#
+# Five tighten, three loosen (with the parity set below), one unchanged — the
+# signature of re-basing, not regression; a real fidelity change moves them one
+# way. The clearest justification is fixture 04: its worst object in span space
+# (object 3, -2.60%) was losing JUMPS AND TRIMS, not thread — the old band was
+# guarding travel bookkeeping. In penetration space the worst object is a
+# different one (object 1, -0.38%): the assertion changed subject and now means
+# fidelity for the first time. Note 07's old headroom was 1.4 points, tightest
+# of the nine by an order of magnitude, which is why it alone went red when the
+# space changed underneath it and the other five re-based silently.
 FIDELITY_BANDS = [
     ("01_flat_2color_logo", 6, 0.95, 1.12, 0.10),
-    ("04_thin_line_outline", 4, 0.95, 1.06, 0.12),
-    ("05_wordmark_caps", 4, 0.95, 1.06, 0.14),
-    ("06_wordmark_script", 4, 0.95, 1.06, 0.20),
+    ("04_thin_line_outline", 4, 0.95, 1.06, 0.10),
+    ("05_wordmark_caps", 4, 0.95, 1.06, 0.13),
+    ("06_wordmark_script", 4, 0.95, 1.06, 0.21),
     # 0.32 -> 0.34 for UP1 (satin receiving the full per-side pull compensation
     # a fill receives from the same stored number, instead of half). Measured by
     # running the shipped code on this tree and on a worktree at the parent
@@ -268,8 +289,8 @@ FIDELITY_BANDS = [
     # holds it back from any change that alters either path's stream, which this
     # one does. Widened by the measured 0.6 points plus 1.4 of headroom, not to a
     # round number that would absorb a future regression unnoticed.
-    ("07_circular_badge", 6, 0.95, 1.10, 0.34),
-    ("02_logo_fine_text_3color", 4, 0.95, 1.15, 0.27),
+    ("07_circular_badge", 6, 0.95, 1.10, 0.36),
+    ("02_logo_fine_text_3color", 4, 0.95, 1.15, 0.23),
 ]
 
 
@@ -287,14 +308,13 @@ def test_probe6_regenerating_reproduces_the_design(stem, colors, lo, hi, max_los
         f"({len(reb.stitches):,} vs {len(dig.stitches):,}), band [{lo}, {hi}]"
     )
 
-    # STREAM SPAN, deliberately -- the same quantity these bands were fitted
-    # on, under its new name. Measuring the loss in penetration space instead
-    # moved 07_circular_badge's worst object from -34.0% to -34.09% and took CI
-    # red against a 34% band: a gate re-derived by accident is a gate quoted
-    # without its conditions. Re-deriving these bands in penetration space is
-    # separate work, and it is work, not a rename.
-    a = {o.sequence_order: int(o.stream_span or 0) for o in dig.objects}
-    b = {o.sequence_order: int(o.stream_span or 0) for o in reb.objects}
+    # PENETRATION COUNT, with bands re-derived for it (see FIDELITY_BANDS).
+    # An interim revert held this on stream_span after the space change took CI
+    # red — the constants had been carried across a space change, which is a
+    # gate quoted without its conditions. The bands above are now derived IN
+    # this space, so the assertion measures thread, not travel bookkeeping.
+    a = {o.sequence_order: int(o.penetration_count or 0) for o in dig.objects}
+    b = {o.sequence_order: int(o.penetration_count or 0) for o in reb.objects}
     assert set(a) == set(b), (
         f"P6 on {stem}: regenerating changed the object set — "
         f"missing {sorted(set(a) - set(b))}, extra {sorted(set(b) - set(a))}"

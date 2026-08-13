@@ -69,8 +69,9 @@ def _edited(design: Design) -> Design:
 
 
 def _losses(dig: Design, rb: Design) -> list[float]:
-    a = {o.sequence_order: int(o.stream_span or 0) for o in dig.objects}
-    b = {o.sequence_order: int(o.stream_span or 0) for o in rb.objects}
+    # Penetration space; PARITY_BANDS is derived in it (see the note there).
+    a = {o.sequence_order: int(o.penetration_count or 0) for o in dig.objects}
+    b = {o.sequence_order: int(o.penetration_count or 0) for o in rb.objects}
     return sorted(b[k] / a[k] - 1.0 for k in a if k in b and a[k])
 
 
@@ -143,11 +144,17 @@ def test_the_old_tolerance_would_fail_these():
 # ── R1 + R2 + R3 together: what a user actually gets ─────────────────────────
 
 
-# (stem, colors, max acceptable single-object loss)
+# (stem, colors, max acceptable single-object loss) — PENETRATION SPACE since
+# 2026-08-16, re-derived with the same headroom-preserving rule as
+# FIDELITY_BANDS (see test_probes_three_paths.py for the full table and the
+# fixture-04 argument): worst loss span -> penetration measured at 62b42b0 was
+# 04 -2.60% -> -0.38% (and the worst OBJECT changed, 3 -> 1: the span-space
+# worst was losing jumps and trims, not thread), 05 -3.00% -> -1.03%,
+# 06 -9.69% -> -10.31%.
 PARITY_BANDS = [
-    ("04_thin_line_outline", 4, 0.15),
-    ("05_wordmark_caps", 4, 0.15),
-    ("06_wordmark_script", 4, 0.25),
+    ("04_thin_line_outline", 4, 0.13),
+    ("05_wordmark_caps", 4, 0.14),
+    ("06_wordmark_script", 4, 0.26),
 ]
 
 

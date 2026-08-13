@@ -15,6 +15,11 @@ count and the coverage together, and only a real fix moves one without the other
 Part 56's own result is recorded in `docs/benchmarks/v2-part56-audit.md`: a
 majority-vote smoother on the label map, at the smallest radius that exists,
 failed gates 1, 2 and 3 and was reverted.
+
+SPACE NOTE: per-object counts in this script are STREAM SPANS (`o.stream_span` —
+jumps and trims included, fixed pre-lock), kept because its recorded history was
+measured in that space. The competitor comparison harness uses penetrations
+instead (Decision 2, ruling of 2026-08-16) — do not mix the two.
 """
 
 from __future__ import annotations
