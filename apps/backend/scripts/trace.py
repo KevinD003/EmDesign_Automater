@@ -39,11 +39,12 @@ differ by hundreds of entries on a real design:
 `--stream-index` and `--penetration-index` convert between them and print the
 entry, so a locator in a report can be checked rather than trusted.
 
-Note one more space, reported but deliberately NOT reconciled here: an object's
-own `stitch_count` is a STREAM SPAN (`len(stitches) - obj_start`), so it counts
-the JUMPs inside that object. Summing it and comparing against penetrations
-compares two different things. `accounting.*` reports both sides and their
-difference without folding one into the other.
+A third span exists and is now named rather than confused with the other two:
+an object's `stream_span` is `len(stitches) - obj_start`, so it counts the JUMPs
+and TRIMs inside that object and excludes the tie-offs added afterwards. Its
+`penetration_count` is the needle count. `accounting.*` carries the pipeline's
+own census and closes both identities; nothing here subtracts one space from
+the other.
 """
 
 from __future__ import annotations
@@ -127,7 +128,7 @@ def trace(name: str) -> dict:
     for o in design.objects:
         kinds[str(getattr(o.stitch_type, "value", o.stitch_type))] = \
             kinds.get(str(getattr(o.stitch_type, "value", o.stitch_type)), 0) + 1
-    obj_span_total = sum(int(o.stitch_count) for o in design.objects)
+    obj_span_total = sum(int(o.stream_span) for o in design.objects)
 
     est_minutes = penetrations / SPM
     return {
@@ -180,15 +181,18 @@ def trace(name: str) -> dict:
             # was written in pass A and inflated until 2026-08-13.
             "uncovered_px": round(float(pipeline._LAST_UNCOVERED_PX), 6),
         },
+        # RECONCILED. Read from the pipeline's own census, taken at the three
+        # points where the stream is rewritten, rather than derived here — the
+        # earlier version of this block subtracted a sum of stream spans from a
+        # penetration count and reported the difference, which is the arithmetic
+        # that produced the phantom "90 unattributed penetrations".
         "accounting": {
-            # Two index spaces, reported side by side and NOT reconciled here.
-            # `object.stitch_count` is a stream span; `penetrations` is not.
-            # INSTRUMENT-2 owes the named categories that close this.
-            "sum_object_stitch_count_stream_span": obj_span_total,
-            "penetrations": penetrations,
-            "stream_length": len(design.stitches),
-            "stream_length_minus_object_spans": len(design.stitches) - obj_span_total,
-            "unreconciled": True,
+            **{k: v for k, v in pipeline._LAST_STREAM_ACCOUNTING.items()
+               if not k.startswith("census_")},
+            "sum_object_stream_spans": obj_span_total,
+            "sum_object_penetrations": sum(int(o.penetration_count) for o in design.objects),
+            "sum_stop_penetrations": sum(int(c.penetration_count) for c in design.color_stops),
+            "unreconciled": False,
         },
         "index_spaces": {
             "stream": {

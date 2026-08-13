@@ -69,8 +69,8 @@ def _edited(design: Design) -> Design:
 
 
 def _losses(dig: Design, rb: Design) -> list[float]:
-    a = {o.sequence_order: int(o.stitch_count or 0) for o in dig.objects}
-    b = {o.sequence_order: int(o.stitch_count or 0) for o in rb.objects}
+    a = {o.sequence_order: int(o.penetration_count or 0) for o in dig.objects}
+    b = {o.sequence_order: int(o.penetration_count or 0) for o in rb.objects}
     return sorted(b[k] / a[k] - 1.0 for k in a if k in b and a[k])
 
 

@@ -292,7 +292,7 @@ export function PropertiesPanel() {
           {err && <p className="toolbar-err">⚠ {err}</p>}
           <div className="prop-row">
             <span>Stitches</span>
-            <span className="muted">{obj.stitchCount.toLocaleString()}</span>
+            <span className="muted">{obj.penetrationCount.toLocaleString()}</span>
           </div>
         </div>
       ) : stop ? (
@@ -334,7 +334,7 @@ export function PropertiesPanel() {
           </div>
           <div className="prop-row">
             <span>Stitches</span>
-            <span className="muted">{stop.stitchCount.toLocaleString()}</span>
+            <span className="muted">{stop.penetrationCount.toLocaleString()}</span>
           </div>
         </div>
       ) : (

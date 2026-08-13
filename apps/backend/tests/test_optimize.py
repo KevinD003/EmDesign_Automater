@@ -221,7 +221,7 @@ def test_quality_flags_attached_travel_over_open_fabric():
             sequence_order=seq, name=f"o{seq}", stitch_type=StitchType.TATAMI,
             color_stop=1, density=2.5, stitch_angle=0.0,
             underlay_type=UnderlayType.NONE, pull_compensation=0.0,
-            connect_method=ConnectMethod.TRIM, stitch_count=0,
+            connect_method=ConnectMethod.TRIM, penetration_count=0,
             contour=[Point(x=x0, y=0), Point(x=x0 + 10, y=0),
                      Point(x=x0 + 10, y=10), Point(x=x0, y=10)],
         )
@@ -259,7 +259,7 @@ def test_quality_flags_uniform_fill_angles_but_not_varied():
             sequence_order=seq, name=f"f{seq}", stitch_type=StitchType.TATAMI,
             color_stop=1, density=2.5, stitch_angle=angle,
             underlay_type=UnderlayType.NONE, pull_compensation=0.0,
-            connect_method=ConnectMethod.TRIM, stitch_count=0,
+            connect_method=ConnectMethod.TRIM, penetration_count=0,
             contour=[Point(x=0, y=0), Point(x=10, y=0), Point(x=10, y=10), Point(x=0, y=10)],
         )
 

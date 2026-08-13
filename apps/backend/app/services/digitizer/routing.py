@@ -118,7 +118,11 @@ def _merge_adjacent_same_hex(stitches, color_stops, objects) -> int:
                 # sewn as one long stitch from the trim position.
                 stitches.insert(i + 1, Stitch(x=stitches[i + 1].x, y=stitches[i + 1].y, command="JUMP"))
                 cc_idx = [j + 1 if j > i else j for j in cc_idx]
-            kept[-1].stitch_count += stop.stitch_count
+            # BOTH spaces move together. They are different quantities and a
+            # merge that carried only one of them would put the worksheet's rows
+            # and its header back out of agreement.
+            kept[-1].penetration_count += stop.penetration_count
+            kept[-1].stream_span += stop.stream_span
             remap[stop.stop_number] = kept[-1].stop_number
             merged += 1
             continue
@@ -342,7 +346,8 @@ def _lock_stream(stitches: list) -> list:
 
     Runs on the assembled stream rather than inside the emission loop because
     cuts are created in three places (object transition, colour change, END)
-    and a single pass cannot miss one of them. Per-object `stitch_count` values
+    and a single pass cannot miss one of them. Per-object `stream_span` and
+    `penetration_count` values
     are computed before this pass, so they deliberately exclude lock stitches —
     they describe the object's own stitching, not its plumbing.
     """

@@ -9,7 +9,7 @@ const makeDesign = (): Design => ({
   stitchCount: 0,
   version: 1,
   status: 'digitized',
-  colorStops: [{ stopNumber: 1, threadBrand: 'M', catalogNumber: '1', threadName: 'Red', hex: '#ff0000', stitchCount: 0 }],
+  colorStops: [{ stopNumber: 1, threadBrand: 'M', catalogNumber: '1', threadName: 'Red', hex: '#ff0000', penetrationCount: 0 }],
   objects: [],
   stitches: [],
 });
@@ -65,8 +65,8 @@ describe('designStore', () => {
     const d: Design = {
       ...makeDesign(),
       colorStops: [
-        { stopNumber: 1, threadBrand: 'M', catalogNumber: 'a', threadName: 'Red', hex: '#ff0000', stitchCount: 0 },
-        { stopNumber: 2, threadBrand: 'M', catalogNumber: 'b', threadName: 'Blue', hex: '#0000ff', stitchCount: 0 },
+        { stopNumber: 1, threadBrand: 'M', catalogNumber: 'a', threadName: 'Red', hex: '#ff0000', penetrationCount: 0 },
+        { stopNumber: 2, threadBrand: 'M', catalogNumber: 'b', threadName: 'Blue', hex: '#0000ff', penetrationCount: 0 },
       ],
       stitches: [
         { x: 0, y: 0, command: 'STITCH' },
@@ -105,7 +105,7 @@ describe('designStore', () => {
           underlayType: 'NONE' as Design['objects'][0]['underlayType'],
           pullCompensation: 0,
           connectMethod: 'TRIM' as Design['objects'][0]['connectMethod'],
-          stitchCount: 10,
+          penetrationCount: 10,
         },
       ],
     };
@@ -159,7 +159,7 @@ describe('designStore', () => {
           underlayType: 'NONE' as Design['objects'][0]['underlayType'],
           pullCompensation: 0,
           connectMethod: 'TRIM' as Design['objects'][0]['connectMethod'],
-          stitchCount: 40,
+          penetrationCount: 40,
         },
       ],
     };

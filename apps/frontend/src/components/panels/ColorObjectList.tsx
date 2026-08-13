@@ -29,7 +29,7 @@ export function ColorObjectList() {
                 <span className="swatch" style={{ background: cs.hex }} />
                 <span className="seq">{cs.stopNumber}</span>
                 <span className="stop-name">{cs.threadName}</span>
-                <span className="stop-count muted">{cs.stitchCount.toLocaleString()}</span>
+                <span className="stop-count muted">{cs.penetrationCount.toLocaleString()}</span>
               </button>
               {objects.filter((o) => o.colorStop === cs.stopNumber).length > 0 && (
                 <ul className="obj-sublist">
@@ -46,7 +46,7 @@ export function ColorObjectList() {
                         >
                           <span className="seq">{o.sequenceOrder}</span>
                           <span className="stop-name">{o.name}</span>
-                          <span className="stop-count muted">{o.stitchCount.toLocaleString()}</span>
+                          <span className="stop-count muted">{o.penetrationCount.toLocaleString()}</span>
                         </button>
                       </li>
                     ))}

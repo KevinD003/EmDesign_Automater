@@ -287,8 +287,8 @@ def test_probe6_regenerating_reproduces_the_design(stem, colors, lo, hi, max_los
         f"({len(reb.stitches):,} vs {len(dig.stitches):,}), band [{lo}, {hi}]"
     )
 
-    a = {o.sequence_order: int(o.stitch_count or 0) for o in dig.objects}
-    b = {o.sequence_order: int(o.stitch_count or 0) for o in reb.objects}
+    a = {o.sequence_order: int(o.penetration_count or 0) for o in dig.objects}
+    b = {o.sequence_order: int(o.penetration_count or 0) for o in reb.objects}
     assert set(a) == set(b), (
         f"P6 on {stem}: regenerating changed the object set — "
         f"missing {sorted(set(a) - set(b))}, extra {sorted(set(b) - set(a))}"

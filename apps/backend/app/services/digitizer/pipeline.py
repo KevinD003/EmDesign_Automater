@@ -1034,9 +1034,8 @@ def digitize_image(
                 )
             seq += 1
             count = len(stitches) - obj_start
-            object_span_penetrations += sum(
-                1 for s in stitches[obj_start:] if s.command == "STITCH"
-            )
+            obj_pen = sum(1 for s_ in stitches[obj_start:] if s_.command == "STITCH")
+            object_span_penetrations += obj_pen
             outline = [
                 Point(x=float(px_) * mm_per_px, y=float(py_) * mm_per_px)
                 for px_, py_ in contour.reshape(-1, 2)
@@ -1067,7 +1066,8 @@ def digitize_image(
                     entry_point=Point(x=pts[0][0] * mm_per_px, y=pts[0][1] * mm_per_px),
                     exit_point=Point(x=pts[-1][0] * mm_per_px, y=pts[-1][1] * mm_per_px),
                     connect_method=ConnectMethod.TRIM,
-                    stitch_count=count,
+                    penetration_count=obj_pen,
+                    stream_span=count,
                     contour=outline,
                     holes=hole_outlines,
                 )
@@ -1119,7 +1119,10 @@ def digitize_image(
                     catalog_number="",
                     thread_name=f"Color {this_stop}",
                     hex=hexcol,
-                    stitch_count=len(stitches) - stop_start,
+                    penetration_count=sum(
+                        1 for s_ in stitches[stop_start:] if s_.command == "STITCH"
+                    ),
+                    stream_span=len(stitches) - stop_start,
                 )
             )
 
@@ -1173,9 +1176,8 @@ def digitize_image(
                 for x, y in path:
                     stitches.append(Stitch(x=x * mm_per_px, y=y * mm_per_px, command="STITCH"))
                 seq += 1
-                object_span_penetrations += sum(
-                    1 for s in stitches[obj_start:] if s.command == "STITCH"
-                )
+                obj_pen = sum(1 for s_ in stitches[obj_start:] if s_.command == "STITCH")
+                object_span_penetrations += obj_pen
                 objects.append(
                     DesignObject(
                         sequence_order=seq,
@@ -1189,7 +1191,8 @@ def digitize_image(
                         entry_point=Point(x=path[0][0] * mm_per_px, y=path[0][1] * mm_per_px),
                         exit_point=Point(x=path[-1][0] * mm_per_px, y=path[-1][1] * mm_per_px),
                         connect_method=ConnectMethod.TRIM,
-                        stitch_count=len(stitches) - obj_start,
+                        penetration_count=obj_pen,
+                        stream_span=len(stitches) - obj_start,
                         # The PATH, not an area: rebuild's RUNNING branch stitches
                         # along the stored contour rather than filling it.
                         contour=[Point(x=x * mm_per_px, y=y * mm_per_px) for x, y in path],
@@ -1202,7 +1205,10 @@ def digitize_image(
                     catalog_number="",
                     thread_name=f"Color {emitted_stop}",
                     hex=line_hex,
-                    stitch_count=len(stitches) - stop_start,
+                    penetration_count=sum(
+                        1 for s_ in stitches[stop_start:] if s_.command == "STITCH"
+                    ),
+                    stream_span=len(stitches) - stop_start,
                 )
             )
 
@@ -1233,12 +1239,47 @@ def digitize_image(
     pre_lock_len = len(stitches)
     stitches = _lock_stream(stitches)
     post_lock = _stream_census(stitches)
+
+    # ── Colour-stop counts, recomputed from the FINAL stream ─────────────────
+    # They used to be `len(stitches) - stop_start`, measured before locking, so
+    # every tie-off the lock pass added belonged to no stop. On fixture 08 that
+    # left the operator's worksheet with rows summing to 7,862 under a header of
+    # 8,024 — the 162 lock penetrations, printed nowhere. A tie-off is sewn in
+    # whichever thread is mounted, so it belongs to that stop.
+    #
+    # Recoverable here and not for objects: the final stream is partitioned by
+    # its COLOR_CHANGE entries, one fewer than there are stops, whereas object
+    # boundaries do not survive locking (their start indices are not kept, and
+    # deliberately so — see the note where `stitch_start` was removed).
+    seg_pen: list[int] = []
+    seg_span: list[int] = []
+    _pen = _span = 0
+    for s in stitches:
+        _span += 1
+        if s.command == "STITCH":
+            _pen += 1
+        elif s.command == "COLOR_CHANGE":
+            seg_pen.append(_pen)
+            seg_span.append(_span)
+            _pen = _span = 0
+    seg_pen.append(_pen)
+    seg_span.append(_span)
+    # Only rewrite when the partition matches. A mismatch means a COLOR_CHANGE
+    # was emitted for a stop that produced nothing — the dark-linework pass can
+    # do this when its chains are dropped as garment-coloured — and silently
+    # zipping the shorter list would misattribute every stop after it. Recorded
+    # instead, so the accounting test names it.
+    stops_partition_matches = len(seg_pen) == len(color_stops)
+    if stops_partition_matches:
+        for cs_, p_, sp_ in zip(color_stops, seg_pen, seg_span):
+            cs_.penetration_count = p_
+            cs_.stream_span = sp_
     global _LAST_STREAM_ACCOUNTING
     _LAST_STREAM_ACCOUNTING = {
         # Stream space: every entry, whatever its command.
         "stream_length": len(stitches),
         "stream_length_pre_lock": pre_lock_len,
-        "object_spans": sum(int(o.stitch_count) for o in objects),
+        "object_spans": sum(int(o.stream_span) for o in objects),
         # One entry per colour-stop boundary. Counted BEFORE the merge, because
         # merging rewrites a COLOR_CHANGE into a TRIM in place — the entry
         # survives, only its command changes, and counting after would move it
@@ -1270,6 +1311,12 @@ def digitize_image(
         "census_pre_merge": pre_merge,
         "census_pre_lock": pre_lock,
         "census_post_lock": post_lock,
+        # Colour-stop attribution, so the worksheet's rows can be checked
+        # against its header without re-deriving either.
+        "stops": len(color_stops),
+        "stop_segments": len(seg_pen),
+        "stops_partition_matches": stops_partition_matches,
+        "stop_penetrations_total": sum(cs_.penetration_count for cs_ in color_stops),
     }
 
     xs = [s.x for s in stitches if s.command == "STITCH"] or [0.0]

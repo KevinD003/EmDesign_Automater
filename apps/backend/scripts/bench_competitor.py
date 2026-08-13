@@ -102,7 +102,7 @@ def object_metrics(design) -> dict | None:
             if (max(xs) - min(xs)) * (max(ys) - min(ys)) < SMALL_OBJECT_MM2:
                 small += 1
         angles.add(round(float(o.stitch_angle), 1))
-        per_object.append(o.stitch_count)
+        per_object.append(o.penetration_count)
     per_object.sort()
     return {
         "object_count": len(design.objects),

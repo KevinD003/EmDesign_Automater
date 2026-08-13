@@ -223,7 +223,7 @@ def rebuild_design(design: Design, *, force: bool = False) -> Design:
 
     stitches: list[Stitch] = []
     new_objects: list[DesignObject] = []
-    stop_counts: dict[int, int] = {}
+    stop_counts: dict[int, tuple[int, int]] = {}  # stop -> (penetrations, stream span)
 
     ordered_stops = sorted(design.color_stops, key=lambda c: c.stop_number)
     for stop_i, stop in enumerate(ordered_stops):
@@ -537,7 +537,10 @@ def rebuild_design(design: Design, *, force: bool = False) -> Design:
             exit_ = to_mm(pts[-1][0], pts[-1][1])
             regenerated = o.model_copy(
                 update={
-                    "stitch_count": len(stitches) - obj_start,
+                    "penetration_count": sum(
+                        1 for s_ in stitches[obj_start:] if s_.command == "STITCH"
+                    ),
+                    "stream_span": len(stitches) - obj_start,
                     "entry_point": Point(x=entry[0], y=entry[1]),
                     "exit_point": Point(x=exit_[0], y=exit_[1]),
                 }
@@ -547,7 +550,10 @@ def rebuild_design(design: Design, *, force: bool = False) -> Design:
             # forever and the damage would keep accumulating.
             regenerated.params_hash = object_params_hash(regenerated)
             new_objects.append(regenerated)
-        stop_counts[stop.stop_number] = len(stitches) - stop_start
+        stop_counts[stop.stop_number] = (
+            sum(1 for s_ in stitches[stop_start:] if s_.command == "STITCH"),
+            len(stitches) - stop_start,
+        )
 
     if stitches:
         last = stitches[-1]
@@ -561,7 +567,11 @@ def rebuild_design(design: Design, *, force: bool = False) -> Design:
     sxs = [s.x for s in stitches if s.command == "STITCH"] or [0.0]
     sys_ = [s.y for s in stitches if s.command == "STITCH"] or [0.0]
     new_stops = [
-        c.model_copy(update={"stitch_count": stop_counts.get(c.stop_number, 0)}) for c in ordered_stops
+        c.model_copy(update={
+            "penetration_count": stop_counts.get(c.stop_number, (0, 0))[0],
+            "stream_span": stop_counts.get(c.stop_number, (0, 0))[1],
+        })
+        for c in ordered_stops
     ]
     return design.model_copy(
         update={

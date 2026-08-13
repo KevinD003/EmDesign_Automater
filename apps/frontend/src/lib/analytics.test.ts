@@ -59,8 +59,8 @@ describe('stitchLengthHistogram', () => {
 
 describe('threadUsage', () => {
   const stops: ColorStop[] = [
-    { stopNumber: 1, threadBrand: 'A', catalogNumber: '', threadName: 'Navy', hex: '#123456', stitchCount: 0 },
-    { stopNumber: 2, threadBrand: 'A', catalogNumber: '', threadName: 'Gold', hex: '#ddaa22', stitchCount: 0 },
+    { stopNumber: 1, threadBrand: 'A', catalogNumber: '', threadName: 'Navy', hex: '#123456', penetrationCount: 0 },
+    { stopNumber: 2, threadBrand: 'A', catalogNumber: '', threadName: 'Gold', hex: '#ddaa22', penetrationCount: 0 },
   ];
 
   it('attributes sewn length per colour block', () => {

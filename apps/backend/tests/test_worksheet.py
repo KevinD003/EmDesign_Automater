@@ -14,8 +14,8 @@ def _design() -> Design:
         height_mm=40,
         stitch_count=100,
         color_stops=[
-            ColorStop(stop_number=1, thread_brand="Madeira", catalog_number="1147", thread_name="Red", hex="#c8181e", stitch_count=60),
-            ColorStop(stop_number=2, thread_brand="Madeira", catalog_number="1733", thread_name="Blue", hex="#1e3cc8", stitch_count=40),
+            ColorStop(stop_number=1, thread_brand="Madeira", catalog_number="1147", thread_name="Red", hex="#c8181e", penetration_count=60),
+            ColorStop(stop_number=2, thread_brand="Madeira", catalog_number="1733", thread_name="Blue", hex="#1e3cc8", penetration_count=40),
         ],
     )
 
@@ -40,8 +40,8 @@ def test_worksheet_thread_length_per_color():
         name="t",
         stitch_count=5,
         color_stops=[
-            ColorStop(stop_number=1, thread_brand="M", catalog_number="1", thread_name="A", hex="#111111", stitch_count=3),
-            ColorStop(stop_number=2, thread_brand="M", catalog_number="2", thread_name="B", hex="#222222", stitch_count=2),
+            ColorStop(stop_number=1, thread_brand="M", catalog_number="1", thread_name="A", hex="#111111", penetration_count=3),
+            ColorStop(stop_number=2, thread_brand="M", catalog_number="2", thread_name="B", hex="#222222", penetration_count=2),
         ],
         stitches=[
             Stitch(x=0, y=0, command="STITCH"),

@@ -22,7 +22,7 @@ const makeObject = (seq: number): DesignObject => ({
   underlayType: UnderlayType.None,
   pullCompensation: 0.2,
   connectMethod: ConnectMethod.Trim,
-  stitchCount: 100,
+  penetrationCount: 100,
   contour: [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }],
 });
 
@@ -33,7 +33,7 @@ const makeDesign = (): Design => ({
   stitchCount: 200,
   version: 1,
   status: 'digitized',
-  colorStops: [{ stopNumber: 1, threadBrand: 'M', catalogNumber: '1', threadName: 'Red', hex: '#ff0000', stitchCount: 200 }],
+  colorStops: [{ stopNumber: 1, threadBrand: 'M', catalogNumber: '1', threadName: 'Red', hex: '#ff0000', penetrationCount: 200 }],
   objects: [makeObject(0), makeObject(1)],
   stitches: [],
 });

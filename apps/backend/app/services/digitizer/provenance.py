@@ -28,7 +28,8 @@ def object_params_hash(obj) -> str:
     Two objects with the same hash MUST generate the same stream, so the hash
     covers the geometry (contour, holes, flow lines) and every generator
     parameter — and deliberately NOT `name`, `id`, `sequence_order`,
-    `color_stop`, `entry_point`, `exit_point` or `stitch_count`: renaming an
+    `color_stop`, `entry_point`, `exit_point`, `penetration_count` or
+    `stream_span`: renaming an
     object, recolouring it or moving it in the sew order changes none of its
     stitches, and treating those as edits would throw away the pass-through for
     exactly the operations (recolour, reorder, Optimize) that need it most.

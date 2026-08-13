@@ -115,9 +115,9 @@ def test_adjacent_same_hex_stops_merge():
         Stitch(x=9, y=9, command="STITCH"), Stitch(x=9, y=8, command="STITCH"),
     ]
     stops = [
-        ColorStop(stop_number=1, thread_brand="A", catalog_number="", thread_name="Color 1", hex="#111111", stitch_count=2),
-        ColorStop(stop_number=2, thread_brand="A", catalog_number="", thread_name="Color 2", hex="#111111", stitch_count=2),
-        ColorStop(stop_number=3, thread_brand="A", catalog_number="", thread_name="Color 3", hex="#222222", stitch_count=2),
+        ColorStop(stop_number=1, thread_brand="A", catalog_number="", thread_name="Color 1", hex="#111111", penetration_count=2),
+        ColorStop(stop_number=2, thread_brand="A", catalog_number="", thread_name="Color 2", hex="#111111", penetration_count=2),
+        ColorStop(stop_number=3, thread_brand="A", catalog_number="", thread_name="Color 3", hex="#222222", penetration_count=2),
     ]
     objs = [
         DesignObject(sequence_order=i + 1, name=f"o{i}", stitch_type=StitchType.TATAMI,
@@ -128,7 +128,7 @@ def test_adjacent_same_hex_stops_merge():
     assert merged == 1
     assert [s.stop_number for s in stops] == [1, 2]
     assert [s.hex for s in stops] == ["#111111", "#222222"]
-    assert stops[0].stitch_count == 4
+    assert stops[0].penetration_count == 4
     assert [o.color_stop for o in objs] == [1, 1, 2]
     # The removed COLOR_CHANGE became a TRIM; one colour change remains.
     assert sum(1 for s in stitches if s.command == "COLOR_CHANGE") == 1
@@ -148,9 +148,9 @@ def test_non_adjacent_same_hex_stops_do_not_merge():
         Stitch(x=4, y=0, command="STITCH"), Stitch(x=5, y=0, command="STITCH"),
     ]
     stops = [
-        ColorStop(stop_number=1, thread_brand="A", catalog_number="", thread_name="Color 1", hex="#111111", stitch_count=2),
-        ColorStop(stop_number=2, thread_brand="A", catalog_number="", thread_name="Color 2", hex="#222222", stitch_count=2),
-        ColorStop(stop_number=3, thread_brand="A", catalog_number="", thread_name="Color 3", hex="#111111", stitch_count=2),
+        ColorStop(stop_number=1, thread_brand="A", catalog_number="", thread_name="Color 1", hex="#111111", penetration_count=2),
+        ColorStop(stop_number=2, thread_brand="A", catalog_number="", thread_name="Color 2", hex="#222222", penetration_count=2),
+        ColorStop(stop_number=3, thread_brand="A", catalog_number="", thread_name="Color 3", hex="#111111", penetration_count=2),
     ]
     assert _merge_adjacent_same_hex(stitches, stops, []) == 0
     assert len(stops) == 3

@@ -91,14 +91,14 @@ def _satin_bar(stitch_type: StitchType, angle: float,
         sequence_order=1, name="s", stitch_type=stitch_type, color_stop=1,
         density=4.0, stitch_angle=angle, underlay_type=underlay,
         pull_compensation=0.0, connect_method=ConnectMethod.TRIM,
-        stitch_count=0,
+        penetration_count=0,
         contour=[Point(x=0, y=0), Point(x=30, y=0), Point(x=30, y=8), Point(x=0, y=8)],
     )
     return Design(
         name="t", width_mm=30, height_mm=8, stitch_count=0, version=1,
         status="digitized",
         color_stops=[ColorStop(stop_number=1, thread_brand="M", catalog_number="1",
-                               thread_name="a", hex="#112233", stitch_count=0)],
+                               thread_name="a", hex="#112233", penetration_count=0)],
         objects=[o], stitches=[],
     )
 
@@ -385,14 +385,14 @@ def _run_bar(density: float) -> Design:
         sequence_order=1, name="r", stitch_type=StitchType.RUNNING_SINGLE,
         color_stop=1, density=density, stitch_angle=0.0,
         underlay_type=UnderlayType.NONE, pull_compensation=0.0,
-        connect_method=ConnectMethod.TRIM, stitch_count=0,
+        connect_method=ConnectMethod.TRIM, penetration_count=0,
         contour=[Point(x=0, y=10), Point(x=60, y=10)],
     )
     return Design(
         name="t", width_mm=60, height_mm=20, stitch_count=0, version=1,
         status="digitized",
         color_stops=[ColorStop(stop_number=1, thread_brand="M", catalog_number="1",
-                               thread_name="a", hex="#112233", stitch_count=0)],
+                               thread_name="a", hex="#112233", penetration_count=0)],
         objects=[o], stitches=[],
     )
 

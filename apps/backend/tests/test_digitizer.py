@@ -28,7 +28,7 @@ def test_digitize_produces_design_with_objects():
     assert len(d.color_stops) == 2           # background dropped, 2 shapes kept
     assert len(d.objects) >= 2               # one object per region
     assert d.objects[0].stitch_type == "TATAMI"
-    assert d.objects[0].stitch_count > 0
+    assert d.objects[0].penetration_count > 0
     assert 0 < d.width_mm <= 100 and 0 < d.height_mm <= 100
     assert d.stitches[-1].command == "END"
     # darkest color stitches first (spec §4.2)
@@ -82,7 +82,7 @@ def test_narrow_bar_becomes_satin():
     satins = [o for o in d.objects if o.stitch_type == "SATIN"]
     assert satins, f"expected a SATIN object, got {[o.stitch_type for o in d.objects]}"
     # the zigzag must actually stitch (not degenerate to jumps)
-    assert satins[0].stitch_count > 50
+    assert satins[0].penetration_count > 50
     # zig width stays within the machine stitch limit
     prev = None
     for s in d.stitches:
@@ -95,7 +95,7 @@ def test_rotated_bar_becomes_satin_with_angle():
     d = digitize_image(_bar_image(diagonal=True), "cotton", "100x100", max_colors=2)
     satins = [o for o in d.objects if o.stitch_type == "SATIN"]
     assert satins
-    assert satins[0].stitch_count > 50
+    assert satins[0].penetration_count > 50
 
 
 def test_wide_square_stays_tatami():

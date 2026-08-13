@@ -9,8 +9,8 @@ const validMaster = JSON.stringify({
   stitchCount: 500,
   version: 2,
   status: 'digitized',
-  colorStops: [{ stopNumber: 1, threadBrand: 'M', catalogNumber: '1', threadName: 'Red', hex: '#ff0000', stitchCount: 500 }],
-  objects: [{ sequenceOrder: 1, name: 'Fill 1', stitchType: 'TATAMI', colorStop: 1, density: 1.67, stitchAngle: 0, underlayType: 'EDGE_WALK', pullCompensation: 0.2, connectMethod: 'TRIM', stitchCount: 500, contour: [{ x: 0, y: 0 }] }],
+  colorStops: [{ stopNumber: 1, threadBrand: 'M', catalogNumber: '1', threadName: 'Red', hex: '#ff0000', penetrationCount: 500 }],
+  objects: [{ sequenceOrder: 1, name: 'Fill 1', stitchType: 'TATAMI', colorStop: 1, density: 1.67, stitchAngle: 0, underlayType: 'EDGE_WALK', pullCompensation: 0.2, connectMethod: 'TRIM', penetrationCount: 500, contour: [{ x: 0, y: 0 }] }],
   stitches: [{ x: 0, y: 0, command: 'STITCH' }, { x: 2, y: 0, command: 'STITCH' }],
 });
 

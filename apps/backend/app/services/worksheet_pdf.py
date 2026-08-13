@@ -48,7 +48,12 @@ def build_worksheet(design: Design) -> Worksheet:
             color_name=cs.thread_name,
             hex=cs.hex,
             objects="",
-            stitch_count=cs.stitch_count,
+            # PENETRATIONS, not the stream span. An operator counting stitches
+            # is counting needle penetrations; jumps and trims are not stitches.
+            # Printing the span put the rows out of agreement with the header,
+            # which is computed from `design.stitch_count` in the other space —
+            # measured on fixture 08: rows 7,930 against a header of 8,024.
+            stitch_count=cs.penetration_count,
             thread_length_mm=round(lengths[i] if i < len(lengths) else 0.0, 1),
         )
         for i, cs in enumerate(design.color_stops)

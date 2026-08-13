@@ -112,7 +112,7 @@ def test_no_phantom_color_stops():
     cv2.circle(img, (250, 100), 2, (10, 10, 10), -1)
     _ok, buf = cv2.imencode(".png", img)
     d = digitize_image(buf.tobytes(), "cotton", "100x100", max_colors=4)
-    assert all(c.stitch_count > 0 for c in d.color_stops), "no empty color stops"
+    assert all(c.penetration_count > 0 for c in d.color_stops), "no empty color stops"
     assert [c.stop_number for c in d.color_stops] == list(range(1, len(d.color_stops) + 1))
     # every object references a real stop; no COLOR_CHANGE directly before END
     stop_nums = {c.stop_number for c in d.color_stops}

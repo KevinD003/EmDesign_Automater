@@ -51,7 +51,7 @@ export function buildManualDesign(
   if (stops.length === 0) {
     stopNumber = 1;
     stops = [
-      { stopNumber: 1, threadBrand: 'Manual', catalogNumber: '—', threadName: 'Color 1', hex: '#3a6ea5', stitchCount: 0 },
+      { stopNumber: 1, threadBrand: 'Manual', catalogNumber: '—', threadName: 'Color 1', hex: '#3a6ea5', penetrationCount: 0 },
     ];
   } else {
     stopNumber = selectedStop ?? stops[stops.length - 1].stopNumber;
@@ -69,7 +69,7 @@ export function buildManualDesign(
     underlayType: spec.underlay,
     pullCompensation: 0,
     connectMethod: ConnectMethod.Trim,
-    stitchCount: 0,
+    penetrationCount: 0,
     contour: points,
   };
 

@@ -13,7 +13,7 @@ def _design(objs):
         version=1,
         status="draft",
         color_stops=[
-            ColorStop(stop_number=1, thread_brand="Manual", catalog_number="-", thread_name="C1", hex="#3a6ea5", stitch_count=0)
+            ColorStop(stop_number=1, thread_brand="Manual", catalog_number="-", thread_name="C1", hex="#3a6ea5", penetration_count=0)
         ],
         objects=objs,
         stitches=[],
@@ -40,12 +40,12 @@ def test_running_stitch_follows_path_not_fill():
     path = [Point(x=10, y=10), Point(x=40, y=10), Point(x=40, y=40)]  # ~60mm L-path
     single = rebuild_design(_design([_obj("RUNNING_SINGLE", path)]))
     double = rebuild_design(_design([_obj("RUNNING_DOUBLE", path)]))
-    assert single.objects[0].stitch_count > 0
+    assert single.objects[0].penetration_count > 0
     # double pass ~= twice the single-pass stitch count (retrace)
-    assert double.objects[0].stitch_count > single.objects[0].stitch_count
+    assert double.objects[0].penetration_count > single.objects[0].penetration_count
     # a running stitch is far leaner than a tatami fill of the same triangle
     fill = rebuild_design(_design([_obj("TATAMI", path, density=1.4, underlay="EDGE_WALK")]))
-    assert fill.objects[0].stitch_count > double.objects[0].stitch_count
+    assert fill.objects[0].penetration_count > double.objects[0].penetration_count
 
 
 def test_manual_run_stitch_length_capped():

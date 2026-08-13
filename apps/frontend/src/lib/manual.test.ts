@@ -50,10 +50,10 @@ describe('buildManualDesign', () => {
     const existing: Design = {
       name: 'd', widthMm: 40, heightMm: 40, stitchCount: 10, version: 1, status: 'digitized',
       colorStops: [
-        { stopNumber: 1, threadBrand: 'M', catalogNumber: '1', threadName: 'Red', hex: '#f00', stitchCount: 10 },
-        { stopNumber: 2, threadBrand: 'M', catalogNumber: '2', threadName: 'Blue', hex: '#00f', stitchCount: 0 },
+        { stopNumber: 1, threadBrand: 'M', catalogNumber: '1', threadName: 'Red', hex: '#f00', penetrationCount: 10 },
+        { stopNumber: 2, threadBrand: 'M', catalogNumber: '2', threadName: 'Blue', hex: '#00f', penetrationCount: 0 },
       ],
-      objects: [{ sequenceOrder: 1, name: 'Fill 1', stitchType: StitchType.Tatami, colorStop: 1, density: 1.4, stitchAngle: 0, underlayType: UnderlayType.EdgeWalk, pullCompensation: 0, connectMethod: ConnectMethod.Trim, stitchCount: 10, contour: pts }],
+      objects: [{ sequenceOrder: 1, name: 'Fill 1', stitchType: StitchType.Tatami, colorStop: 1, density: 1.4, stitchAngle: 0, underlayType: UnderlayType.EdgeWalk, pullCompensation: 0, connectMethod: ConnectMethod.Trim, penetrationCount: 10, contour: pts }],
       stitches: [{ x: 0, y: 0, command: 'STITCH' }],
     };
     const d = buildManualDesign(existing, 'satin', pts, 2);

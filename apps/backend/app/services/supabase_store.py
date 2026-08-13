@@ -100,7 +100,10 @@ async def create_design(design: Design, user_id: str) -> Design:
                             "entry_point": o.entry_point.model_dump() if o.entry_point else None,
                             "exit_point": o.exit_point.model_dump() if o.exit_point else None,
                             "connect_method": o.connect_method,
-                            "stitch_count": o.stitch_count,
+                            # The column means penetrations, matching
+                            # designs.stitch_count. `stream_span` is diagnostic
+                            # and is not persisted.
+                            "stitch_count": o.penetration_count,
                         }
                         for o in design.objects
                     ],
@@ -119,7 +122,7 @@ async def create_design(design: Design, user_id: str) -> Design:
                             "catalog_number": c.catalog_number,
                             "thread_name": c.thread_name,
                             "hex_color": c.hex,
-                            "stitch_count": c.stitch_count,
+                            "stitch_count": c.penetration_count,
                         }
                         for c in design.color_stops
                     ],

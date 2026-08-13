@@ -81,7 +81,7 @@ def build_summary(design: Design) -> str:
         "Color sequence:",
     ]
     for cs in design.color_stops:
-        lines.append(f"  {cs.stop_number:>2}. {cs.hex}  {cs.thread_name}  ({cs.stitch_count:,} st)")
+        lines.append(f"  {cs.stop_number:>2}. {cs.hex}  {cs.thread_name}  ({cs.penetration_count:,} st)")
     return "\n".join(lines) + "\n"
 
 
@@ -278,7 +278,7 @@ def render_color_card(design: Design) -> bytes:
         c.setFont("Helvetica-Bold", 11)
         c.drawString(left + 20 * mm, y + 3 * mm, f"{cs.stop_number}.  {cs.thread_name}")
         c.setFont("Helvetica", 9)
-        c.drawString(left + 20 * mm, y - 2 * mm, f"{cs.thread_brand}  {cs.catalog_number}   {cs.hex}   {cs.stitch_count:,} st")
+        c.drawString(left + 20 * mm, y - 2 * mm, f"{cs.thread_brand}  {cs.catalog_number}   {cs.hex}   {cs.penetration_count:,} st")
         y -= 16 * mm
     c.showPage()
     c.save()

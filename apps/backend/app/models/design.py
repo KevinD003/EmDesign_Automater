@@ -146,6 +146,27 @@ class Thread(CamelModel):
     discontinued: bool = False
 
 
+# ── Two spaces, two names, never one word for both ───────────────────────────
+# Until 2026-08-14 there were THREE fields called `stitch_count`: `Design`'s,
+# counting STITCH entries, and `ColorStop`'s and `DesignObject`'s, each counting
+# a span of the emitted stream including the jumps and trims inside it. The
+# collision produced a phantom "90 unattributed penetrations" that survived four
+# reports, and it reached the operator: the worksheet printed stream spans in a
+# column labelled stitch count under a header computed in the other space, so
+# the rows did not sum to the total on fixture 08 (7,930 against 8,024, -1.17%).
+#
+#   penetration_count  needle penetrations. What an operator means by "stitches",
+#                      what the machine-time estimate divides, and what
+#                      `Design.stitch_count` has always counted.
+#   stream_span        entries in `Design.stitches` attributed to this row —
+#                      STITCH plus the JUMPs and TRIMs inside it. Diagnostic.
+#                      Fixed before `_lock_stream` inserts tie-offs, so it does
+#                      not include them.
+#
+# `Design.stitch_count` keeps its name: it was already penetrations and renaming
+# a correct field to match two incorrect ones would be the wrong direction.
+
+
 class ColorStop(CamelModel):
     id: str | None = None
     stop_number: int
@@ -153,7 +174,8 @@ class ColorStop(CamelModel):
     catalog_number: str
     thread_name: str
     hex: str
-    stitch_count: int = 0
+    penetration_count: int = 0
+    stream_span: int = 0
 
 
 class DesignObject(CamelModel):
@@ -169,7 +191,8 @@ class DesignObject(CamelModel):
     entry_point: Point | None = None
     exit_point: Point | None = None
     connect_method: ConnectMethod = ConnectMethod.TRIM
-    stitch_count: int = 0
+    penetration_count: int = 0   # needle penetrations — see the note above ColorStop
+    stream_span: int = 0         # stream entries attributed to this object
     # Region outline in design mm space (populated by the digitizer). Presence of a
     # contour makes the object REGENERABLE: /api/designs/rebuild can re-fill it with
     # new density/angle. Imported stitch files have no contours (objects empty anyway).

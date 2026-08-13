@@ -46,7 +46,7 @@ def _obj(seq: int, contour, stop: int = 1, angle: float = 0.0) -> DesignObject:
         sequence_order=seq, name=f"Fill {seq}", stitch_type=StitchType.TATAMI,
         color_stop=stop, density=2.0, stitch_angle=angle,
         underlay_type=UnderlayType.NONE, pull_compensation=0.0,
-        connect_method=ConnectMethod.TRIM, stitch_count=0, contour=contour,
+        connect_method=ConnectMethod.TRIM, penetration_count=0, contour=contour,
     )
 
 

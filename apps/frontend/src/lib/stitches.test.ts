@@ -5,8 +5,8 @@ import type { ColorStop, Design, Stitch, StitchCommand } from '../types/design';
 const S = (x: number, y: number, command: StitchCommand = 'STITCH'): Stitch => ({ x, y, command });
 
 const STOPS: ColorStop[] = [
-  { stopNumber: 1, threadBrand: 'M', catalogNumber: '1', threadName: 'Red', hex: '#ff0000', stitchCount: 0 },
-  { stopNumber: 2, threadBrand: 'M', catalogNumber: '2', threadName: 'Blue', hex: '#0000ff', stitchCount: 0 },
+  { stopNumber: 1, threadBrand: 'M', catalogNumber: '1', threadName: 'Red', hex: '#ff0000', penetrationCount: 0 },
+  { stopNumber: 2, threadBrand: 'M', catalogNumber: '2', threadName: 'Blue', hex: '#0000ff', penetrationCount: 0 },
 ];
 
 describe('computeBounds', () => {
@@ -59,9 +59,9 @@ const design3 = (): Design => ({
   status: 'digitized',
   objects: [],
   colorStops: [
-    { stopNumber: 1, threadBrand: 'M', catalogNumber: 'a', threadName: 'Red', hex: '#ff0000', stitchCount: 2 },
-    { stopNumber: 2, threadBrand: 'M', catalogNumber: 'b', threadName: 'Green', hex: '#00ff00', stitchCount: 2 },
-    { stopNumber: 3, threadBrand: 'M', catalogNumber: 'c', threadName: 'Blue', hex: '#0000ff', stitchCount: 2 },
+    { stopNumber: 1, threadBrand: 'M', catalogNumber: 'a', threadName: 'Red', hex: '#ff0000', penetrationCount: 2 },
+    { stopNumber: 2, threadBrand: 'M', catalogNumber: 'b', threadName: 'Green', hex: '#00ff00', penetrationCount: 2 },
+    { stopNumber: 3, threadBrand: 'M', catalogNumber: 'c', threadName: 'Blue', hex: '#0000ff', penetrationCount: 2 },
   ],
   stitches: [
     S(0, 0), S(1, 1), S(1, 1, 'COLOR_CHANGE'),

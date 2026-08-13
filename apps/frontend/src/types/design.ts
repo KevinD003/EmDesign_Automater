@@ -95,7 +95,24 @@ export interface ColorStop {
   catalogNumber: string;
   threadName: string;
   hex: string;
-  stitchCount: number;
+  /**
+   * Needle penetrations sewn in this thread — what an operator means by
+   * "stitches". Mirrors ColorStop.penetration_count.
+   *
+   * Until 2026-08-14 this was `stitchCount` and carried a STREAM SPAN: entries
+   * in `Design.stitches`, jumps and trims included, measured before the tie-off
+   * pass ran. Three fields shared the name across two spaces, and the worksheet
+   * printed spans under a header of penetrations, so its rows did not sum to
+   * its own total.
+   */
+  penetrationCount: number;
+  /**
+   * Stream entries attributed to this stop, tie-offs included. Diagnostic, and
+   * optional here because nothing in the UI reads it — the backend always sends
+   * it, and a caller constructing a ColorStop by hand should not have to
+   * invent one.
+   */
+  streamSpan?: number;
 }
 
 /** A digitized object — one shape with its stitch settings (spec §8 design_objects). */
@@ -112,7 +129,10 @@ export interface DesignObject {
   entryPoint?: Point;
   exitPoint?: Point;
   connectMethod: ConnectMethod;
-  stitchCount: number;
+  /** Needle penetrations in this object. See the note on ColorStop. */
+  penetrationCount: number;
+  /** Stream entries in this object's span — jumps and trims included. Diagnostic. */
+  streamSpan?: number;
   /**
    * Region outline in design mm space (populated by the digitizer). Presence of a
    * contour makes the object regenerable via POST /api/designs/rebuild.

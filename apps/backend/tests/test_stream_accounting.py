@@ -219,3 +219,54 @@ def test_no_unrecognised_command_reaches_the_stream(run):
             f"them to _STREAM_COMMANDS and to a named category, or find out why "
             f"they are in the stream."
         )
+
+
+def test_the_worksheet_rows_sum_to_its_own_header(run):
+    """The operator's page must add up. It did not.
+
+    `worksheet_pdf.py` printed each colour row's stream span in a column headed
+    "stitch count", beside a thread length, under a header taken from
+    `design.stitch_count` — the other space. Measured on 08_mascot_detail before
+    this fix: rows 7,930 against a header of 8,024, a gap of -94 (-1.17 %).
+
+    Fixing the arithmetic alone would have been wrong. The rows now carry
+    `penetration_count`, and colour-stop counts are recomputed from the FINAL
+    stream so the tie-offs `_lock_stream` adds belong to the thread that sewed
+    them instead of to nobody.
+
+    Falsified by: a row printing a span again; a stop count taken before
+    locking (the lock penetrations reappear as a gap); or a COLOR_CHANGE emitted
+    for a stop that produced no objects, which breaks the partition — asserted
+    separately below so the two failures are distinguishable.
+    """
+    from app.services.worksheet_pdf import build_worksheet
+
+    name, design, acc = run
+    if not design.stitches:
+        pytest.skip(f"{name} emitted nothing")
+
+    assert acc["stops_partition_matches"], (
+        f"{name}: {acc['stop_segments']} colour segments in the stream but "
+        f"{acc['stops']} colour stops. A COLOR_CHANGE was emitted for a stop "
+        f"that produced nothing, so per-stop counts cannot be attributed."
+    )
+    ws = build_worksheet(design)
+    rows = sum(r.stitch_count for r in ws.color_sequence)
+    assert rows == ws.estimated_stitch_count, (
+        f"{name}: worksheet rows sum to {rows} under a header of "
+        f"{ws.estimated_stitch_count} — the operator's page does not add up"
+    )
+    assert rows == design.stitch_count
+
+
+def test_a_colour_stop_owns_the_ties_sewn_in_its_thread(run):
+    """Stop spans partition the whole stream, tie-offs included.
+
+    Falsified by: computing stop counts before `_lock_stream`, which is what
+    they were until 2026-08-14.
+    """
+    name, design, acc = run
+    if not design.stitches:
+        pytest.skip(f"{name} emitted nothing")
+    assert sum(c.stream_span for c in design.color_stops) == len(design.stitches)
+    assert sum(c.penetration_count for c in design.color_stops) == design.stitch_count

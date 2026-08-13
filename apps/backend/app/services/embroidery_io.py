@@ -223,7 +223,11 @@ def _color_stops(pattern: pe.EmbPattern) -> list[ColorStop]:
                 catalog_number=(getattr(thread, "catalog_number", None) or ""),
                 thread_name=desc,
                 hex=(thread.hex_color() if thread is not None else "#808080"),
-                stitch_count=len(block),
+                # An imported block is a run of needle positions from the file,
+                # so its length IS the penetration count. There is no stream
+                # span to record: the importer does not emit jumps into a block.
+                penetration_count=len(block),
+                stream_span=len(block),
             )
         )
     return stops
