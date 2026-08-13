@@ -136,6 +136,31 @@ from app.services.digitizer.underlay import (
 # retry to decide whether the smoothed pass actually recovered artwork.
 _LAST_UNCOVERED_PX: float = 0.0
 
+# Where every entry in the emitted stream came from (INSTRUMENT-2).
+#
+# 90 penetrations on fixture 08 belonged to no object, and the explanation given
+# for them — lock stitches — was never checked, because the subtraction that
+# produced the 90 compared two DIFFERENT SPANS. An object's `stitch_count` is
+# `len(stitches) - obj_start`: a STREAM span, counting the JUMPs and TRIMs inside
+# that object and excluding the locks inserted afterwards. `design.stitch_count`
+# counts STITCH entries alone. Subtracting one from the other does not yield a
+# number of unattributed penetrations; it yields a number with no meaning.
+#
+# This records the census on both sides of `_lock_stream` so the identity can be
+# stated in one space at a time and pinned as a test. Populated on every
+# `digitize_image` call; see `tests/test_stream_accounting.py` for the identities
+# it must satisfy.
+_LAST_STREAM_ACCOUNTING: dict = {}
+
+
+def _stream_census(stitches) -> dict:
+    """Count each command in a stream. One place, so the two sides agree."""
+    out = {"STITCH": 0, "JUMP": 0, "TRIM": 0, "COLOR_CHANGE": 0, "END": 0}
+    for s in stitches:
+        key = str(getattr(s.command, "value", s.command))
+        out[key] = out.get(key, 0) + 1
+    return out
+
 
 def digitize_image(
     data: bytes,
@@ -397,6 +422,13 @@ def digitize_image(
     # one way. Regions with a real long axis are exempt — the axis is a
     # property of the shape and wins (see _fill_angle_provenance).
     iso_fills = 0
+    # Stream entries emitted OUTSIDE any object's recorded span (INSTRUMENT-2).
+    # A main-loop object sets `obj_start` before its own TRIM and JUMP, so those
+    # land inside its span; the dark-linework pass below sets `obj_start` after
+    # them, so those do not. Counted at the append site rather than inferred,
+    # because after `_merge_adjacent_same_hex` rewrites the stream there is no
+    # way to tell from the outside which entries these were.
+    linework_lead_in = 0
     substrate_px = 0            # garment-coloured pixels deliberately left unstitched
     substrate_owned = np.zeros(fg_mask.shape, np.uint8)
     dropped_speck_count = 0     # regions under min_region_mm2 at THIS hoop size
@@ -1101,7 +1133,9 @@ def digitize_image(
                     continue
                 if stitches[-1].command != "COLOR_CHANGE":
                     stitches.append(Stitch(x=stitches[-1].x, y=stitches[-1].y, command="TRIM"))
+                    linework_lead_in += 1
                 stitches.append(Stitch(x=path[0][0] * mm_per_px, y=path[0][1] * mm_per_px, command="JUMP"))
+                linework_lead_in += 1
                 obj_start = len(stitches)
                 for x, y in path:
                     stitches.append(Stitch(x=x * mm_per_px, y=y * mm_per_px, command="STITCH"))
@@ -1142,12 +1176,54 @@ def digitize_image(
 
     # Consecutive stops of one thread collapse into one mounting (v2 Part 25) —
     # BEFORE locking, so the deleted colour change never earns a tie pair.
+    pre_merge = _stream_census(stitches)
+    pre_merge_len = len(stitches)
     _merge_adjacent_same_hex(stitches, color_stops, objects)
+    merge_inserted = len(stitches) - pre_merge_len
 
     # Lock every thread end and trim every remaining long cross-fabric jump
     # (v2 Part 25). Runs on the assembled stream because cuts are created in
     # three places (object transition, colour change, END).
+    # ── The stream adds up, and says how (INSTRUMENT-2) ──────────────────────
+    # Censused on both sides of the lock pass, because `_lock_stream` is the
+    # only step that INSERTS entries the objects never counted — three
+    # penetrations per tie, plus a TRIM wherever a long jump had none. Taking
+    # the census here rather than reconstructing it later is the difference
+    # between an identity and a guess: locks are ordinary STITCH entries,
+    # indistinguishable from real stitching once they are in the stream, and an
+    # attempt to recognise them afterwards by their geometric signature is
+    # exactly the kind of inference that already located one tie-off wrongly.
+    pre_lock = _stream_census(stitches)
+    pre_lock_len = len(stitches)
     stitches = _lock_stream(stitches)
+    post_lock = _stream_census(stitches)
+    global _LAST_STREAM_ACCOUNTING
+    _LAST_STREAM_ACCOUNTING = {
+        # Stream space: every entry, whatever its command.
+        "stream_length": len(stitches),
+        "stream_length_pre_lock": pre_lock_len,
+        "object_spans": sum(int(o.stitch_count) for o in objects),
+        # One entry per colour-stop boundary. Counted BEFORE the merge, because
+        # merging rewrites a COLOR_CHANGE into a TRIM in place — the entry
+        # survives, only its command changes, and counting after would move it
+        # out of this category into no category at all.
+        "stop_separators": pre_merge["COLOR_CHANGE"],
+        "linework_lead_in": linework_lead_in,
+        "end_markers": pre_merge["END"],
+        # The merge inserts a JUMP after each rewritten separator whose next
+        # entry is a STITCH — a repositioning the TRIM no longer implies.
+        "merge_inserted": merge_inserted,
+        "lock_inserted": len(stitches) - pre_lock_len,
+        # Penetration space: STITCH entries only. Every penetration is either
+        # inside an object's span or was put there by the lock pass — there is
+        # no third source, which is the whole point of the identity.
+        "penetrations": post_lock["STITCH"],
+        "penetrations_in_object_spans": pre_lock["STITCH"],
+        "lock_penetrations": post_lock["STITCH"] - pre_lock["STITCH"],
+        "lock_trims": post_lock["TRIM"] - pre_lock["TRIM"],
+        "census_pre_lock": pre_lock,
+        "census_post_lock": post_lock,
+    }
 
     xs = [s.x for s in stitches if s.command == "STITCH"] or [0.0]
     ys = [s.y for s in stitches if s.command == "STITCH"] or [0.0]
@@ -1221,6 +1297,13 @@ def digitize_image(
         # child's own, which is correct for the design it returns).
         drop_snapshot = list(_DROP_LOG)
         cls_snapshot = list(_CLASSIFICATION_LOG)
+        # The stream census belongs to the design the caller is about to be
+        # handed, and the recursive call overwrites it. Every module-level
+        # diagnostic has to survive this branch or it describes a design nobody
+        # receives — found the moment DET2 pushed fixture 04 over the retry gate:
+        # the census read 1,179 penetrations from the smoothed attempt while the
+        # returned design had 1,855.
+        acct_snapshot = dict(_LAST_STREAM_ACCOUNTING)
         # `substrate_color` travels with the retry: it is the caller's statement
         # about the garment, not a property of this attempt, and dropping it
         # here would have the retry delete different artwork than the first pass.
@@ -1240,6 +1323,7 @@ def digitize_image(
             return retry.model_copy(update={"warnings": [note, *retry.warnings]})
         _DROP_LOG[:] = drop_snapshot
         _CLASSIFICATION_LOG[:] = cls_snapshot
+        _LAST_STREAM_ACCOUNTING = acct_snapshot
     # SUBSTRATE REMOVAL GETS ITS OWN CHANNEL (DET3). This rule deletes artwork
     # on the strength of a colour match, and until now it reported nothing at
     # all: `substrate_owned` is subtracted from BOTH coverage bases (`owned` and
