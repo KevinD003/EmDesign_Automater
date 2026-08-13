@@ -155,7 +155,7 @@ def rows_from_stitchiq(design, design_id: str, artwork_path: Path,
             },
             "decision_provenance": "stitchiq_generated",
             "stats": {
-                "penetration_count": o.penetration_count,
+                "stream_span": o.stream_span,
                 "median_seg_mm": None,
                 "measured_angle_deg": _measured_angle(design.stitches, x0, y0, x1, y1),
             },

@@ -111,7 +111,7 @@ def analyse(design, art, label: str):
     if not objs:
         print(f"{label}: no objects")
         return None
-    counts = [o.penetration_count for o in objs]
+    counts = [o.stream_span for o in objs]
     h, w = art.seed_mask.shape[:2]
     # mm per working pixel, from the design's own extents against the seed bbox.
     pts = [p for o in objs for p in o.contour]

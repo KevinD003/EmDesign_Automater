@@ -111,6 +111,8 @@ from app.services.digitizer.routing import (
     _merge_adjacent_same_hex,
     _nearest_neighbour_order,
     _route_travel,
+    _stream_census,
+    attribute_stops_from_stream,
     coalesce_params,
     travel_route_pad_px,
 )
@@ -151,37 +153,6 @@ _LAST_UNCOVERED_PX: float = 0.0
 # `digitize_image` call; see `tests/test_stream_accounting.py` for the identities
 # it must satisfy.
 _LAST_STREAM_ACCOUNTING: dict = {}
-
-
-# The commands a digitized stream is allowed to contain. Named, and closed:
-# an earlier draft counted with `out.get(key, 0) + 1`, which admits ANY command
-# and therefore always sums to `len(stitches)`. That made the census incapable
-# of noticing a new command type — the identity built on it closed by
-# construction and could not say no.
-_STREAM_COMMANDS = ("STITCH", "JUMP", "TRIM", "COLOR_CHANGE", "END")
-
-
-def _stream_census(stitches) -> dict:
-    """Count each command in a stream. One place, so the two sides agree.
-
-    Anything outside `_STREAM_COMMANDS` lands in `other` and is named in
-    `other_commands`. It is counted rather than rejected — raising here would
-    turn a new command type into a production outage instead of a red test —
-    but `other` is a category the accounting identity must include and the
-    tests assert is empty, so it cannot pass unnoticed.
-    """
-    out = {k: 0 for k in _STREAM_COMMANDS}
-    out["other"] = 0
-    seen_other: set[str] = set()
-    for s in stitches:
-        key = str(getattr(s.command, "value", s.command))
-        if key in out and key != "other":
-            out[key] += 1
-        else:
-            out["other"] += 1
-            seen_other.add(key)
-    out["other_commands"] = sorted(seen_other)
-    return out
 
 
 def digitize_image(
@@ -1240,40 +1211,12 @@ def digitize_image(
     stitches = _lock_stream(stitches)
     post_lock = _stream_census(stitches)
 
-    # ── Colour-stop counts, recomputed from the FINAL stream ─────────────────
-    # They used to be `len(stitches) - stop_start`, measured before locking, so
-    # every tie-off the lock pass added belonged to no stop. On fixture 08 that
-    # left the operator's worksheet with rows summing to 7,862 under a header of
-    # 8,024 — the 162 lock penetrations, printed nowhere. A tie-off is sewn in
-    # whichever thread is mounted, so it belongs to that stop.
-    #
-    # Recoverable here and not for objects: the final stream is partitioned by
-    # its COLOR_CHANGE entries, one fewer than there are stops, whereas object
-    # boundaries do not survive locking (their start indices are not kept, and
-    # deliberately so — see the note where `stitch_start` was removed).
-    seg_pen: list[int] = []
-    seg_span: list[int] = []
-    _pen = _span = 0
-    for s in stitches:
-        _span += 1
-        if s.command == "STITCH":
-            _pen += 1
-        elif s.command == "COLOR_CHANGE":
-            seg_pen.append(_pen)
-            seg_span.append(_span)
-            _pen = _span = 0
-    seg_pen.append(_pen)
-    seg_span.append(_span)
-    # Only rewrite when the partition matches. A mismatch means a COLOR_CHANGE
-    # was emitted for a stop that produced nothing — the dark-linework pass can
-    # do this when its chains are dropped as garment-coloured — and silently
-    # zipping the shorter list would misattribute every stop after it. Recorded
-    # instead, so the accounting test names it.
-    stops_partition_matches = len(seg_pen) == len(color_stops)
-    if stops_partition_matches:
-        for cs_, p_, sp_ in zip(color_stops, seg_pen, seg_span):
-            cs_.penetration_count = p_
-            cs_.stream_span = sp_
+    # Colour-stop counts come from the FINAL stream (see
+    # `routing.attribute_stops_from_stream` for why, and for what a mismatch
+    # means). Returns the segment count so the accounting can report a
+    # partition that did not line up instead of silently misattributing.
+    seg_count, stops_partition_matches = attribute_stops_from_stream(stitches, color_stops)
+
     global _LAST_STREAM_ACCOUNTING
     _LAST_STREAM_ACCOUNTING = {
         # Stream space: every entry, whatever its command.
@@ -1314,7 +1257,7 @@ def digitize_image(
         # Colour-stop attribution, so the worksheet's rows can be checked
         # against its header without re-deriving either.
         "stops": len(color_stops),
-        "stop_segments": len(seg_pen),
+        "stop_segments": seg_count,
         "stops_partition_matches": stops_partition_matches,
         "stop_penetrations_total": sum(cs_.penetration_count for cs_ in color_stops),
     }

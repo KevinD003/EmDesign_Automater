@@ -287,8 +287,14 @@ def test_probe6_regenerating_reproduces_the_design(stem, colors, lo, hi, max_los
         f"({len(reb.stitches):,} vs {len(dig.stitches):,}), band [{lo}, {hi}]"
     )
 
-    a = {o.sequence_order: int(o.penetration_count or 0) for o in dig.objects}
-    b = {o.sequence_order: int(o.penetration_count or 0) for o in reb.objects}
+    # STREAM SPAN, deliberately -- the same quantity these bands were fitted
+    # on, under its new name. Measuring the loss in penetration space instead
+    # moved 07_circular_badge's worst object from -34.0% to -34.09% and took CI
+    # red against a 34% band: a gate re-derived by accident is a gate quoted
+    # without its conditions. Re-deriving these bands in penetration space is
+    # separate work, and it is work, not a rename.
+    a = {o.sequence_order: int(o.stream_span or 0) for o in dig.objects}
+    b = {o.sequence_order: int(o.stream_span or 0) for o in reb.objects}
     assert set(a) == set(b), (
         f"P6 on {stem}: regenerating changed the object set — "
         f"missing {sorted(set(a) - set(b))}, extra {sorted(set(b) - set(a))}"

@@ -184,7 +184,6 @@ from app.services.digitizer.geometry import (
     last_classification_log,
 )
 from app.services.digitizer.pipeline import (
-    _stream_census,
     _uncovered_chunk_mm2,
     digitize_image,
 )
@@ -216,6 +215,8 @@ from app.services.digitizer.routing import (
     _merge_adjacent_same_hex,
     _nearest_neighbour_order,
     _route_travel,
+    _stream_census,
+    attribute_stops_from_stream,
     _tie_triangle,
     coalesce_params,
     travel_route_pad_px,
@@ -280,6 +281,7 @@ def __getattr__(name: str):
     raise AttributeError(name)
 
 __all__ = [
+    "attribute_stops_from_stream",
     "AMBIGUOUS_BLEND_RATIO",
     "AMBIGUOUS_MAX_CUT_SHARE",
     "AMBIGUOUS_MIN_CENTRE_GAP",
