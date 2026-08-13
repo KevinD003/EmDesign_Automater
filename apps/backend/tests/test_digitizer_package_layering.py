@@ -26,6 +26,7 @@ PKG_DIR = Path(digitizer.__file__).parent
 # Bottom to top. A module may import from those before it and never after.
 LAYERS = [
     "constants",
+    "accounting",
     "geometry",
     "provenance",
     "skeleton",

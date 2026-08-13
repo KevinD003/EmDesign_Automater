@@ -111,10 +111,12 @@ from app.services.digitizer.routing import (
     _merge_adjacent_same_hex,
     _nearest_neighbour_order,
     _route_travel,
-    _stream_census,
-    attribute_stops_from_stream,
     coalesce_params,
     travel_route_pad_px,
+)
+from app.services.digitizer.accounting import (
+    _stream_census,
+    attribute_stops_from_stream,
 )
 from app.services.digitizer.satin import (
     _fill_border,

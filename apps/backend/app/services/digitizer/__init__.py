@@ -208,6 +208,10 @@ from app.services.digitizer.rebuild import (
     _angle_is_digitizes_own,
     rebuild_design,
 )
+from app.services.digitizer.accounting import (
+    _stream_census,
+    attribute_stops_from_stream,
+)
 from app.services.digitizer.routing import (
     _coalesce_short,
     _finish_rebuild_segment,
@@ -215,8 +219,6 @@ from app.services.digitizer.routing import (
     _merge_adjacent_same_hex,
     _nearest_neighbour_order,
     _route_travel,
-    _stream_census,
-    attribute_stops_from_stream,
     _tie_triangle,
     coalesce_params,
     travel_route_pad_px,
