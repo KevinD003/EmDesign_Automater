@@ -8,14 +8,14 @@ inferred/unavailable — nothing in between.
 
 | case | kind | SQ objects | SQ stitches | SQ trims | competitor stitches | competitor trims |
 |---|---|---|---|---|---|---|
-| 01-flat-logo | fixture | 2 | 4820 | 85 | — | — |
-| 05-lettering | fixture | 6 | 1366 | 10 | — | — |
-| 07-badge | fixture | 16 | 12196 | 77 | — | — |
-| 03-photo-derived | fixture | 3 | 4875 | 23 | — | — |
-| 08-small-detail | fixture | 15 | 4775 | 21 | — | — |
+| 01-flat-logo | fixture | 2 | 6165 | 3 | — | — |
+| 05-lettering | fixture | 6 | 1368 | 7 | — | — |
+| 07-badge | fixture | 16 | 10323 | 16 | — | — |
+| 03-photo-derived | fixture | 3 | 3819 | 2 | — | — |
+| 08-small-detail | fixture | 15 | 5362 | 19 | — | — |
 | sample-dst | machine_file | — | — | — | 26 | 14 |
 | sample-pes | machine_file | — | — | — | 26 | 2 |
-| angelfish-royal-present | render_only | 100 | 6504 | 108 | — | — |
+| angelfish-royal-present | render_only | — | — | — | — | — |
 
 ## Comparison framing
 
@@ -40,9 +40,9 @@ digitize (stream + inferred-block comparisons on matched ground).
 | metric | STITCHIQ | competitor |
 |---|---|---|
 | object count | 2 | — |
-| stitch count | 4820 | — |
-| trim count | 85 | — |
-| jump travel mm | 2132.1 | — |
+| stitch count | 6165 | — |
+| trim count | 3 | — |
+| jump travel mm | 204.6 | — |
 | color stops | 2 | — |
 | stitch types | TATAMI 2 | — |
 | objects with holes | 1 | — |
@@ -56,14 +56,14 @@ Visual: `benchmarks/competitor-bench/visual/01-flat-logo.png`
 | metric | STITCHIQ | competitor |
 |---|---|---|
 | object count | 6 | — |
-| stitch count | 1366 | — |
-| trim count | 10 | — |
-| jump travel mm | 203.8 | — |
+| stitch count | 1368 | — |
+| trim count | 7 | — |
+| jump travel mm | 172.0 | — |
 | color stops | 1 | — |
 | stitch types | SATIN 6 | — |
 | objects with holes | 0 | — |
 | small objects <8mm2 | 0 | — |
-| distinct angles | 2 | — |
+| distinct angles | 3 | — |
 
 Visual: `benchmarks/competitor-bench/visual/05-lettering.png`
 
@@ -72,9 +72,9 @@ Visual: `benchmarks/competitor-bench/visual/05-lettering.png`
 | metric | STITCHIQ | competitor |
 |---|---|---|
 | object count | 16 | — |
-| stitch count | 12196 | — |
-| trim count | 77 | — |
-| jump travel mm | 2449.9 | — |
+| stitch count | 10323 | — |
+| trim count | 16 | — |
+| jump travel mm | 632.3 | — |
 | color stops | 4 | — |
 | stitch types | SATIN 13, TATAMI 3 | — |
 | objects with holes | 10 | — |
@@ -88,9 +88,9 @@ Visual: `benchmarks/competitor-bench/visual/07-badge.png`
 | metric | STITCHIQ | competitor |
 |---|---|---|
 | object count | 3 | — |
-| stitch count | 4875 | — |
-| trim count | 23 | — |
-| jump travel mm | 1021.2 | — |
+| stitch count | 3819 | — |
+| trim count | 2 | — |
+| jump travel mm | 136.4 | — |
 | color stops | 3 | — |
 | stitch types | SATIN 2, TATAMI 1 | — |
 | objects with holes | 2 | — |
@@ -104,9 +104,9 @@ Visual: `benchmarks/competitor-bench/visual/03-photo-derived.png`
 | metric | STITCHIQ | competitor |
 |---|---|---|
 | object count | 15 | — |
-| stitch count | 4775 | — |
-| trim count | 21 | — |
-| jump travel mm | 632.4 | — |
+| stitch count | 5362 | — |
+| trim count | 19 | — |
+| jump travel mm | 496.9 | — |
 | color stops | 4 | — |
 | stitch types | SATIN 12, TATAMI 3 | — |
 | objects with holes | 4 | — |
@@ -155,16 +155,14 @@ Visual: `benchmarks/competitor-bench/visual/sample-pes.png`
 
 | metric | STITCHIQ | competitor |
 |---|---|---|
-| object count | 100 | unavailable (render only) |
-| stitch count | 6504 | unavailable (render only) |
-| trim count | 108 | unavailable (render only) |
-| jump travel mm | 1776.5 | unavailable (render only) |
-| color stops | 8 | unavailable (render only) |
-| stitch types | RUNNING_SINGLE 55, SATIN 39, TATAMI 6 | unavailable (render only) |
-| objects with holes | 0 | — |
-| small objects <8mm2 | 36 | — |
-| distinct angles | 41 | — |
+| object count | — | — |
+| stitch count | — | — |
+| trim count | — | — |
+| jump travel mm | — | — |
+| color stops | — | — |
+| stitch types | — | — |
+| objects with holes | — | — |
+| small objects <8mm2 | — | — |
+| distinct angles | — | — |
 
-> Competitor render (royal-present.ru marketing photo, watermarked). No stitch file: numeric competitor columns are unavailable.
-
-Visual: `benchmarks/competitor-bench/visual/angelfish-royal-present.png`
+> SKIPPED: artwork missing (angelfish.jpg)

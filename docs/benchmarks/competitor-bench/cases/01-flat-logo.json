@@ -3,10 +3,10 @@
  "kind": "fixture",
  "stitchiq": {
   "provenance": "stitchiq_generated",
-  "stitch_count": 4820,
-  "trim_count": 85,
-  "jump_count": 105,
-  "jump_travel_mm": 2132.1,
+  "stitch_count": 6165,
+  "trim_count": 3,
+  "jump_count": 6,
+  "jump_travel_mm": 204.6,
   "color_stop_count": 2,
   "width_mm": 65.7,
   "height_mm": 65.5,
@@ -18,7 +18,7 @@
   "hole_count": 1,
   "small_objects_lt_8mm2": 0,
   "distinct_angles": 2,
-  "median_stitches_per_object": 3227
+  "median_stitches_per_object": 4538
  },
  "competitor": null,
  "notes": [],
