@@ -54,23 +54,32 @@ def outline_run():
     return design, float(pipeline._LAST_UNCOVERED_PX), list(pipeline._CLASSIFICATION_LOG)
 
 
-def test_a_feature_too_thin_to_sew_is_reported_as_unsewn(outline_run):
+def test_the_hairline_is_sewn_and_the_coverage_stays_honest(outline_run):
+    """History of this assertion, because it changed subject twice for real
+    reasons: before DET2 the pipeline reported 2.42 % uncovered and no warning
+    while a fifth of the drawing was unsewn (the metric was lying). After DET2
+    it reported 31.59 % WITH the too-small warning (the metric was honest, the
+    refusal stood). After RS1 the ring is SEWN as a run, so the warning is gone
+    BECAUSE THE ARTWORK IS NO LONGER LOST — the warning moved with the
+    behaviour, which is what the DET2 rule requires of it.
+    """
     design, uncovered, log = outline_run
 
-    skipped = [e for e in log if e["decision"] == "SKIPPED"]
-    assert skipped, "expected the 0.21mm inner ring to be refused as sub-thread"
-    assert all(e["reason"] == "sub_thread_feature" for e in skipped)
+    runs = [e for e in log if e["decision"] == "RUN"]
+    assert runs, "expected the 0.21mm inner ring to be routed to a run (RS1)"
+    assert all(e["reason"] == "sub_thread_run" for e in runs)
+    assert any("Hairline" in o.name for o in design.objects)
 
-    # The floor, not the measured 31.59 %: the exact figure moves whenever
-    # smoothing or the width gate is touched, and pinning it would make this
-    # test a tripwire for changes it is not about. What must not come back is
-    # the pipeline reporting near-total coverage of a drawing it left a fifth of
-    # unsewn — 2.42 % before the fix.
-    assert uncovered >= 0.10, f"unsewn hairline not reflected in coverage: {uncovered:.2%}"
-
-    assert any("too small or too faint" in w for w in design.warnings), (
-        "the user was not told about the missing ring; before DET2 this warning "
-        "did not fire on this fixture at all"
+    # Floors and ceilings, not the measured 16.69 %: the honest remainder is
+    # anti-alias fringe and edge shaving, which must neither vanish (that would
+    # be DET2's inflation back again) nor stay above the photographic-rescue
+    # gate (04 is a drawing; the rescue firing on it was the wrong response).
+    assert 0.05 <= uncovered < 0.19, (
+        f"04's coverage reads {uncovered:.2%} — below 0.05 suggests the mask is "
+        f"over-claiming again; at or above 0.19 the texture rescue misfires"
+    )
+    assert not any("too small or too faint" in w for w in design.warnings), (
+        "the ring is sewn now; a loss warning for sewn artwork is a false claim"
     )
 
 

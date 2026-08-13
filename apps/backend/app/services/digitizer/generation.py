@@ -39,6 +39,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from app.services.digitizer.constants import (
+    SPUR_MIN_MM,
     NO_AXIS_SPECK_MM2,
     SATIN_MAX_UNCOVERED,
     SATIN_MAX_W_MM,
@@ -170,3 +171,69 @@ def spine_satin(region, *, mm_per_px: float, spacing_px: int, max_step_px: int,
         reason=reason,
         remainder_tatami=remainder,
     )
+
+
+def hairline_runs(region, mm_per_px: float, pitch_mm: float):
+    """Run paths for a region too thin to carry a satin column (RS1).
+
+    A `sub_thread_feature` refusal says the region cannot hold a COLUMN — a
+    column narrower than the thread is not a column. It does not say the region
+    cannot hold a RUN: 40wt thread at ~0.4mm over-covers a 0.21mm line about
+    two to one, and a human digitizer sews a hairline as a single run without
+    thinking about it. Measured before this existed (RS1 census, 2026-08-14):
+    14 refused regions across the fourteen fixtures, every one 0.20-0.23mm
+    wide, every one already thinning to a clean centreline, at a cost of at
+    most +0.11 machine-minutes anywhere.
+
+    Returns a list of (path_mm, pts) per viable branch: `path_mm` is the fine
+    centreline to store as the object's contour, `pts` the emission points from
+    `_manual_run` — THE SAME FUNCTION rebuild's RUNNING branch calls, at the
+    same integer pixel step, so the round trip re-runs the stored path through
+    the code that produced it. The convention defect this relies on was fixed
+    first (`_manual_run`: a drawn path's first point is a penetration).
+
+    THE VIABILITY GATE — two criteria, deliberately separate because they
+    answer different questions (ruling of 2026-08-18):
+
+      * SEWABILITY, applied here: spur pruning at the repo's standing noise
+        definition (SPUR_MIN_MM — a skeleton branch shorter than that is
+        thinning noise, not artwork), then branch length >= one pitch, derived
+        from what a running stitch IS: it exists between two penetrations, so
+        a branch that cannot hold two cannot hold a line. Nothing is fitted.
+        This is the gate on what the customer gets; 09_nonuniform_background's
+        17 spur branches over 14mm die at the pruning step, which is the
+        boundary the single-branch alternative would have drawn by hand.
+      * ASSERTABILITY — penetrations >= 1/band for a per-object percentage to
+        mean anything — is NOT applied here. A branch long enough to sew but
+        too short for the band arithmetic is SEWN, and the band test excludes
+        it under a stated minimum. Refusing a customer's hairline because our
+        arithmetic is awkward on short branches would be the tail wagging the
+        needle.
+    """
+    import cv2
+    import numpy as np
+
+    from app.services.digitizer.skeleton import (
+        _prune_spurs, _skeleton_branches, _zhang_suen_thin,
+    )
+    from app.services.digitizer.underlay import _manual_run
+
+    skel = _zhang_suen_thin((region > 0).astype(np.uint8))
+    if not cv2.countNonZero(skel):
+        return []
+    skel = _prune_spurs(skel, max(1, round(SPUR_MIN_MM / mm_per_px)))
+    step_px = max(1, round(pitch_mm / mm_per_px))
+    out = []
+    for br in _skeleton_branches(skel):
+        pts_px = np.asarray(br, dtype=np.float32)
+        if len(pts_px) < 2:
+            continue
+        length_mm = float(np.sum(np.hypot(*(pts_px[1:] - pts_px[:-1]).T))) * mm_per_px
+        if length_mm < pitch_mm:  # cannot hold two penetrations: not a line
+            continue
+        pts = _manual_run(pts_px.reshape(-1, 1, 2), step_px, 1)
+        if len(pts) < 2:
+            continue
+        path_mm = [(float(x) * mm_per_px, float(y) * mm_per_px) for x, y in pts_px]
+        out.append((path_mm, pts))
+    return out

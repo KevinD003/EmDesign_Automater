@@ -87,3 +87,59 @@ def attribute_stops_from_stream(stitches, color_stops) -> tuple[int, bool]:
             cs.penetration_count = p_
             cs.stream_span = sp_
     return len(seg_pen), matched
+
+
+def build_accounting(*, stitches, pre_merge, merge_inserted, pre_lock,
+                     pre_lock_len, post_lock, objects, color_stops,
+                     linework_lead_in, object_span_penetrations,
+                     stop_segments, stops_partition_matches) -> dict:
+    """Assemble the stream-accounting record from measured inputs.
+
+    The SCHEMA lives here, beside the census that feeds it, because the record
+    is this module's contract with the identity tests — pipeline measures and
+    passes; it does not own the layout. Every comment below is part of that
+    contract: it says why each category is counted where it is.
+    """
+    return {
+        # Stream space: every entry, whatever its command.
+        "stream_length": len(stitches),
+        "stream_length_pre_lock": pre_lock_len,
+        "object_spans": sum(int(o.stream_span) for o in objects),
+        # One entry per colour-stop boundary. Counted BEFORE the merge, because
+        # merging rewrites a COLOR_CHANGE into a TRIM in place — the entry
+        # survives, only its command changes, and counting after would move it
+        # out of this category into no category at all.
+        "stop_separators": pre_merge["COLOR_CHANGE"],
+        "linework_lead_in": linework_lead_in,
+        "end_markers": pre_merge["END"],
+        # The merge inserts a JUMP after each rewritten separator whose next
+        # entry is a STITCH — a repositioning the TRIM no longer implies.
+        "merge_inserted": merge_inserted,
+        "lock_inserted": len(stitches) - pre_lock_len,
+        # Penetration space: STITCH entries only. Every penetration is either
+        # inside an object's span or was put there by the lock pass — there is
+        # no third source, which is the whole point of the identity.
+        "penetrations": post_lock["STITCH"],
+        # MEASURED as the spans were emitted, not inferred from a census. The
+        # previous version of this key was `pre_lock["STITCH"]` — every pre-lock
+        # penetration, wherever it sat — so the decomposition below asserted
+        # x == x and the name claimed a property nothing checked.
+        "penetrations_in_object_spans": object_span_penetrations,
+        "penetrations_pre_lock": pre_lock["STITCH"],
+        "lock_penetrations": post_lock["STITCH"] - pre_lock["STITCH"],
+        "lock_trims": post_lock["TRIM"] - pre_lock["TRIM"],
+        # All three censuses. `pre_merge` is here because the merge pass cannot
+        # be checked without it: an identity comparing pre_lock against post_lock
+        # never sees the merge at all, so "the merge adds no penetrations"
+        # passed while a hypothetical merge inserting 500 stitches would also
+        # have passed.
+        "census_pre_merge": pre_merge,
+        "census_pre_lock": pre_lock,
+        "census_post_lock": post_lock,
+        # Colour-stop attribution, so the worksheet's rows can be checked
+        # against its header without re-deriving either.
+        "stops": len(color_stops),
+        "stop_segments": stop_segments,
+        "stops_partition_matches": stops_partition_matches,
+        "stop_penetrations_total": sum(cs_.penetration_count for cs_ in color_stops),
+    }

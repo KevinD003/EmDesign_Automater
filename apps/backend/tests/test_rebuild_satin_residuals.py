@@ -68,11 +68,15 @@ def _edited(design: Design) -> Design:
     return d
 
 
-def _losses(dig: Design, rb: Design) -> list[float]:
+def _losses(dig: Design, rb: Design, min_pen: int = 1) -> list[float]:
     # Penetration space; PARITY_BANDS is derived in it (see the note there).
+    # `min_pen` is the assertability minimum — 1/band — because a percentage
+    # on an object of fewer penetrations is dominated by single-point integer
+    # effects, not fidelity. Short objects are sewn and kept; they are only
+    # excluded from the percentage arithmetic (ruling of 2026-08-18).
     a = {o.sequence_order: int(o.penetration_count or 0) for o in dig.objects}
     b = {o.sequence_order: int(o.penetration_count or 0) for o in rb.objects}
-    return sorted(b[k] / a[k] - 1.0 for k in a if k in b and a[k])
+    return sorted(b[k] / a[k] - 1.0 for k in a if k in b and a[k] >= min_pen)
 
 
 # ── R3: the auto-angle gate ──────────────────────────────────────────────────
@@ -172,7 +176,7 @@ def test_editing_a_satin_design_keeps_every_object(stem, colors, max_loss):
         f"`if len(pts) < 2: continue` deletes the object without a word."
     )
 
-    losses = _losses(dig, rb)
+    losses = _losses(dig, rb, min_pen=max(2, round(1.0 / max_loss)))
     assert losses, "no objects to compare"
     assert min(losses) >= -max_loss, (
         f"{stem}: worst object lost {min(losses):.1%} of its stitches against a "

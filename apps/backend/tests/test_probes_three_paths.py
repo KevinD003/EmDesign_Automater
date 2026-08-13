@@ -313,13 +313,23 @@ def test_probe6_regenerating_reproduces_the_design(stem, colors, lo, hi, max_los
     # red — the constants had been carried across a space change, which is a
     # gate quoted without its conditions. The bands above are now derived IN
     # this space, so the assertion measures thread, not travel bookkeeping.
+    # ASSERTABILITY MINIMUM (ruling of 2026-08-18): a per-object percentage
+    # band of B is meaningful only when one penetration is worth less than B,
+    # so objects under 1/B penetrations are excluded from the loss assertion —
+    # derived from the band arithmetic itself, not from any fixture. They are
+    # still required to EXIST (the object-set assertion below has no minimum):
+    # sew-ability and assert-ability are different questions, and a hairline
+    # run is never refused because our arithmetic is awkward on short branches.
+    min_pen = max(2, round(1.0 / max_loss))
     a = {o.sequence_order: int(o.penetration_count or 0) for o in dig.objects}
     b = {o.sequence_order: int(o.penetration_count or 0) for o in reb.objects}
     assert set(a) == set(b), (
         f"P6 on {stem}: regenerating changed the object set — "
         f"missing {sorted(set(a) - set(b))}, extra {sorted(set(b) - set(a))}"
     )
-    losses = {k: b[k] / a[k] - 1.0 for k in a if a[k]}
+    losses = {k: b[k] / a[k] - 1.0 for k in a if a[k] >= min_pen}
+    if not losses:
+        return  # every object below the assertability minimum; set equality above still held
     worst_k = min(losses, key=losses.get)
     assert losses[worst_k] >= -max_loss, (
         f"P6 on {stem}: object {worst_k} lost {losses[worst_k]:.1%} of its "

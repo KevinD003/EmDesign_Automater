@@ -168,3 +168,47 @@ for name, path, p in fixtures():
         print(name, [e["region_median_w_mm"] for e in skipped])
 PY
 ```
+
+---
+
+## 8. ADDENDUM 2026-08-18 — the fix landed, and one prediction above was wrong
+
+The fix shipped after this document's mechanism work, in the order the ruling set: the
+entry-convention defect first (`ce254a8`, its own commit), then the emitter.
+
+**§2's prediction about fixture 09 is corrected by measurement.** This document said 09's
+17 branches over 14.0 mm were "spur noise, not a line" and would need a branch-structure
+criterion to refuse. Wrong, in a useful direction: `_prune_spurs` at the repo's standing
+`SPUR_MIN_MM = 0.8` noise floor — the gate's first step — eats the seventeen 0.8 mm hairs, and
+what survives is **three real trunks of 1.4–2.9 mm**. They are sewable (each ≥ one pitch) and
+they are sewn: three `Hairline` objects of 3–4 penetrations each. No branch-structure criterion
+was ever needed; the repo already owned the noise definition, and deriving a second one would
+have been the fitted constant §2 refused to fit.
+
+Those three objects are also the ruling's **two-criteria disagreement, observed**: sewable but
+far under any band's assertability minimum (penetrations ≥ 1/band = 10 for the 0.10 bands). Per
+the ruling they are sewn and excluded from percentage assertions — the exclusion is implemented
+in the band tests themselves with its derivation, and `test_rs1_hairline_runs.py` pins the
+disagreement from both sides.
+
+**The gate as shipped** (`generation.hairline_runs`): spur pruning at `SPUR_MIN_MM`, then branch
+length ≥ one pitch — a running stitch exists between two penetrations, so a branch that cannot
+hold two cannot hold a line. Both constants pre-existed or derive from definitions; nothing
+fitted.
+
+**Pitch, measured through the real path and chosen:** `HAIRLINE_RUN_PITCH_MM = OUTLINE_RUN_MM`
+(1.4). Round-trip drift on 04's ring: +2.75 % at 1.4 mm (109→112), +3.17 % at 2.5 mm (63→65) —
+pixel-grid requantisation, inside every band, not separating the pitches. The visual-class
+argument decides: a hairline is a fine drawn stroke, the same class as traced linework, not a
+user-drawn manual path. §3's constructed-probe claim of exact zero at 2.5 mm did not survive the
+real path — the probe's mm-space resample was cleaner than rebuild's pixel grid, and the honest
+numbers are the ones above.
+
+**DET2's fourteen, before → after (the first coverage movement for a real reason):**
+04 **31.59 % → 16.69 %** with its warning gone; 07 3.33 → 3.29; 08 2.04 → 1.92;
+09 1.09 → 0.93 (and its colour warning honestly moves from "2 distinguishable" to "3" — the
+hairline cluster now produces real objects); C24 17.95 → 17.75; C11 6.94 → 6.74; the other
+eight unchanged. Object gains: 04 +1, 07 +2, 08 +1, 09 +3, C24 +5, C11 +8. 04's remaining
+16.69 % is anti-alias fringe and edge shaving — honest, and back under the 0.19 texture-rescue
+gate, so the rescue stops firing on a drawing **for the right reason** (input to the
+TEXTURE_RETRY re-derivation, as the ruling anticipated).
