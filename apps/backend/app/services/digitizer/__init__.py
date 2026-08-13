@@ -184,6 +184,7 @@ from app.services.digitizer.geometry import (
     last_classification_log,
 )
 from app.services.digitizer.pipeline import (
+    _stream_census,
     _uncovered_chunk_mm2,
     digitize_image,
 )
@@ -481,6 +482,7 @@ __all__ = [
     "_spiral_fill",
     "_split_bimodal_clusters",
     "_split_mask_by_line",
+    "_stream_census",
     "_subdivide_long",
     "_thin_state",
     "_thin_step_ok",
