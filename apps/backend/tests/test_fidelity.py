@@ -53,7 +53,7 @@ def test_small_covered_hole_is_absorbed_by_the_fill():
     cv2.rectangle(img, (40, 40), (260, 260), (60, 40, 20), -1)
     cv2.circle(img, (150, 150), 12, (250, 250, 250), -1)   # ~4.9mm dot at 100mm hoop
     d = digitize_image(_png(img), "cotton", "100x100", max_colors=2)
-    dark = max(d.objects, key=lambda o: o.penetration_count)
+    dark = max(d.objects, key=lambda o: o.stream_span)
     assert not dark.holes, f"small covered hole should be absorbed: {len(dark.holes or [])} holes kept"
 
 
@@ -66,7 +66,7 @@ def test_large_hole_keeps_its_knockout(monkeypatch):
     cv2.rectangle(img, (40, 40), (260, 260), (60, 40, 20), -1)
     cv2.circle(img, (150, 150), 60, (250, 250, 250), -1)   # ~24mm hole >> 50mm2
     d = digitize_image(_png(img), "cotton", "100x100", max_colors=2)
-    dark = max(d.objects, key=lambda o: o.penetration_count)
+    dark = max(d.objects, key=lambda o: o.stream_span)
     assert dark.holes, "a feature-scale hole must stay knocked out"
 
 
@@ -79,8 +79,8 @@ def test_small_dark_detail_is_deferred_on_top_of_the_light_fill():
     cv2.rectangle(img, (40, 40), (260, 260), (200, 200, 190), -1)      # light square
     cv2.circle(img, (150, 150), 12, (40, 30, 20), -1)                  # small DARK dot (~70mm2? no: ~4.4mm r -> 60mm2 edge)
     d = digitize_image(_png(img), "cotton", "100x100", max_colors=2)
-    light = max(d.objects, key=lambda o: o.penetration_count)
-    dark = min((o for o in d.objects if o.penetration_count > 0), key=lambda o: o.penetration_count)
+    light = max(d.objects, key=lambda o: o.stream_span)
+    dark = min((o for o in d.objects if o.stream_span > 0), key=lambda o: o.stream_span)
     assert not light.holes, "the fill should sew solid beneath a deferred detail"
     assert dark.sequence_order > light.sequence_order, "the detail must stitch AFTER the fill"
 
@@ -95,7 +95,7 @@ def test_large_dark_detail_keeps_the_knockout(monkeypatch):
     cv2.rectangle(img, (20, 20), (320, 320), (200, 200, 190), -1)      # light square
     cv2.circle(img, (170, 170), 60, (40, 30, 20), -1)                  # BIG dark disc (~1000mm2)
     d = digitize_image(_png(img), "cotton", "100x100", max_colors=2)
-    light = max(d.objects, key=lambda o: o.penetration_count)
+    light = max(d.objects, key=lambda o: o.stream_span)
     assert light.holes, "a non-deferrable earlier detail must keep its knockout"
 
 

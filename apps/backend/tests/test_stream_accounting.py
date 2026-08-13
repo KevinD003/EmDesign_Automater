@@ -35,7 +35,7 @@ import cv2
 import pytest
 
 from app.services.digitizer import digitize_image, pipeline
-from app.services.digitizer.pipeline import _STREAM_COMMANDS
+from app.services.digitizer.routing import _STREAM_COMMANDS
 
 # `scripts/` is on sys.path from conftest. Imported rather than retyped: the
 # fourteen and their conditions are defined once, in the instrument that

@@ -51,7 +51,7 @@ def run_one(name: str, hoop: str, max_colors: int = 12) -> dict:
                             max_colors)
     seconds = time.perf_counter() - t0
     objs = [o for o in design.objects if o.contour]
-    counts = [o.penetration_count for o in objs] or [0]
+    counts = [o.stream_span for o in objs] or [0]
     trims = sum(1 for s in design.stitches
                 if str(getattr(s, "command", "")).upper() == "TRIM")
     m = measure(design, MIN_PENETRATION_MM, ROW_SPACING_MM)
