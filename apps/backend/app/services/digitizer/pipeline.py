@@ -153,12 +153,34 @@ _LAST_UNCOVERED_PX: float = 0.0
 _LAST_STREAM_ACCOUNTING: dict = {}
 
 
+# The commands a digitized stream is allowed to contain. Named, and closed:
+# an earlier draft counted with `out.get(key, 0) + 1`, which admits ANY command
+# and therefore always sums to `len(stitches)`. That made the census incapable
+# of noticing a new command type — the identity built on it closed by
+# construction and could not say no.
+_STREAM_COMMANDS = ("STITCH", "JUMP", "TRIM", "COLOR_CHANGE", "END")
+
+
 def _stream_census(stitches) -> dict:
-    """Count each command in a stream. One place, so the two sides agree."""
-    out = {"STITCH": 0, "JUMP": 0, "TRIM": 0, "COLOR_CHANGE": 0, "END": 0}
+    """Count each command in a stream. One place, so the two sides agree.
+
+    Anything outside `_STREAM_COMMANDS` lands in `other` and is named in
+    `other_commands`. It is counted rather than rejected — raising here would
+    turn a new command type into a production outage instead of a red test —
+    but `other` is a category the accounting identity must include and the
+    tests assert is empty, so it cannot pass unnoticed.
+    """
+    out = {k: 0 for k in _STREAM_COMMANDS}
+    out["other"] = 0
+    seen_other: set[str] = set()
     for s in stitches:
         key = str(getattr(s.command, "value", s.command))
-        out[key] = out.get(key, 0) + 1
+        if key in out and key != "other":
+            out[key] += 1
+        else:
+            out["other"] += 1
+            seen_other.add(key)
+    out["other_commands"] = sorted(seen_other)
     return out
 
 
@@ -429,6 +451,14 @@ def digitize_image(
     # because after `_merge_adjacent_same_hex` rewrites the stream there is no
     # way to tell from the outside which entries these were.
     linework_lead_in = 0
+    # Penetrations MEASURED inside each object's own span, accumulated as the
+    # spans are emitted. Not `pre_lock["STITCH"]`, which is every pre-lock
+    # penetration wherever it sits: that number was once called
+    # `penetrations_in_object_spans`, and the identity built on it asserted
+    # x == x. Counting here is the only way the claim can be false — a future
+    # code path that appends a STITCH between objects breaks it, which is
+    # exactly the event worth hearing about.
+    object_span_penetrations = 0
     substrate_px = 0            # garment-coloured pixels deliberately left unstitched
     substrate_owned = np.zeros(fg_mask.shape, np.uint8)
     dropped_speck_count = 0     # regions under min_region_mm2 at THIS hoop size
@@ -1004,6 +1034,9 @@ def digitize_image(
                 )
             seq += 1
             count = len(stitches) - obj_start
+            object_span_penetrations += sum(
+                1 for s in stitches[obj_start:] if s.command == "STITCH"
+            )
             outline = [
                 Point(x=float(px_) * mm_per_px, y=float(py_) * mm_per_px)
                 for px_, py_ in contour.reshape(-1, 2)
@@ -1140,6 +1173,9 @@ def digitize_image(
                 for x, y in path:
                     stitches.append(Stitch(x=x * mm_per_px, y=y * mm_per_px, command="STITCH"))
                 seq += 1
+                object_span_penetrations += sum(
+                    1 for s in stitches[obj_start:] if s.command == "STITCH"
+                )
                 objects.append(
                     DesignObject(
                         sequence_order=seq,
@@ -1218,9 +1254,20 @@ def digitize_image(
         # inside an object's span or was put there by the lock pass — there is
         # no third source, which is the whole point of the identity.
         "penetrations": post_lock["STITCH"],
-        "penetrations_in_object_spans": pre_lock["STITCH"],
+        # MEASURED as the spans were emitted, not inferred from a census. The
+        # previous version of this key was `pre_lock["STITCH"]` — every pre-lock
+        # penetration, wherever it sat — so the decomposition below asserted
+        # x == x and the name claimed a property nothing checked.
+        "penetrations_in_object_spans": object_span_penetrations,
+        "penetrations_pre_lock": pre_lock["STITCH"],
         "lock_penetrations": post_lock["STITCH"] - pre_lock["STITCH"],
         "lock_trims": post_lock["TRIM"] - pre_lock["TRIM"],
+        # All three censuses. `pre_merge` is here because the merge pass cannot
+        # be checked without it: an identity comparing pre_lock against post_lock
+        # never sees the merge at all, so "the merge adds no penetrations"
+        # passed while a hypothetical merge inserting 500 stitches would also
+        # have passed.
+        "census_pre_merge": pre_merge,
         "census_pre_lock": pre_lock,
         "census_post_lock": post_lock,
     }
