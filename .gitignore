@@ -37,6 +37,21 @@ apps/backend/data/
 # tracked: those are genuine test inputs, not generated ones.
 apps/backend/tests/fixtures/corpus100/B*.png
 apps/backend/tests/fixtures/corpus100/C*.png
+# FOUR EXCEPTIONS. The reason above — "generated, regenerated with a fixed
+# seed" — is correct for a CORPUS and wrong for a BASELINE. These four are
+# cited by name in DET2's fourteen-fixture table, they carry SH2's 12.53 % and
+# 2.66 % reference figures, and C24 is the fixture the whole SH2 D1/D2 decision
+# turns on. A baseline that regenerates is not a baseline.
+#
+# Untracked, they also took CI red while the local suite read green: run
+# 31658769064 errored 16 times on FileNotFoundError for paths that exist only
+# on a machine where build_corpus100.py has been run. Their sha256 is pinned in
+# tests/test_corpus_baseline_fixtures.py so a regenerated image that differs is
+# caught rather than silently re-baselining SH2's numbers.
+!apps/backend/tests/fixtures/corpus100/C05_gradient_field.png
+!apps/backend/tests/fixtures/corpus100/C11_many_colours.png
+!apps/backend/tests/fixtures/corpus100/C18_gradient_field.png
+!apps/backend/tests/fixtures/corpus100/C24_many_colours.png
 apps/backend/scripts/corpus100*.json
 
 # Visual-regression failure artifacts (v2 Part 44). The BASELINES under

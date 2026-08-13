@@ -56,6 +56,20 @@ FOURTEEN = _fourteen()
 @pytest.fixture(scope="module", params=FOURTEEN, ids=[n for n, _, _ in FOURTEEN])
 def run(request):
     name, path, params = request.param
+    if not path.exists():
+        # SKIP, not ERROR. A FileNotFoundError raised out of a fixture is
+        # reported as an error per parametrised case — 16 of them took CI red
+        # on run 31658769064 while the local suite read green, and the wall of
+        # tracebacks buried the one real failure underneath it. A skip with the
+        # path in it says the same thing in one line.
+        #
+        # The skip is only safe because `test_corpus_baseline_fixtures.py`
+        # asserts all fourteen are present: on its own, skipping would let the
+        # suite quietly measure ten fixtures and still report green.
+        pytest.skip(
+            f"fixture {path} is missing, so {name} was not measured. It should "
+            f"be tracked; see the .gitignore exceptions for the C-tier baselines."
+        )
     cv2.setRNGSeed(RNG_SEED)
     design = digitize_image(
         path.read_bytes(),
