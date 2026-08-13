@@ -27,7 +27,29 @@ def _run_along(poly_px, step_px: int, connect_px: float, first_jump: bool = True
 
 def _manual_run(poly_px, step_px: int, passes: int = 1):
     """Running stitch ALONG an open drawn path, resampled at ``step_px``, ``passes`` times
-    (single/double/triple; even passes retrace backward). Returns [(x, y, is_jump)]."""
+    (single/double/triple; even passes retrace backward). Returns [(x, y, is_jump)].
+
+    THE FIRST POINT OF A DRAWN PATH IS A PENETRATION. A jump positions the
+    needle; it does not put it down, so a run that opens with a bare jump has
+    its first thread anchored at the SECOND point — the line visibly starts one
+    pitch late, and a two-point path sews a single unanchored penetration. The
+    digitize-side emitter (the dark-linework pass) has always stitched the
+    first point; this function returned it as the jump alone, which cost every
+    run object exactly one penetration per rebuild — measured on constructed
+    objects as the −50% "loss" on two-point branches, and invisible for as long
+    as RUNNING_SINGLE had no corpus coverage. Sole caller is rebuild's RUNNING
+    branch (checked 2026-08-18: no underlay path uses this), so unifying here
+    unifies the convention everywhere.
+
+    HOW: every returned point is a penetration and the POSITIONING JUMP IS THE
+    CALLER'S, which is digitize's own architecture — its generators return
+    stitch points, coalescing runs, and the jump to pts[0] is added at
+    emission. The first attempt at this fix kept a leading jump entry and
+    duplicated the start as a stitch; `_finish_rebuild_segment`'s coalesce pass
+    then deleted the duplicate as a zero-length stitch and the count was short
+    again. Rebuild already emits the transition jump to pts[0] before the
+    point loop, so a leading jump entry here was always redundant with it.
+    """
     pts_in = [(float(x), float(y)) for x, y in poly_px.reshape(-1, 2)]
     base = _resample_open(pts_in, max(1.0, float(step_px)))
     if len(base) < 2:
@@ -38,7 +60,7 @@ def _manual_run(poly_px, step_px: int, passes: int = 1):
         # Each pass ends where the next begins; drop that coincident junction point so
         # double/triple runs don't emit a zero-length stitch at the turnaround.
         seq += seg if i == 0 else seg[1:]
-    return [(seq[0][0], seq[0][1], True)] + [(p[0], p[1], False) for p in seq[1:]]
+    return [(p[0], p[1], False) for p in seq]
 
 
 def _edge_walk(region, inset_px: int, step_px: int, connect_px: float,
