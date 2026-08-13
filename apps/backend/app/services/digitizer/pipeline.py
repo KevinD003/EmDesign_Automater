@@ -613,7 +613,11 @@ def digitize_image(
                 cplan.regions.append(staging.RegionPlan(
                     top_index=ci, net_area_px=net_area, raw_contour=contour, dropped=True))
                 continue
-            cv2.drawContours(emitted_mask, [contour], -1, 255, thickness=cv2.FILLED)
+            # `emitted_mask` is NOT written here (DET2). This is pass A: it knows
+            # only that a region is big enough to be worth sewing, not that it
+            # was sewn, and a filled outline claims the letter counters and donut
+            # holes it encloses as covered thread. Both errors inflate the
+            # coverage figure in the same direction — see the write in pass B.
             # Smooth the pixel staircase before it becomes stitches. Done here so
             # the stored contour (which drives rebuild) is smooth too, not just
             # this run's fill.
@@ -1016,6 +1020,31 @@ def digitize_image(
             # afterwards, and nothing needs it. The pass-through has always
             # worked off `params_hash` alone.
             objects[-1].params_hash = object_params_hash(objects[-1])
+            # ── DET2: coverage is recorded HERE, and only here ────────────────
+            # Written after the object exists, from `region` — the same mask the
+            # generators were handed, so retained holes are already subtracted
+            # and any small hole the fill absorbed is already filled back in.
+            #
+            # The old write sat in pass A, immediately after the min-area test.
+            # It therefore counted two classes of pixel that no thread reaches:
+            # the interior of every knocked-out hole, and every region pass A
+            # accepted that pass B then abandoned — a sub-thread feature, a
+            # generator returning under two points, an empty fill. Measured
+            # consequence on 03_gradient_soft_subject: SH2 found 11.96 % of the
+            # foreground owned by nobody while this figure read 0.00 %, so the
+            # photographic rescue that exists to catch exactly that could not
+            # see it. A coverage metric that cannot go down is not a metric.
+            #
+            # `region`, not `top_region`: pull compensation lays thread OUTSIDE
+            # the region by design, and crediting that against the artwork would
+            # reintroduce the same optimism in a smaller dose.
+            #
+            # Still not counted: the dark-linework overlay below, which emits
+            # objects after this loop. Those are thin runs sewn on top of fills
+            # that are already marked, so their marginal coverage is near zero —
+            # but the figure is an under-estimate there rather than an over-
+            # estimate, which is the safe direction for a loss detector.
+            emitted_mask[region > 0] = 255
 
         if this_stop is not None:  # cluster produced no stitchable objects → no phantom stop
             color_stops.append(
