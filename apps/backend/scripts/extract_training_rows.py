@@ -10,6 +10,11 @@ Output: data/training/rows.jsonl + data/training/crops/*.png (data/ is
 gitignored; the dataset is derived — rerun this script to rebuild it).
 
 Rerun: .venv/bin/python scripts/extract_training_rows.py  (from apps/backend)
+
+SPACE NOTE: per-object counts in this script are STREAM SPANS (`o.stream_span` —
+jumps and trims included, fixed pre-lock), kept because its recorded history was
+measured in that space. The competitor comparison harness uses penetrations
+instead (Decision 2, ruling of 2026-08-16) — do not mix the two.
 """
 
 from __future__ import annotations

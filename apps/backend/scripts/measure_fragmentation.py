@@ -24,6 +24,11 @@ Two rules that are not negotiable and shape every number here:
 
 Cost is bounded bounding-box-locally, per Parts 48/49: the work per object is
 proportional to that object's own area, never to the frame.
+
+SPACE NOTE: per-object counts in this script are STREAM SPANS (`o.stream_span` —
+jumps and trims included, fixed pre-lock), kept because its recorded history was
+measured in that space. The competitor comparison harness uses penetrations
+instead (Decision 2, ruling of 2026-08-16) — do not mix the two.
 """
 
 from __future__ import annotations

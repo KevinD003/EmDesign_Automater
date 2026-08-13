@@ -102,7 +102,13 @@ def object_metrics(design) -> dict | None:
             if (max(xs) - min(xs)) * (max(ys) - min(ys)) < SMALL_OBJECT_MM2:
                 small += 1
         angles.add(round(float(o.stitch_angle), 1))
-        per_object.append(o.stream_span)
+        # PENETRATIONS (Decision 2, ruling of 2026-08-16). A competitor DST
+        # carries penetrations and nothing else — no objects, no spans — so a
+        # comparison harness measuring our side in span space would be
+        # structurally incomparable the day real files arrive, and would get
+        # re-based under deadline. This also keeps `median_stitches_per_object`
+        # honest: "stitches" here counts needle penetrations, not jumps.
+        per_object.append(o.penetration_count)
     per_object.sort()
     return {
         "object_count": len(design.objects),
