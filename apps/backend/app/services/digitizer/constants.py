@@ -450,6 +450,18 @@ OUTLINE_MIN_MM = 4.0        # chains shorter than this are noise, not drawing
 
 OUTLINE_RUN_MM = 1.4        # running-stitch length along the line (stem-stitch scale)
 
+# RS1: pitch for runs emitted in place of a refused sub-thread satin column.
+# OUTLINE_RUN_MM's value, as its own name: a hairline is the same visual class
+# as a traced line (a fine drawn stroke), not a user-drawn manual path — so it
+# takes the stem-stitch scale, not RUN_PITCH_MM's 2.5mm pro default for manual
+# runs. Both pitches were measured through the REAL path on fixture 04's ring
+# (2026-08-18): digitize -> rebuild(force) round-trip drift +2.75% at 1.4mm
+# (109 -> 112) and +3.17% at 2.5mm (63 -> 65) — pixel-grid requantisation,
+# inside every fidelity band, and not separating the two pitches. The visual
+# class argument decides. Machine-minute cost of the finer pitch, corpus-wide:
+# at most +0.081 on the one fixture that is mostly hairlines.
+HAIRLINE_RUN_PITCH_MM = OUTLINE_RUN_MM
+
 
 # Below this substrate luminance the cloth is darker than any thread the
 # artwork could outline with, so the dark-linework pass has nothing real to

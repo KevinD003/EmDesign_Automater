@@ -45,6 +45,7 @@ from app.services.digitizer.constants import (
     FILL_UNDERLAY_MIN_MM2,
     FILL_UNDERLAY_PITCH_MULT,
     FINE_DETAIL_SRC_PX_PER_MM,
+    HAIRLINE_RUN_PITCH_MM,
     HOLE_KNOCKOUT_MIN_MM2,
     MAX_STITCH_MM,
     MIN_FEATURE_W_MM,
@@ -76,6 +77,7 @@ from app.services.digitizer.fills import (
     _fill_by_component,
 )
 from app.services.digitizer.generation import (
+    hairline_runs,
     spine_satin,
 )
 from app.services.digitizer.geometry import (
@@ -117,6 +119,7 @@ from app.services.digitizer.routing import (
 from app.services.digitizer.accounting import (
     _stream_census,
     attribute_stops_from_stream,
+    build_accounting,
 )
 from app.services.digitizer.satin import (
     _fill_border,
@@ -775,11 +778,59 @@ def digitize_image(
             # Sub-thread features cannot be sewn — see MIN_FEATURE_W_MM's
             # measured grounding before touching the value.
             if 0.0 < region_med_w < MIN_FEATURE_W_MM:
+                # RS1: too thin for a COLUMN is not too thin for a RUN — 40wt
+                # thread over-covers a 0.21mm line two to one. Gate, derivation
+                # and round-trip contract live on `hairline_runs`; SKIPPED
+                # remains the outcome when no branch survives its gate.
+                runs = hairline_runs(region, mm_per_px, HAIRLINE_RUN_PITCH_MM)
                 _CLASSIFICATION_LOG.append({
                     "seq": seq + 1, "region_median_w_mm": round(region_med_w, 2),
-                    "skeleton_median_w_mm": 0.0, "uncovered_share": 1.0,
-                    "reason": "sub_thread_feature", "decision": "SKIPPED",
+                    "skeleton_median_w_mm": 0.0,
+                    "uncovered_share": 0.0 if runs else 1.0,
+                    "reason": "sub_thread_run" if runs else "sub_thread_feature",
+                    "decision": "RUN" if runs else "SKIPPED",
                 })
+                if not runs:
+                    continue
+                for path_mm, rpts in runs:
+                    if this_stop is None:  # first real object → open the stop
+                        emitted_stop += 1
+                        this_stop = emitted_stop
+                        if emitted_stop > 1 and stitches:
+                            stitches.append(Stitch(x=stitches[-1].x, y=stitches[-1].y,
+                                                   command="COLOR_CHANGE"))
+                        stop_start = len(stitches)
+                    obj_start = len(stitches)  # before TRIM/JUMP: lead-in is in-span
+                    if stitches and stitches[-1].command != "COLOR_CHANGE":
+                        if math.hypot(rpts[0][0] * mm_per_px - stitches[-1].x,
+                                      rpts[0][1] * mm_per_px - stitches[-1].y) >= TRIM_MIN_GAP_MM:
+                            stitches.append(Stitch(x=stitches[-1].x, y=stitches[-1].y,
+                                                   command="TRIM"))
+                        stitches.append(Stitch(x=rpts[0][0] * mm_per_px,
+                                               y=rpts[0][1] * mm_per_px, command="JUMP"))
+                    for (x, y, jump) in rpts:
+                        stitches.append(Stitch(x=x * mm_per_px, y=y * mm_per_px,
+                                               command="JUMP" if jump else "STITCH"))
+                    seq += 1
+                    obj_pen = sum(1 for s_ in stitches[obj_start:] if s_.command == "STITCH")
+                    object_span_penetrations += obj_pen
+                    objects.append(DesignObject(
+                        sequence_order=seq, name=f"Hairline {seq} ({hexcol})",
+                        stitch_type=StitchType.RUNNING_SINGLE, color_stop=this_stop,
+                        density=1.0 / HAIRLINE_RUN_PITCH_MM, stitch_angle=0.0,
+                        underlay_type=UnderlayType.NONE, pull_compensation=0.0,
+                        entry_point=Point(x=rpts[0][0] * mm_per_px, y=rpts[0][1] * mm_per_px),
+                        exit_point=Point(x=rpts[-1][0] * mm_per_px, y=rpts[-1][1] * mm_per_px),
+                        connect_method=ConnectMethod.TRIM,
+                        penetration_count=obj_pen,
+                        stream_span=len(stitches) - obj_start,
+                        # The PATH — rebuild's RUNNING branch re-runs it through
+                        # the same _manual_run that emitted it.
+                        contour=[Point(x=px_, y=py_) for px_, py_ in path_mm],
+                    ))
+                    objects[-1].params_hash = object_params_hash(objects[-1])
+                # A 0.4mm run over a ≤0.25mm region covers it; DET2's mask says so.
+                emitted_mask[region > 0] = 255
                 continue
             if region_med_w > SATIN_MAX_W_MM * SATIN_PREGATE_SLACK:
                 reason = "broad_fill_pregate"  # typical width far over the cap
@@ -1220,49 +1271,14 @@ def digitize_image(
     seg_count, stops_partition_matches = attribute_stops_from_stream(stitches, color_stops)
 
     global _LAST_STREAM_ACCOUNTING
-    _LAST_STREAM_ACCOUNTING = {
-        # Stream space: every entry, whatever its command.
-        "stream_length": len(stitches),
-        "stream_length_pre_lock": pre_lock_len,
-        "object_spans": sum(int(o.stream_span) for o in objects),
-        # One entry per colour-stop boundary. Counted BEFORE the merge, because
-        # merging rewrites a COLOR_CHANGE into a TRIM in place — the entry
-        # survives, only its command changes, and counting after would move it
-        # out of this category into no category at all.
-        "stop_separators": pre_merge["COLOR_CHANGE"],
-        "linework_lead_in": linework_lead_in,
-        "end_markers": pre_merge["END"],
-        # The merge inserts a JUMP after each rewritten separator whose next
-        # entry is a STITCH — a repositioning the TRIM no longer implies.
-        "merge_inserted": merge_inserted,
-        "lock_inserted": len(stitches) - pre_lock_len,
-        # Penetration space: STITCH entries only. Every penetration is either
-        # inside an object's span or was put there by the lock pass — there is
-        # no third source, which is the whole point of the identity.
-        "penetrations": post_lock["STITCH"],
-        # MEASURED as the spans were emitted, not inferred from a census. The
-        # previous version of this key was `pre_lock["STITCH"]` — every pre-lock
-        # penetration, wherever it sat — so the decomposition below asserted
-        # x == x and the name claimed a property nothing checked.
-        "penetrations_in_object_spans": object_span_penetrations,
-        "penetrations_pre_lock": pre_lock["STITCH"],
-        "lock_penetrations": post_lock["STITCH"] - pre_lock["STITCH"],
-        "lock_trims": post_lock["TRIM"] - pre_lock["TRIM"],
-        # All three censuses. `pre_merge` is here because the merge pass cannot
-        # be checked without it: an identity comparing pre_lock against post_lock
-        # never sees the merge at all, so "the merge adds no penetrations"
-        # passed while a hypothetical merge inserting 500 stitches would also
-        # have passed.
-        "census_pre_merge": pre_merge,
-        "census_pre_lock": pre_lock,
-        "census_post_lock": post_lock,
-        # Colour-stop attribution, so the worksheet's rows can be checked
-        # against its header without re-deriving either.
-        "stops": len(color_stops),
-        "stop_segments": seg_count,
-        "stops_partition_matches": stops_partition_matches,
-        "stop_penetrations_total": sum(cs_.penetration_count for cs_ in color_stops),
-    }
+    _LAST_STREAM_ACCOUNTING = build_accounting(
+        stitches=stitches, pre_merge=pre_merge, merge_inserted=merge_inserted,
+        pre_lock=pre_lock, pre_lock_len=pre_lock_len, post_lock=post_lock,
+        objects=objects, color_stops=color_stops,
+        linework_lead_in=linework_lead_in,
+        object_span_penetrations=object_span_penetrations,
+        stop_segments=seg_count, stops_partition_matches=stops_partition_matches,
+    )
 
     xs = [s.x for s in stitches if s.command == "STITCH"] or [0.0]
     ys = [s.y for s in stitches if s.command == "STITCH"] or [0.0]
