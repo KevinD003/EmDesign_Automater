@@ -209,6 +209,31 @@ def hairline_runs(region, mm_per_px: float, pitch_mm: float):
         it under a stated minimum. Refusing a customer's hairline because our
         arithmetic is awkward on short branches would be the tail wagging the
         needle.
+
+    THE SINGLE-BRANCH BOUNDARY, and the three refutations that earned it.
+    Fixture 09's refused region is quantisation slivers of a noise background —
+    verified by looking at the source: there is no ink there — and sewing it
+    put three stray dashes 24mm from the design. The visual harness caught it;
+    every numeric gate passed. Three derived criteria were measured against
+    the corpus to separate noise from ink, and every one was refuted:
+
+      1. spur dominance (share of skeleton surviving `_prune_spurs`): real
+         regions 99.8-100%, the noise region 69% — separates THIS corpus, but
+         any threshold between those is a constant fitted to fourteen images;
+      2. colour coherence (mean |pixel - cluster centre| under the region):
+         INVERTED — the noise speckle averages to its own centre (5.2) while
+         real parametric regions read 35-69;
+      3. substrate distance (|cluster - garment| vs SUBSTRATE_DELTA): noise
+         64.8 vs real C24 61.4 — no separation at all.
+
+    So the boundary is the one the ruling of 2026-08-18 authorised for exactly
+    this outcome: ONLY REGIONS WHOSE PRUNED SKELETON IS A SINGLE BRANCH are
+    run. That sews 12 of the corpus's 14 refused regions, including both whose
+    ink was independently verified (04's ring visually, 08's stroke by exact
+    source-colour match), and refuses the verified-noise region — at the cost
+    of also refusing 07's two short strokes and C11's one 4-branch network,
+    real artwork deferred until a derived noise criterion exists. A narrow
+    boundary that is named beats a constant fitted to the corpus that named it.
     """
     import cv2
     import numpy as np
@@ -223,8 +248,11 @@ def hairline_runs(region, mm_per_px: float, pitch_mm: float):
         return []
     skel = _prune_spurs(skel, max(1, round(SPUR_MIN_MM / mm_per_px)))
     step_px = max(1, round(pitch_mm / mm_per_px))
+    branches = _skeleton_branches(skel)
+    if len(branches) != 1:
+        return []  # the single-branch boundary — see the docstring's refutations
     out = []
-    for br in _skeleton_branches(skel):
+    for br in branches:
         pts_px = np.asarray(br, dtype=np.float32)
         if len(pts_px) < 2:
             continue

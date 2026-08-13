@@ -212,3 +212,39 @@ eight unchanged. Object gains: 04 +1, 07 +2, 08 +1, 09 +3, C24 +5, C11 +8. 04's 
 16.69 % is anti-alias fringe and edge shaving — honest, and back under the 0.19 texture-rescue
 gate, so the rescue stops firing on a drawing **for the right reason** (input to the
 TEXTURE_RETRY re-derivation, as the ruling anticipated).
+
+
+---
+
+## 9. ADDENDUM 2 (2026-08-18, same day) — the visual harness caught what every number passed
+
+§8 shipped, CI went red on the expected re-pins, and re-pinning is where the real finding was:
+**fixture 09's baseline was not accepted, because looking at it showed three stray dashes 24 mm
+above the design.** The source under those dashes is pure background noise texture — no ink. The
+region is quantisation slivers of 09's nonuniform background that segmentation mislabelled as
+foreground; the old width-gate refusal had been *accidentally* suppressing an upstream
+mis-segmentation, and RS1 unmasked it. Every numeric gate passed the noise; the picture failed
+it. Parts 39–41's lesson, on schedule, and the strongest argument yet for the surface metrics.
+
+§8's correction is itself corrected: pruning does not make 09's region sewable-and-fine — it
+makes it *pass the length gate while still being noise*. The verified facts: 04's ring is real
+(seen in the diff), 08's stroke is real (source pixels under its path are exactly `#30221e`),
+09's region is noise (seen in the source crop).
+
+**Three derived noise-vs-ink criteria were measured, and all three refuted:**
+
+| criterion | real regions | noise region | verdict |
+| --- | --- | --- | --- |
+| spur survival share | 99.8–100 % | 69.0 % | separates, but only via a threshold fitted to this corpus |
+| colour coherence (mean \|px − centre\|) | 8.3–69.4 | **5.2** | **inverted** — speckle averages to its own centre |
+| substrate distance | C24 real: 61.4 | 64.8 | no separation |
+
+So the shipped boundary is the ruling's authorised fallback for exactly this outcome: **only
+regions whose pruned skeleton is a single branch are run.** Outcomes across the fourteen refused
+regions: 12 sewn (04's ring, 08's stroke, C24 ×5, C11 ×4) — including both independently
+verified as real — and 3 refused: 09's noise (correct), plus **07's two short strokes and C11's
+4-branch network, which are real artwork and are the named cost**, carried until a derived
+criterion exists. The three refutations above are the evidence that it does not exist today.
+
+Re-pins after the boundary: 04's stream lock re-pinned through its quality bands; 04 and 08
+visual baselines updated after inspection; 07 and 09 revert to their existing pins untouched.

@@ -1,12 +1,12 @@
 {
   "04_thin_line_outline": {
-    "hash": "64d8b45c54a55726cdbffa12bf79effc465a63fc60bd6ae600aa6c8112f54ac7",
-    "machine_minutes": 2.69,
+    "hash": "32ffdaeb366488a8fdd1c353368258549e4281339fb518d4fc1a41f5c2b73666",
+    "machine_minutes": 2.87,
     "max_stitch_mm": 4.23,
-    "stitches": 1882,
-    "sub_floor_share": 0.0011,
-    "sub_penetration_share": 0.0005,
-    "trims": 8
+    "stitches": 1999,
+    "sub_floor_share": 0.0015,
+    "sub_penetration_share": 0.001,
+    "trims": 9
   },
   "05_wordmark_caps": {
     "hash": "61357cdb681361aec655d8181fd05d563aa753201418ae4c79cb7b8c1ccff453",

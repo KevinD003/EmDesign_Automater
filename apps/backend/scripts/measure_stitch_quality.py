@@ -226,12 +226,19 @@ def penetration_metrics(design, pitch_mm: float, floor_mm: float) -> dict:
     """
     per_object = []
     for obj, stitches in _object_slices(design):
-        # ALL objects since v2 Part 15, not just SATIN: fill borders zigzag, so
-        # tatami objects now contain satin-style penetration pairs the floor
-        # must govern. The zigzag test still self-selects — plain fill rows and
-        # running stitch contribute nothing — so pre-Part-15 numbers are
-        # comparable: tatami objects previously had no zigzagging stitches at
-        # all (their reversals were repaired at generation).
+        # ALL area objects since v2 Part 15, not just SATIN: fill borders
+        # zigzag, so tatami objects contain satin-style penetration pairs the
+        # floor must govern. RUN objects are excluded EXPLICITLY (RS1): the old
+        # claim that "running stitch contributes nothing" self-selectively was
+        # written when no fixture emitted a run, and measured false the day one
+        # did — fixture 04's hairline ring contributed one 0.565mm "pair" from
+        # its turnaround geometry. A run has no sides, so a same-side-spacing
+        # number for it is not a measurement of anything; its same-hole safety
+        # is governed by _drop_floor_reversals and the lock pass's own
+        # clearance search, not by this satin metric.
+        st = str(getattr(obj.stitch_type, "value", obj.stitch_type))
+        if st.startswith("RUNNING") or st == "MANUAL":
+            continue
         gaps = same_side_spacings(stitches)
         if not gaps:
             continue
@@ -400,9 +407,21 @@ def _rasterise(design):
         # Punching holes straight into the union would let one object's counter
         # erase another object's fill — concentric rings sit exactly like that.
         one = np.zeros((h, w), np.uint8)
-        cv2.fillPoly(one, [_poly(o.contour)], 255)
-        for hole in (o.holes or []):
-            cv2.fillPoly(one, [_poly(hole)], 0)
+        st = str(getattr(o.stitch_type, "value", o.stitch_type))
+        if st.startswith("RUNNING") or st == "MANUAL":
+            # A run object's contour is THE PATH, NOT AN AREA — the convention
+            # the dark-linework emitter documents and rebuild's RUNNING branch
+            # depends on. fillPoly on a path invents an enclosed region: fixture
+            # 04's hairline ring rasterised as a full DISC the moment RS1 gave
+            # runs fixture coverage, and edge-band coverage read 81% against a
+            # phantom interior no thread was ever meant to cross. The honest
+            # footprint of a run is its stroke at thread width.
+            cv2.polylines(one, [_poly(o.contour)], False, 255,
+                          thickness=max(1, round(THREAD_WIDTH_MM * PX_PER_MM)))
+        else:
+            cv2.fillPoly(one, [_poly(o.contour)], 255)
+            for hole in (o.holes or []):
+                cv2.fillPoly(one, [_poly(hole)], 0)
         outline = cv2.bitwise_or(outline, one)
 
     thread = np.zeros((h, w), np.uint8)

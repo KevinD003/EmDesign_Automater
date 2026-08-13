@@ -144,6 +144,7 @@ from app.services.digitizer.fills import (
 )
 from app.services.digitizer.generation import (
     SatinAttempt,
+    hairline_runs,
     spine_satin,
 )
 from app.services.digitizer.geometry import (
@@ -211,6 +212,7 @@ from app.services.digitizer.rebuild import (
 from app.services.digitizer.accounting import (
     _stream_census,
     attribute_stops_from_stream,
+    build_accounting,
 )
 from app.services.digitizer.routing import (
     _coalesce_short,
@@ -284,6 +286,8 @@ def __getattr__(name: str):
 
 __all__ = [
     "attribute_stops_from_stream",
+    "build_accounting",
+    "hairline_runs",
     "AMBIGUOUS_BLEND_RATIO",
     "AMBIGUOUS_MAX_CUT_SHARE",
     "AMBIGUOUS_MIN_CENTRE_GAP",

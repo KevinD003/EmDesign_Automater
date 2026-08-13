@@ -13,17 +13,18 @@ code that produced it. (That only became possible when the entry-point
 convention was unified in `ce254a8`; the defect fix deliberately shipped
 first and alone.)
 
-THE GATE, and why 09 is in this file: two criteria, deliberately separate.
-Sewability (spur pruning + length >= one pitch, both derived) decides what the
-customer gets. Assertability (penetrations >= 1/band) is a property of our
-test arithmetic and lives in the band tests, never here. Fixture 09's refused
-region is where they disagree: after pruning it yields three short trunks of
-1.4–2.9 mm — sewable, so they are SEWN — each carrying 3–4 penetrations, far
-too few for any percentage band. The RS1 mechanism doc predicted 09 would be
-refused as spur noise; the measurement corrected the prediction, because
-pruning at SPUR_MIN_MM eats the seventeen 0.8 mm hairs and what remains is
-three real strokes. The disagreement is reported here as the ruling requires,
-by pinning both halves: they exist, and no band test asserts on them.
+THE GATE: sewability (spur pruning + length >= one pitch, both derived)
+decides what the customer gets; assertability (penetrations >= 1/band) is a
+property of our test arithmetic and lives in the band tests, never here. On
+top of both sits THE SINGLE-BRANCH BOUNDARY, which has its own history: the
+first RS1 build sewed fixture 09's refused region, the visual harness showed
+three stray dashes 24 mm from the design, and looking at the source proved the
+region is background noise — no ink. Three derived noise-vs-ink criteria were
+measured and all three refuted (see `hairline_runs`' docstring for the
+numbers), so the ruling's authorised fallback applies: only single-branch
+pruned skeletons run. That refuses the verified noise and, as a NAMED COST,
+also refuses 07's two short real strokes and C11's 4-branch network until a
+derived criterion exists.
 """
 
 from __future__ import annotations
@@ -81,23 +82,35 @@ def test_the_run_round_trips_within_the_fidelity_band(ring):
         )
 
 
-def test_sewable_but_not_assertable_branches_are_sewn(ring):
-    """The two-criteria disagreement on fixture 09, pinned from both sides.
+def test_the_noise_region_is_refused_at_the_single_branch_boundary():
+    """Fixture 09's refused region is BACKGROUND NOISE — verified by looking at
+    the source: quantisation slivers of the noise texture, no ink. The first
+    RS1 build sewed it as three stray dashes 24mm from the design; the VISUAL
+    harness caught what every numeric gate passed, which is Parts 39-41's
+    lesson repeating on schedule.
 
-    Falsified by: the gate refusing short-but-real strokes again (objects
-    vanish), or someone 'fixing' a band test to assert percentages on them.
-    The second half is enforced structurally in the band tests via their
-    min_pen exclusion; here we pin the first half plus the census view.
+    Three derived noise-vs-ink criteria were measured and refuted (spur
+    dominance separates but only via a fitted threshold; colour coherence is
+    INVERTED — noise averages to its own cluster centre; substrate distance
+    does not separate: 64.8 noise vs 61.4 real). So the boundary is the one
+    the ruling authorised for exactly this outcome: only single-branch pruned
+    skeletons run. 09 (3 branches) and 07 (2 branches) are refused — 07's two
+    short strokes are REAL artwork, a named cost carried until a derived
+    criterion exists; C11's 4-branch network likewise.
+
+    Falsified by: 09 emitting any run object (the noise regression returns),
+    or the boundary quietly widening without a derivation.
     """
     design, log = _digitize("09_nonuniform_background", "130x180", 4)
     runs = [o for o in design.objects
             if str(getattr(o.stitch_type, "value", o.stitch_type)) == "RUNNING_SINGLE"]
-    assert runs, "09's pruned trunks are sewable and must be sewn"
-    # Every one is below any band's assertability minimum — that is the point.
-    assert all(o.penetration_count < 10 for o in runs)
-    assert all(o.penetration_count >= 2 for o in runs), (
-        "a run of fewer than 2 penetrations is not a line; the length gate "
-        "(>= one pitch) should have refused it"
+    assert not runs, "09's background noise must not be sewn"
+    assert any(e["decision"] == "SKIPPED" for e in log)
+
+    design7, _ = _digitize("07_circular_badge", "130x180", 4)
+    assert not any("Hairline" in o.name for o in design7.objects), (
+        "07's region prunes to TWO branches; sewing it means the boundary "
+        "widened — that needs a derived criterion, not a silent change"
     )
 
 
