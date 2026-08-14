@@ -65,7 +65,7 @@ for _p in (BACKEND, BACKEND / "scripts"):
 # trace that used its own copy of any of these would certify numbers that no
 # other harness produces.
 from _provenance import code_provenance, toolchain
-from coverage_audit import CORPUS_DIR, CORPUS_PARAMS, CORPUS_EXTRA, BENCH_DIR
+from coverage_audit import fixtures as _audit_fixtures
 from run_quality_bench import FIXTURE_PARAMS, RNG_SEED, SPM, TRIM_SECONDS
 
 TRACE_VERSION = 1
@@ -83,15 +83,22 @@ _toolchain = toolchain
 
 
 def resolve(name: str) -> tuple[Path, dict]:
-    """Fixture name -> (path, the conditions it is always measured at)."""
-    if name in FIXTURE_PARAMS:
-        return BENCH_DIR / f"{name}.png", FIXTURE_PARAMS[name]
-    if name in CORPUS_EXTRA:
-        return CORPUS_DIR / f"{name}.png", CORPUS_PARAMS
-    raise SystemExit(
-        f"unknown fixture {name!r}. Known: {', '.join(sorted(FIXTURE_PARAMS))}, "
-        f"{', '.join(CORPUS_EXTRA)}"
-    )
+    """Fixture name -> (path, the conditions it is always measured at).
+
+    Resolved THROUGH `coverage_audit.fixtures()`, not by re-testing membership
+    of the tables it is built from. The earlier version enumerated the same set
+    a second time — `if name in FIXTURE_PARAMS … elif name in CORPUS_EXTRA` —
+    and carried its own copy of the corpus path and params. Two enumerations of
+    one set is the drift this repository has been punished for repeatedly, and
+    here it would have meant the PROVENANCE INSTRUMENT DISAGREEING WITH THE
+    AUDIT about what "all fixtures" means, in the tranche whose entire subject
+    is which set is which (found by the fixture-set enumeration, 2026-08-21).
+    """
+    for fname, path, params in _audit_fixtures():
+        if fname == name:
+            return path, params
+    known = ", ".join(n for n, _, _ in _audit_fixtures())
+    raise SystemExit(f"unknown fixture {name!r}. Known: {known}")
 
 
 def trace(name: str) -> dict:
@@ -264,7 +271,7 @@ def main() -> int:
         return 0
 
     if args.all:
-        doc = [trace(n) for n in list(FIXTURE_PARAMS) + list(CORPUS_EXTRA)]
+        doc = [trace(n) for n, _, _ in _audit_fixtures()]
     elif args.fixture:
         doc = trace(args.fixture)
     else:
