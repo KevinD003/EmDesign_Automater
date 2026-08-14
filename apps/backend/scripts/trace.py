@@ -19,7 +19,7 @@ and the tree they came from. A report cites the command and the key. A reader
 runs the command and reads the key.
 
     scripts/trace.py 08_mascot_detail                    # one fixture, JSON to stdout
-    scripts/trace.py --all --json trace.json             # all fourteen
+    scripts/trace.py --all --json trace.json             # the whole standing set
     scripts/trace.py 08_mascot_detail --key design.penetrations
     scripts/trace.py 08_mascot_detail --stream-index 8071
     scripts/trace.py 08_mascot_detail --penetration-index 7992

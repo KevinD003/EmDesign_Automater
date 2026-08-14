@@ -6,7 +6,13 @@ emitter (the dark-linework pass) has always stitched the first point. One
 penetration was therefore lost per run object on every rebuild — on the
 angelfish record, whose objects are RUNNING_SINGLE 55 of 100, that is 55
 penetrations gone per rebuild with nothing to notice, because RUNNING_SINGLE
-had zero coverage across the fourteen fixtures.
+had zero coverage across the fourteen fixtures the set held at the time.
+
+That gap is now closed by measurement rather than by construction: the A01
+promotion (2026-08-22) put a real photograph in the standing set that emits 36
+RUNNING_SINGLE objects of 122 — 29.5 %, the same order as the angelfish's 55 of
+100 — from this same dark-linework pass. The constructed cases below still
+carry the contract; A01 is the first fixture that would notice if they lapsed.
 
 The convention decided, not merely made consistent: a jump POSITIONS the
 needle, a stitch PUTS IT DOWN, so a drawn path's first point must be a
