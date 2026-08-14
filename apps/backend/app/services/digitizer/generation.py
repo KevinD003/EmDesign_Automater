@@ -173,6 +173,16 @@ def spine_satin(region, *, mm_per_px: float, spacing_px: int, max_step_px: int,
     )
 
 
+# Pruned-branch count per call to `hairline_runs`, in call order, for the census
+# (`scripts/measure_hairline_census.py`). It is APPENDED and never read by the
+# pipeline, so it cannot change a stitch; the caller clears it per digitize the
+# same way `_CLASSIFICATION_LOG` is cleared. It exists because "refused" has two
+# distinct causes — no branch survived pruning, or several did and the
+# single-branch boundary rejected them — and a census that cannot tell them
+# apart cannot say whether a future noise criterion would change the answer.
+_LAST_HAIRLINE_BRANCHES: list[int] = []
+
+
 def hairline_runs(region, mm_per_px: float, pitch_mm: float):
     """Run paths for a region too thin to carry a satin column (RS1).
 
@@ -180,10 +190,47 @@ def hairline_runs(region, mm_per_px: float, pitch_mm: float):
     column narrower than the thread is not a column. It does not say the region
     cannot hold a RUN: 40wt thread at ~0.4mm over-covers a 0.21mm line about
     two to one, and a human digitizer sews a hairline as a single run without
-    thinking about it. Measured before this existed (RS1 census, 2026-08-14):
-    14 refused regions across the fourteen fixtures, every one 0.20-0.23mm
-    wide, every one already thinning to a clean centreline, at a cost of at
-    most +0.11 machine-minutes anywhere.
+    thinking about it.
+
+    THE CENSUS, RE-MEASURED ON THE SIXTEEN (2026-08-22), by an instrument that
+    can be re-run — `scripts/measure_hairline_census.py`, reading the pipeline's
+    own classification log and this function's own branch count:
+
+        14 sub-thread regions across 16 fixtures, 6 of them contributing any
+        11 RUN   |   3 SKIPPED (all multi-branch)   |   0 SKIPPED for no branch
+        widths 0.20-0.23 mm
+
+    The count and the band are UNCHANGED from the hand census of 2026-08-14,
+    and the earlier sentence was still wrong: it called all 14 "refused" when
+    11 of them are sewn. A predicate can go stale while its number stays right.
+
+    THE PROMOTION CHANGED NOTHING HERE, AND IT IS NOT A COINCIDENCE. A01 and
+    A02 — the set's only real photographs — contribute ZERO sub-thread regions,
+    and not narrowly: their narrowest classified regions measure 0.34 and
+    0.38 mm against MIN_FEATURE_W_MM's 0.25, with NONE under 0.30 mm, while the
+    two C-tier images that do reach this function carry five regions apiece at
+    exactly 0.23 mm.
+
+    The mechanism is the textured path, which only a photograph takes
+    (`_interior_texture` 7.43 and 10.20 against TEXTURE_SMOOTH_MIN 6.0, versus
+    0.00-4.10 for every flat fixture). It mean-shift-filters the image, then
+    CLOSES each cluster mask at 0.4 mm and OPENS it at 0.3 mm — morphology that
+    exists to shed thread-fringe hairs and cannot help shedding a hairline too.
+    So a photographic input is expected to arrive here empty, and both did.
+
+    STATED PRECISELY, BECAUSE THE OBVIOUS ARITHMETIC IS WRONG: an open with a
+    0.3 mm-radius element would predict a floor near 0.6 mm, and the measured
+    floors are 0.34 and 0.38 mm. The morphology is therefore the cause of the
+    empty census but does NOT by itself set the floor — the close runs first and
+    can fuse a sliver into its neighbour rather than delete it, and the width
+    reported here is a region's MEDIAN, not its minimum. What is measured is the
+    emptiness; what is inferred is the mechanism. Do not quote a derived
+    photographic width floor from this paragraph; there isn't one yet.
+
+    THE CONSEQUENCE STANDS EITHER WAY: RS1's 0.20-0.23 mm band describes flat
+    hard-edged artwork, not "the corpus". No further photograph can widen it,
+    because none reaches this function. A flat-lit scan scoring under 6.0 could,
+    and that is the input to ask for.
 
     Returns a list of (path_mm, pts) per viable branch: `path_mm` is the fine
     centreline to store as the object's contour, `pts` the emission points from
@@ -219,7 +266,11 @@ def hairline_runs(region, mm_per_px: float, pitch_mm: float):
 
       1. spur dominance (share of skeleton surviving `_prune_spurs`): real
          regions 99.8-100%, the noise region 69% — separates THIS corpus, but
-         any threshold between those is a constant fitted to fourteen images;
+         any threshold between those is a constant fitted to the images that
+         reach this code at all — fourteen when it was measured, and STILL only
+         those fourteen after the promotion, because the two photographs cannot
+         reach it (see the census above). Widening the corpus did not widen the
+         evidence base for this refutation by one image;
       2. colour coherence (mean |pixel - cluster centre| under the region):
          INVERTED — the noise speckle averages to its own centre (5.2) while
          real parametric regions read 35-69;
@@ -276,10 +327,22 @@ def hairline_runs(region, mm_per_px: float, pitch_mm: float):
 
     skel = _zhang_suen_thin((region > 0).astype(np.uint8))
     if not cv2.countNonZero(skel):
+        _LAST_HAIRLINE_BRANCHES.append(0)   # EXACTLY ONE append per call — see below
         return []
     skel = _prune_spurs(skel, max(1, round(SPUR_MIN_MM / mm_per_px)))
     step_px = max(1, round(pitch_mm / mm_per_px))
     branches = _skeleton_branches(skel)
+    # The census reads THIS, rather than re-thinning the region itself. The
+    # claim it replaces ("14 refused regions, every one 0.20-0.23mm") was
+    # measured once by hand in a scratchpad and could not be re-run, so it went
+    # stale silently across the boundary that changed what "refused" means.
+    #
+    # Appended on EVERY exit path including the empty-skeleton one above. The
+    # first draft appended only here, so the caller reading `[-1]` after an
+    # early return would have got the PREVIOUS region's branch count under this
+    # region's name — the same splice that put C11's pre-boundary coverage
+    # beside its post-boundary object count.
+    _LAST_HAIRLINE_BRANCHES.append(len(branches))
     if len(branches) != 1:
         return []  # the single-branch boundary — see the docstring's refutations
     out = []

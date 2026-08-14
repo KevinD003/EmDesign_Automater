@@ -77,6 +77,7 @@ from app.services.digitizer.fills import (
     _fill_by_component,
 )
 from app.services.digitizer.generation import (
+    _LAST_HAIRLINE_BRANCHES,
     hairline_runs,
     spine_satin,
 )
@@ -410,6 +411,7 @@ def digitize_image(
     connect_px = CONNECT_MM / mm_per_px
 
     _CLASSIFICATION_LOG.clear()
+    _LAST_HAIRLINE_BRANCHES.clear()
     _DROP_LOG.clear()
     stitches: list[Stitch] = []
     color_stops: list[ColorStop] = []
@@ -789,6 +791,11 @@ def digitize_image(
                     "uncovered_share": 0.0 if runs else 1.0,
                     "reason": "sub_thread_run" if runs else "sub_thread_feature",
                     "decision": "RUN" if runs else "SKIPPED",
+                    # Pruned branches this region offered, read from the callee
+                    # rather than re-derived: 0 = nothing survived pruning,
+                    # 1 = run, >1 = refused by the single-branch boundary.
+                    "pruned_branches": _LAST_HAIRLINE_BRANCHES[-1]
+                    if _LAST_HAIRLINE_BRANCHES else 0,
                 })
                 if not runs:
                     continue
@@ -1352,6 +1359,11 @@ def digitize_image(
         # child's own, which is correct for the design it returns).
         drop_snapshot = list(_DROP_LOG)
         cls_snapshot = list(_CLASSIFICATION_LOG)
+        # The branch census is one entry per classification-log hairline row and
+        # must be restored WITH it; restoring one and not the other would give
+        # the census a row count from this attempt and branch counts from the
+        # retry, which is the two-trees splice at a smaller scale.
+        brn_snapshot = list(_LAST_HAIRLINE_BRANCHES)
         # The stream census belongs to the design the caller is about to be
         # handed, and the recursive call overwrites it. Every module-level
         # diagnostic has to survive this branch or it describes a design nobody
@@ -1378,6 +1390,7 @@ def digitize_image(
             return retry.model_copy(update={"warnings": [note, *retry.warnings]})
         _DROP_LOG[:] = drop_snapshot
         _CLASSIFICATION_LOG[:] = cls_snapshot
+        _LAST_HAIRLINE_BRANCHES[:] = brn_snapshot
         _LAST_STREAM_ACCOUNTING = acct_snapshot
     # SUBSTRATE REMOVAL GETS ITS OWN CHANNEL (DET3). This rule deletes artwork
     # on the strength of a colour match, and until now it reported nothing at

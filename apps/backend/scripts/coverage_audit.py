@@ -16,8 +16,13 @@ and a change to one must be reported together with its effect on the other.
     scripts/coverage_audit.py --json before.json   # and a machine-readable copy
     scripts/coverage_audit.py --compare before.json
 
-Fourteen fixtures, not ten: the ten bench fixtures plus the four corpus100
-images SH2 measured on, kept identical so its table and this one are comparable.
+SIXTEEN fixtures, in three declared tiers (was fourteen until 2026-08-22):
+
+  * the ten BENCH fixtures, at their bench conditions;
+  * the four C-tier corpus100 images SH2 measured on, at SH2's conditions and
+    not the corpus runner's, kept identical so its table and this one compare;
+  * the two A-tier REAL PHOTOGRAPHS, A01 and A02, promoted 2026-08-22 — see
+    `A_TIER_PARAMS` for the parameters and why they had to be invented.
 """
 
 from __future__ import annotations
@@ -54,10 +59,72 @@ CORPUS_EXTRA = ("C24_many_colours", "C11_many_colours",
 # Verified by reproducing 12.53 % and 2.66 % exactly before pinning it.
 CORPUS_PARAMS = {"colors": 4, "hoop": "130x180", "fabric": "cotton"}
 
+# ── The A-tier promotion (CTO ruling 2026-08-22) ──────────────────────────────
+#
+# A01 and A02 are the corpus's only REAL PHOTOGRAPHS of finished embroidery.
+# They belonged to no measured set: not the bench ten, not SH2's four. So the
+# promotion had to INVENT parameters, and an invented parameter is exactly where
+# an unstated condition enters a table — the failure this repository has already
+# paid for twice ("22.65 machine-minutes" with no fabric; a jersey number
+# reported as fleece). The parameters are therefore ARGUED here, not inherited.
+#
+# WHAT CANNOT BE RECOVERED: a photograph carries no scale. There is no ruler, no
+# garment, no EXIF millimetre in either file, so the physical size is not a
+# measurement — it is a CHOICE, and it must travel with every number these two
+# fixtures produce. `mm_per_px = min(hoop_w/iw, hoop_h/ih) * 0.9`, so the hoop
+# IS the scale, and the scale decides which features fall under MIN_FEATURE_W_MM.
+#
+# WHAT REFUTES THE OBVIOUS ANSWER: `run_corpus100.py` sews both at `360x350`
+# (its `BIG` set). Inheriting that is wrong, and for a better reason than "do
+# not inherit" — THE PRODUCT DOES NOT SELL THAT HOOP. The digitize dialog offers
+# exactly four (`apps/frontend/src/components/dialogs/DigitizeDialog.tsx`:
+# `HOOPS = ['100x100', '130x180', '200x200', '260x160']`), and 360x350 is not
+# among them. The corpus runner has been measuring these two photographs at a
+# placement no customer can order. The choice below is made from that list.
+#
+#   A01 — a peacock appliqué PATCH; the artwork fills the frame edge to edge, so
+#   the design extents are the patch. Patches are ordered at 2-4in on the long
+#   edge. 100x100 gives 59.2 x 90.0mm (2.33 x 3.54in): a chest/shoulder patch,
+#   the modal patch order, and the product's own default hoop
+#   (`DigitizeDialog` `useState('100x100')`, `client.ts` `hoopSize = '100x100'`)
+#   — the placement a real first order actually lands on. 130x180 would give
+#   106.5 x 162.0mm, a back patch: real, but the top of the range.
+#   THE MARGIN IS NARROW AND IS STATED: the pipeline's own fine-detail sensor
+#   fires at `FINE_DETAIL_SRC_PX_PER_MM = 10.0` and A01 at this hoop reads 9.77
+#   source px/mm. It does not warn, by 2.3%. So 100x100 is the SMALLEST hoop at
+#   which the product considers this artwork's detail survivable, which is where
+#   a modal patch order sits — but a slightly larger source would flip it.
+#
+#   A02 — a V-neck NECKLINE plate. 130x180 (the 5x7in hoop that the neck-design
+#   market is sold in) gives 110.5 x 162.0mm. Here the choice is not mine: at
+#   100x100 the pipeline itself objects, emitting "the image is 695px across but
+#   the design is only 61mm wide - fine detail may not survive" (11.32 px/mm
+#   against the same 10.0 gate) and telling the caller to use a larger hoop. The
+#   product's own sensor rejects the small hoop for A02 and permits it for A01.
+#
+#   colours = 6 for both: the product's default (`client.ts maxColors = 6`,
+#   `DigitizeDialog useState(6)`), i.e. what an unmodified order carries. NOT 4
+#   — 4 is SH2's C-tier block and taking it would be the inheritance this note
+#   exists to refuse. NOT `PLAN_MAX_COLORS` (8) — a ceiling is not an order.
+#
+#   fabric = cotton, and this one is held CONSTANT rather than made realistic.
+#   Twill (a patch backing) and poplin (a kurta) are the realistic answers and
+#   NEITHER IS ORDERABLE — the dialog offers cotton, polo/knit, denim, fleece,
+#   cap, towel. More decisively: fabric does not enter `mm_per_px`, so it cannot
+#   gate the two watch items this promotion exists to test, while changing it
+#   WOULD confound "the first photographs in the audit set" with "the first
+#   non-cotton fixtures in the audit set". Held constant, stated as a choice,
+#   and the realistic-fabric axis is left open and named rather than smuggled in.
+A_TIER_PARAMS = {
+    "A01_real_peacock_patch_photo": {"colors": 6, "hoop": "100x100", "fabric": "cotton"},
+    "A02_real_neckline_black": {"colors": 6, "hoop": "130x180", "fabric": "cotton"},
+}
+
 
 def fixtures() -> list[tuple[str, Path, dict]]:
     rows = [(n, BENCH_DIR / f"{n}.png", p) for n, p in sorted(FIXTURE_PARAMS.items())]
     rows += [(n, CORPUS_DIR / f"{n}.png", CORPUS_PARAMS) for n in CORPUS_EXTRA]
+    rows += [(n, CORPUS_DIR / f"{n}.png", p) for n, p in sorted(A_TIER_PARAMS.items())]
     return rows
 
 

@@ -38,18 +38,20 @@ from app.services.digitizer import digitize_image, pipeline
 from app.services.digitizer.accounting import _STREAM_COMMANDS
 
 # `scripts/` is on sys.path from conftest. Imported rather than retyped: the
-# fourteen and their conditions are defined once, in the instrument that
-# measures them.
-from coverage_audit import fixtures as _fourteen  # noqa: E402
+# standing set and its conditions are defined once, in the instrument that
+# measures them. Deliberately not named for its SIZE — it has been ten, then
+# fourteen, then sixteen, and a name carrying the count goes stale in the same
+# commit that changes it while still reading as if it were checked.
+from coverage_audit import fixtures as _standing_set  # noqa: E402
 from run_quality_bench import RNG_SEED  # noqa: E402
 
-FOURTEEN = _fourteen()
+STANDING_SET = _standing_set()
 
 #: Census keys that are counts. `other_commands` is a list of names, not a count.
 COUNT_KEYS = (*_STREAM_COMMANDS, "other")
 
 
-@pytest.fixture(scope="module", params=FOURTEEN, ids=[n for n, _, _ in FOURTEEN])
+@pytest.fixture(scope="module", params=STANDING_SET, ids=[n for n, _, _ in STANDING_SET])
 def run(request):
     name, path, params = request.param
     if not path.exists():
@@ -59,7 +61,7 @@ def run(request):
         # tracebacks buried the one real failure underneath it.
         #
         # The skip is only safe because `test_corpus_baseline_fixtures.py`
-        # asserts all fourteen are present: on its own, skipping would let the
+        # asserts the whole standing set is present: on its own, skipping would let the
         # suite quietly measure ten fixtures and still report green.
         pytest.skip(
             f"fixture {path} is missing, so {name} was not measured. It should "
