@@ -207,7 +207,7 @@ numbers are the ones above.
 **DET2's fourteen, before → after (the first coverage movement for a real reason):**
 04 **31.59 % → 16.69 %** with its warning gone; 07 3.33 → 3.29; 08 2.04 → 1.92;
 09 1.09 → 0.93 (and its colour warning honestly moves from "2 distinguishable" to "3" — the
-hairline cluster now produces real objects); C24 17.95 → 17.75; C11 6.94 → 6.74; the other
+hairline cluster now produces real objects); C24 17.95 → 17.75; C11 6.94 → 6.83; the other
 eight unchanged. Object gains: 04 +1, 07 +2, 08 +1, 09 +3, C24 +5, C11 +8. 04's remaining
 16.69 % is anti-alias fringe and edge shaving — honest, and back under the 0.19 texture-rescue
 gate, so the rescue stops firing on a drawing **for the right reason** (input to the
@@ -241,7 +241,7 @@ makes it *pass the length gate while still being noise*. The verified facts: 04'
 
 So the shipped boundary is the ruling's authorised fallback for exactly this outcome: **only
 regions whose pruned skeleton is a single branch are run.** Outcomes across the fourteen refused
-regions: 12 sewn (04's ring, 08's stroke, C24 ×5, C11 ×4) — including both independently
+regions: **11 sewn** (04 +1, 08 +1, C24 +5, C11 +4) — including both independently
 verified as real — and 3 refused: 09's noise (correct), plus **07's two short strokes and C11's
 4-branch network, which are real artwork and are the named cost**, carried until a derived
 criterion exists. The three refutations above are the evidence that it does not exist today.

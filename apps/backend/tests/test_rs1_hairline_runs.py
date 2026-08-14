@@ -22,9 +22,14 @@ three stray dashes 24 mm from the design, and looking at the source proved the
 region is background noise — no ink. Three derived noise-vs-ink criteria were
 measured and all three refuted (see `hairline_runs`' docstring for the
 numbers), so the ruling's authorised fallback applies: only single-branch
-pruned skeletons run. That refuses the verified noise and, as a NAMED COST,
-also refuses 07's two short real strokes and C11's 4-branch network until a
-derived criterion exists.
+pruned skeletons run — 11 of the corpus's 14 refused regions. That refuses
+the verified noise and, as a NAMED COST, also refuses 07's two short real
+strokes and C11's 4-branch network until a derived criterion exists.
+
+IT IS A PROXY, NOT A DETECTOR. 09's noise reached the render with spur
+pruning already in place; single-branch excluded it only because that noise
+happened to fragment into several branches. A noise sliver that prunes to one
+branch would be sewn and nothing numeric would object. See `hairline_runs`.
 """
 
 from __future__ import annotations
@@ -97,6 +102,11 @@ def test_the_noise_region_is_refused_at_the_single_branch_boundary():
     skeletons run. 09 (3 branches) and 07 (2 branches) are refused — 07's two
     short strokes are REAL artwork, a named cost carried until a derived
     criterion exists; C11's 4-branch network likewise.
+
+    WHAT THIS TEST DOES NOT PROVE: that noise is detected. The boundary caught
+    09 because 09's noise fragments; it is a proxy that excluded the one noise
+    instance in this corpus, not a detector. This test passing on a future
+    input is not evidence that input's noise was caught.
 
     Falsified by: 09 emitting any run object (the noise regression returns),
     or the boundary quietly widening without a derivation.

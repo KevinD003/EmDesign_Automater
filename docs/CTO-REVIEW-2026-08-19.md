@@ -110,7 +110,7 @@ with **no new category**: run objects follow the main loop's obj_start-before-le
 | **04** | **31.59 % → 16.69 %** | 10 → 11 | warning GONE — the ring is sewn; 04 drops back under the 0.19 texture-rescue gate **for the right reason** |
 | 08 | 2.04 % → 1.92 % | 20 → 21 | run verified real: source pixels under the path are exactly `#30221e` |
 | C24 | 17.95 % → 17.75 % | 26 → 31 | five runs |
-| C11 | 6.94 % → 6.74 % | 23 → 27 | four runs; the 4-branch network deferred (§5) |
+| C11 | 6.94 % → **6.83 %** | 23 → 27 | four runs; the 4-branch network deferred (§5). **Corrected 2026-08-20** — 6.74 % was spliced in from the PRE-boundary run; see CTO-REVIEW-2026-08-20 §1 |
 | 07, 09 | unchanged | unchanged | refused at the boundary (§5) |
 | other eight | unchanged | unchanged | — |
 
@@ -152,7 +152,7 @@ metrics, and it happened one ruling after you specced them.
 
 Having demonstrated the derivation does not exist today, the fallback you authorised for exactly
 this outcome applies: **only regions whose pruned skeleton is a single branch are run.**
-Outcomes: 12 of 14 refused regions sewn, including both independently verified as real; 09's
+Outcomes: **11** of 14 refused regions sewn (04 +1, 08 +1, C24 +5, C11 +4), including both independently verified as real; 09's
 noise refused. **The named cost:** 07's two short real strokes and C11's 4-branch network — real
 artwork, deferred until a derived criterion exists, with the three refutations recorded in
 `hairline_runs`' docstring as the reason and a test that fails if the boundary widens silently.
