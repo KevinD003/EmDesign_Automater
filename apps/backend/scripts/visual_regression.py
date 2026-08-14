@@ -39,17 +39,35 @@ if str(BACKEND / "scripts") not in sys.path:
 # was produced at the same configuration as the numbers beside it, and two hand-
 # maintained copies of a config drift silently. Same reasoning the metrics script
 # records for importing ZIGZAG_RATIO from the pipeline rather than redeclaring it.
-from run_quality_bench import FIXTURE_PARAMS, RNG_SEED
+from coverage_audit import fixtures as _audit_fixtures
+from run_quality_bench import RNG_SEED
 
 from app.services.digitizer import digitize_image
 from app.services.stitch_render import render_design
 
-FIXTURE_DIR = BACKEND / "tests" / "fixtures" / "quality_bench"
 BASELINE_DIR = BACKEND / "tests" / "visual" / "baselines"
 DIFF_DIR = BACKEND / "tests" / "visual" / "diffs"
 
 SSIM_GATE = 0.995
-FIXTURES = FIXTURE_PARAMS
+
+# THE RENDER TABLE IS THE AUDIT TABLE (CTO ruling 2026-08-22, Option A).
+#
+# This was `FIXTURE_PARAMS` — the bench TEN — while the audit set is sixteen,
+# so C24, C11, C05 and C18 had no render, no baseline and no diff, and never
+# had. C24 is the fixture the whole SH2 D1/D2 decision turns on. The
+# noise-sewing defect was caught on 09 BECAUSE 09 HAS A RENDER; the identical
+# defect on C24 would have been invisible. So extending is not a cost the
+# A01/A02 promotion imposes — it closes a hole that already existed, has
+# already been shown to matter, and sits directly beneath the next major
+# decision.
+#
+# `fixtures()` returns (name, path, params) and PATH RESOLUTION COMES WITH IT.
+# The old code paired a bench-only table with a hard-coded FIXTURE_DIR, so the
+# directory was a second place the set was decided; the audit set spans two
+# directories, and fixing the table while leaving that one line lower would be
+# the same defect in a new spot.
+FIXTURES: dict[str, dict] = {name: params for name, _path, params in _audit_fixtures()}
+FIXTURE_PATHS: dict[str, "Path"] = {name: path for name, path, _p in _audit_fixtures()}
 
 
 def ssim(a, b) -> float:
@@ -86,7 +104,7 @@ def render_fixture(name: str):
     params = FIXTURES[name]
     cv2.setRNGSeed(RNG_SEED)
     design = digitize_image(
-        (FIXTURE_DIR / f"{name}.png").read_bytes(),
+        FIXTURE_PATHS[name].read_bytes(),
         fabric_type=params.get("fabric", "cotton"),
         hoop_size=params["hoop"],
         max_colors=params["colors"],
