@@ -158,3 +158,30 @@ noise is most likely.
 
 **I have not implemented any of this.** Enumeration reported before the promotion, as ruled; the
 promotion follows once §5 is decided.
+
+---
+
+## 6. Closed — what the ruling of 2026-08-22 decided and what landed
+
+Kept as an addendum rather than an edit, so the pre-promotion document still reads as it did
+when it was written.
+
+* **§5: Option A**, with the identity test rewritten to assert the render table *is* the audit
+  table. Landed `9c55766`. Four C-tier baselines appeared for the first time, and C24's render
+  made SH2's wholesale-deleted rectangle visible.
+* **§2 Class B**: both `trace.py` sites now resolve through `fixtures()`; `LOCK_FIXTURES`
+  imports its params. Landed `5f2cb3c`. The import immediately exposed a concealed contract
+  mismatch (`KeyError: 'text'`) — the hand copy was not wrong in its values, it was *more
+  explicit than its source*, which is why the defect had stayed invisible.
+* **§2 Class E**: the `BASELINE_SHA256` prediction was correct. The guard asserted against
+  `CORPUS_EXTRA` alone, so A01/A02 would have entered the standing set **unpinned**. Both are
+  now hashed and the guard reads both corpus tiers.
+* **§4 assertion arithmetic**: 112 accounting assertions (7 x 16), 16 presence checks, 16
+  audit rows, 16 visual baselines. The "10, or 12 if §1 extends" line was superseded by
+  Option A — it is 16, because the C-tier four gained baselines too.
+* **§2 Class F**: every prose site named there was rewritten, and one of them — the census
+  claim in `generation.py:184` — was **re-measured** rather than reworded, which is what found
+  that its count was right and its verb was wrong.
+
+The promotion itself, its parameters, and what it surfaced are in
+`docs/CORPUS-PROMOTION-2026-08-22.md`.
