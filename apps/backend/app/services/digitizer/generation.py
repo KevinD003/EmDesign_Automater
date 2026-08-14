@@ -228,12 +228,24 @@ def hairline_runs(region, mm_per_px: float, pitch_mm: float):
 
     So the boundary is the one the ruling of 2026-08-18 authorised for exactly
     this outcome: ONLY REGIONS WHOSE PRUNED SKELETON IS A SINGLE BRANCH are
-    run. That sews 11 of the corpus's 14 refused regions (04 +1, 08 +1,
-    C24 +5, C11 +4), including both whose ink was independently verified (04's
-    ring visually, 08's stroke by exact source-colour match), and refuses
-    three: the verified-noise region in 09, plus 07's two short strokes and
-    C11's one 4-branch network — real artwork deferred until a derived noise
-    criterion exists. A narrow boundary that is named beats a constant fitted
+    run. That sews 11 REGIONS of the corpus's 14 refused, producing 11 RUN
+    OBJECTS (04 +1, 08 +1, C24 +5, C11 +4) — including both whose ink was
+    independently verified (04's ring visually, 08's stroke by exact
+    source-colour match) — and refuses three regions: the verified-noise one in
+    09, plus 07's two short strokes and C11's one 4-branch network, real
+    artwork deferred until a derived noise criterion exists.
+
+    BOTH UNITS ARE NAMED because they are equal ONLY under the current
+    boundary. This function returns one entry PER BRANCH, so a region yields as
+    many objects as it has surviving branches; 11 regions give 11 objects only
+    because single-branch regions are the only ones admitted. The moment the
+    deferred noise criterion lets a multi-branch region through — which is the
+    entire point of building it — one region will produce four objects and an
+    unqualified "11" would read as though 11 regions gave 11 objects when they
+    gave more. That is exactly how C11 was misreported across two trees: its
+    4-branch network emitted FOUR objects pre-boundary (23 base + 4
+    single-branch + 4 network = 31), and the boundary removed all four at once
+    (leaving 27). A count is not a count unless its unit is named. A narrow boundary that is named beats a constant fitted
     to the corpus that named it.
 
     THIS BOUNDARY IS A PROXY, NOT A DETECTOR — the sentence that matters most
