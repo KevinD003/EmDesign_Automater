@@ -29,6 +29,7 @@ import cv2
 import pytest
 
 from app.services.digitizer import digitize_image
+from run_quality_bench import FIXTURE_PARAMS as _BENCH_PARAMS
 
 # The hashes were captured on the WITH-rembg path; the two segmentation paths
 # produce different (both healthy) streams by design — documented since Part 12
@@ -47,14 +48,20 @@ HASH_FILE = REPO_ROOT / "docs" / "benchmarks" / "v2-swarm" / "stitch-hashes.json
 # Same seed as scripts/run_quality_bench.py: pins k-means init so runs compare.
 RNG_SEED = 20260728
 
-# Params copied verbatim from FIXTURE_PARAMS in scripts/run_quality_bench.py —
-# the hash is only meaningful if it locks the exact bench configuration.
-LOCK_FIXTURES: dict[str, dict] = {
-    "04_thin_line_outline": {"colors": 2, "hoop": "100x100", "text": False},
-    "05_wordmark_caps": {"colors": 2, "hoop": "130x180", "text": True},
-    "06_wordmark_script": {"colors": 2, "hoop": "130x180", "text": True},
-    "07_circular_badge": {"colors": 4, "hoop": "130x180", "text": False},
-}
+# IMPORTED, not copied. This block used to retype four rows of
+# FIXTURE_PARAMS with a comment saying "copied verbatim" — the exact defect
+# `scripts/visual_regression.py`'s own header records: "A first draft of this
+# file retyped the fixture table and got four of the ten wrong within the
+# hour." A hash lock is only meaningful if it locks the configuration the bench
+# actually uses, and a hand-maintained second copy of that configuration can
+# drift silently while every test stays green. Found by the fixture-set
+# enumeration (2026-08-21) and fixed while it was in hand.
+#
+# The SUBSET stays deliberate and named here — these four are the locked
+# streams — but their PARAMETERS come from the one table.
+LOCKED = ("04_thin_line_outline", "05_wordmark_caps",
+          "06_wordmark_script", "07_circular_badge")
+LOCK_FIXTURES: dict[str, dict] = {name: _BENCH_PARAMS[name] for name in LOCKED}
 
 # Quality bands for THIS lock's configuration, which is not the bench's — the
 # colour counts and hoops differ, so the numbers do too.
@@ -139,7 +146,15 @@ def _digitize(fixture: str, params: dict):
         fabric_type="cotton",
         hoop_size=params["hoop"],
         max_colors=params["colors"],
-        text_mode=params["text"],
+        # `.get`, matching how every other consumer of FIXTURE_PARAMS reads it
+        # (coverage_audit, visual_regression, trace): `text` is OPTIONAL and
+        # absent means False. The hand-copied table made it explicit on all
+        # four rows, so this hard subscript worked — and hid that this consumer
+        # read the bench table more strictly than the bench table's own
+        # convention. Importing the real table surfaced it immediately as
+        # KeyError on 04 and 07, the two rows that omit `text`. The copy was
+        # not wrong in its VALUES; it was concealing a contract mismatch.
+        text_mode=params.get("text", False),
     )
 
 
