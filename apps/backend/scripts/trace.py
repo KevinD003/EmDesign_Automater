@@ -64,6 +64,7 @@ for _p in (BACKEND, BACKEND / "scripts"):
 # Imported, never retyped: the fixture table, the seed, the machine model. A
 # trace that used its own copy of any of these would certify numbers that no
 # other harness produces.
+from _provenance import code_provenance, toolchain
 from coverage_audit import CORPUS_DIR, CORPUS_PARAMS, CORPUS_EXTRA, BENCH_DIR
 from run_quality_bench import FIXTURE_PARAMS, RNG_SEED, SPM, TRIM_SECONDS
 
@@ -74,21 +75,11 @@ def _cmd(stitch) -> str:
     return str(getattr(stitch.command, "value", stitch.command))
 
 
-def _git() -> dict:
-    def _run(*a) -> str:
-        try:
-            return subprocess.run(("git", *a), cwd=BACKEND, capture_output=True,
-                                  text=True, timeout=10).stdout.strip()
-        except Exception:  # noqa: BLE001 — a trace from a tarball is still a trace
-            return ""
-    status = _run("status", "--porcelain")
-    return {"head": _run("rev-parse", "HEAD"), "dirty": bool(status)}
-
-
-def _toolchain() -> dict:
-    import cv2
-    import numpy as np
-    return {"python": sys.version.split()[0], "opencv": cv2.__version__, "numpy": np.__version__}
+# Provenance comes from the shared module (2026-08-21), not a local copy.
+# `coverage_audit.py` needed the same block, and a second implementation of
+# "which tree was this" is the drift this repo has been punished for twice.
+_git = code_provenance
+_toolchain = toolchain
 
 
 def resolve(name: str) -> tuple[Path, dict]:
