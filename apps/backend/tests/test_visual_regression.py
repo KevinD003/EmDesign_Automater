@@ -85,11 +85,32 @@ def test_every_baseline_is_committed() -> None:
     assert not missing, f"no committed baseline for: {missing}"
 
 
-def test_the_fixture_table_is_the_bench_table() -> None:
-    """Pictures and numbers must describe the same run, so there is one table."""
-    from run_quality_bench import FIXTURE_PARAMS
+def test_the_render_table_is_the_audit_table() -> None:
+    """Pictures and numbers must describe the same run, so there is ONE table —
+    now the larger one (CTO ruling 2026-08-22, Option A).
 
-    assert VR.FIXTURES is FIXTURE_PARAMS
+    This asserted `VR.FIXTURES is FIXTURE_PARAMS` — deliberately anti-drift,
+    and correct as far as it went. What it pinned, though, was the render table
+    to the BENCH TEN while the audit set is sixteen, so four fixtures that
+    every numeric harness measures had no picture at all. C24 is the fixture
+    the SH2 D1/D2 decision turns on; the noise-sewing defect was caught on 09
+    only because 09 has a render.
+
+    Identity (`is`) cannot be asserted any more because the table is built by a
+    comprehension over `fixtures()`, so EQUALITY of names and params is
+    asserted instead — and, separately, that path resolution comes from the
+    same call rather than a second hard-coded directory.
+    """
+    from coverage_audit import fixtures
+
+    audit = {name: params for name, _path, params in fixtures()}
+    assert VR.FIXTURES == audit, "the render table drifted from the audit table"
+    assert set(VR.FIXTURE_PATHS) == set(audit), "a fixture has params but no path"
+    for name, path, _params in fixtures():
+        assert VR.FIXTURE_PATHS[name] == path, (
+            f"{name}: the render harness resolves a different file than the "
+            f"audit does — path resolution must live in one place"
+        )
 
 
 def test_fixture_02_still_stitches_its_wordmark() -> None:
