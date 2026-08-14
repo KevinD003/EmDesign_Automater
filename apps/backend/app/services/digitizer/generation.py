@@ -228,12 +228,31 @@ def hairline_runs(region, mm_per_px: float, pitch_mm: float):
 
     So the boundary is the one the ruling of 2026-08-18 authorised for exactly
     this outcome: ONLY REGIONS WHOSE PRUNED SKELETON IS A SINGLE BRANCH are
-    run. That sews 12 of the corpus's 14 refused regions, including both whose
-    ink was independently verified (04's ring visually, 08's stroke by exact
-    source-colour match), and refuses the verified-noise region — at the cost
-    of also refusing 07's two short strokes and C11's one 4-branch network,
-    real artwork deferred until a derived noise criterion exists. A narrow
-    boundary that is named beats a constant fitted to the corpus that named it.
+    run. That sews 11 of the corpus's 14 refused regions (04 +1, 08 +1,
+    C24 +5, C11 +4), including both whose ink was independently verified (04's
+    ring visually, 08's stroke by exact source-colour match), and refuses
+    three: the verified-noise region in 09, plus 07's two short strokes and
+    C11's one 4-branch network — real artwork deferred until a derived noise
+    criterion exists. A narrow boundary that is named beats a constant fitted
+    to the corpus that named it.
+
+    THIS BOUNDARY IS A PROXY, NOT A DETECTOR — the sentence that matters most
+    here, because the rest reads as if it were a noise filter. It is not.
+    Fixture 09's noise reached the render WITH spur pruning already in place;
+    the region still had several branches after pruning, and single-branch
+    excluded it only because its noise happened to fragment that way. NOTHING
+    IN THIS SYSTEM CAN TELL NOISE FROM INK. A noise sliver that prunes to
+    exactly one branch will be sewn and no numeric gate will object; the only
+    thing standing between that and a customer is a human looking at a render.
+    Do not trust this boundary on artwork it was never tested against.
+
+    A LEAD for whoever attempts the real criterion (CTO, 2026-08-20), recorded
+    because it fails DIFFERENTLY from the three above: all three examine the
+    REGION; none examines the TRANSITION INTO it. Real ink has a step edge in
+    the source; a quantisation sliver through a smooth background is a
+    level-set boundary through a ramp and has no step. Gradient magnitude
+    across the region boundary, at the anti-alias edge width this codebase
+    already establishes, would be derived rather than fitted.
     """
     import cv2
     import numpy as np
