@@ -328,7 +328,28 @@ carried. One is now measurably wrong on a member of the set.
 
 ---
 
-## 8. Unchanged, and still the highest-value input
+## 8. Verification
+
+**CI run 31825862834** (`ci.yml` run number 127) on `1914ffa`: `status: completed`,
+**`conclusion: success`** — read from the GitHub API (`get_workflow_run` /
+`list_workflow_runs`), not from a local pytest line, because "CI green" is a headline number
+and has to carry its run ID and conclusion like any other. Both jobs green:
+
+| job | steps |
+| --- | --- |
+| `frontend` | typecheck, vitest, build — success |
+| `backend` | `pytest tests -q` success (18:03); `STITCHIQ_NO_REBUILD_PASSTHROUGH=1 pytest tests -q` success (16:43); `verify_lint_claim.py` success |
+
+Locally, for the record and NOT as the CI claim: default lane `1415 passed, 2 skipped,
+2 deselected, 3 xfailed` (24:17, exit 0); passthrough lane `1409 passed, 8 skipped,
+2 deselected, 3 xfailed` (24:49, exit 0).
+
+**Sequencing, stated because it is not my usual order**: the push happened while the local
+passthrough lane was still running. The default lane was fully green and the 146 set-sensitive
+tests had passed before it, but the second lane had not finished at push time. It and CI both
+came back green; had either not, the fix would have been mine and immediate.
+
+## 9. Unchanged, and still the highest-value input
 
 Nothing has been sewn. Two photographs of finished embroidery are not a sew-out. The
 real-job-pairs intake spec is open and empty, and remains the highest-value thing anyone could
