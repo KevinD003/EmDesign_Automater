@@ -26,6 +26,12 @@ PKG_DIR = Path(digitizer.__file__).parent
 # Bottom to top. A module may import from those before it and never after.
 LAYERS = [
     "constants",
+    # Below everything: pure colour arithmetic, importing only `math`. It is a
+    # layer rather than a helper inside geometry because the substrate gate
+    # (pipeline) and any future thread-matching consumer both read it, and a
+    # function two layers apart from both of its callers is how the pull-comp
+    # expression came to exist twice.
+    "colordiff",
     "accounting",
     "geometry",
     "provenance",

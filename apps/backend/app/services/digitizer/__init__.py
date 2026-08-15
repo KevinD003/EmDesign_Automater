@@ -7,6 +7,24 @@ The implementation lives in sibling modules; this keeps the import path
 from __future__ import annotations
 
 from app.services.digitizer import constants
+from app.services.digitizer.accounting import (
+    _stream_census,
+    attribute_stops_from_stream,
+    build_accounting,
+    record_substrate,
+)
+
+# Perceptual colour difference: the substrate gate's metric since 2026-08-25.
+# Re-exported like every other layer's surface — the facade contract exists
+# because a missed re-export has taken CI red twice.
+from app.services.digitizer.colordiff import (
+    _f,
+    _linearize,
+    bgr_ciede2000,
+    bgr_to_lab,
+    ciede2000,
+    srgb_to_lab,
+)
 from app.services.digitizer.columns import (
     _arc_at,
     _assign_boundary,
@@ -105,6 +123,7 @@ from app.services.digitizer.constants import (
     SPLIT_MIN_AREA_MM2,
     SPUR_MIN_MM,
     SPUR_PRUNE_MULT,
+    SUBSTRATE_DE2000,
     SUBSTRATE_DELTA,
     SUBSTRATE_ENCLOSED_MAX_MM2,
     SUBSTRATE_ENCLOSED_MAX_SHARE,
@@ -209,11 +228,6 @@ from app.services.digitizer.rebuild import (
     _angle_is_digitizes_own,
     rebuild_design,
 )
-from app.services.digitizer.accounting import (
-    _stream_census,
-    attribute_stops_from_stream,
-    build_accounting,
-)
 from app.services.digitizer.routing import (
     _coalesce_short,
     _finish_rebuild_segment,
@@ -285,9 +299,6 @@ def __getattr__(name: str):
     raise AttributeError(name)
 
 __all__ = [
-    "attribute_stops_from_stream",
-    "build_accounting",
-    "hairline_runs",
     "AMBIGUOUS_BLEND_RATIO",
     "AMBIGUOUS_MAX_CUT_SHARE",
     "AMBIGUOUS_MIN_CENTRE_GAP",
@@ -363,6 +374,7 @@ __all__ = [
     "SPLIT_MIN_AREA_MM2",
     "SPUR_MIN_MM",
     "SPUR_PRUNE_MULT",
+    "SUBSTRATE_DE2000",
     "SUBSTRATE_DELTA",
     "SUBSTRATE_ENCLOSED_MAX_MM2",
     "SUBSTRATE_ENCLOSED_MAX_SHARE",
@@ -504,9 +516,15 @@ __all__ = [
     "_zhang_suen_thin",
     "_zigzag_underlay",
     "add_to_seed",
+    "attribute_stops_from_stream",
+    "bgr_ciede2000",
+    "bgr_to_lab",
+    "build_accounting",
+    "ciede2000",
     "coalesce_params",
     "digitize_image",
     "fill_border_width_px",
+    "hairline_runs",
     "is_unedited",
     "last_classification_log",
     "last_field_artifact",
@@ -515,8 +533,10 @@ __all__ = [
     "rebuild_design",
     "rebuild_fill_border",
     "rebuild_is_a_noop",
+    "record_substrate",
     "remember",
     "set_penetration_floor",
     "spine_satin",
+    "srgb_to_lab",
     "travel_route_pad_px",
 ]

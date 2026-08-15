@@ -74,6 +74,12 @@ from run_quality_bench import RNG_SEED
 # changing metric. Reported with a sweep so its sensitivity is visible.
 JND_DE76 = 2.3
 
+# CIEDE2000's just-noticeable difference is ~1.0, not 2.3: the formula is
+# normalised so that unit dE00 IS the JND, which is the whole reason it exists.
+# Using 2.3 here would be importing dE76's threshold into a different scale --
+# the "constant carried across a space change" error this repository names.
+JND_DE2000 = 1.0
+
 
 def _to_lab(bgr):
     """BGR (0-255 floats, the pipeline's own representation) -> CIE L*a*b*.
@@ -95,6 +101,16 @@ def _de76(a, b) -> float:
     return math.sqrt(sum((x - y) ** 2 for x, y in zip(a, b, strict=True)))
 
 
+# dE2000, from the backend's own verified implementation (tests/test_colordiff.py:
+# four Sharma pairs directly, plus 1,200 random Lab pairs cross-checked against
+# skimage at < 1e-6). The ruling of 2026-08-25 required the verification BEFORE
+# anything depended on it, so this import is the point at which that becomes true.
+def _de2000(a, b) -> float:
+    from app.services.digitizer.colordiff import ciede2000
+
+    return ciede2000(a, b)
+
+
 def measure_one(name: str, path: Path, params: dict) -> dict:
     import cv2
 
@@ -113,8 +129,10 @@ def measure_one(name: str, path: Path, params: dict) -> dict:
     for e in _SUBSTRATE_LOG:
         lab_c, lab_s = _to_lab(e["center_bgr"]), _to_lab(e["substrate_bgr"])
         de = _de76(lab_c, lab_s)
+        de00 = _de2000(lab_c, lab_s)
         rgb_del = e["rgb_distance"] < SUBSTRATE_DELTA
         lab_del = de < JND_DE76
+        de00_del = de00 < JND_DE2000
         rows.append({
             "center_bgr": [round(v, 2) for v in e["center_bgr"]],
             "center_hex": "#{:02x}{:02x}{:02x}".format(
@@ -125,6 +143,11 @@ def measure_one(name: str, path: Path, params: dict) -> dict:
             "lab_center": [round(v, 2) for v in lab_c],
             "lab_substrate": [round(v, 2) for v in lab_s],
             "de76": round(de, 3),
+            "de2000": round(de00, 3),
+            "de2000_gates_in": de00_del,
+            "flip2000": ("none" if rgb_del == de00_del
+                         else ("de2000_gates_in_more" if de00_del
+                               else "de2000_gates_in_less")),
             "rgb_gates_in": rgb_del,
             "lab_gates_in": lab_del,
             # GATED IN, not deleted. Entering the substrate branch is not the end
@@ -144,6 +167,7 @@ def measure_one(name: str, path: Path, params: dict) -> dict:
         "jnd_de76": JND_DE76,
         "clusters": len(rows),
         "flips": [r for r in rows if r["flip"] != "none"],
+        "flips2000": [r for r in rows if r["flip2000"] != "none"],
         "flipped_px_share": round(
             sum(r["px"] for r in rows if r["flip"] != "none") / total_px, 4),
         "rows": rows,
@@ -153,10 +177,14 @@ def measure_one(name: str, path: Path, params: dict) -> dict:
 def sweep(all_rows: list[dict]) -> list[dict]:
     """How many clusters flip as the dE threshold moves. Sensitivity, not tuning."""
     out = []
-    for t in (1.0, 1.5, 2.0, 2.3, 2.5, 3.0, 4.0, 5.0):
+    for t in (0.5, 0.75, 1.0, 1.5, 2.0, 2.3, 2.5, 3.0, 4.0, 5.0):
         more = sum(1 for r in all_rows if (r["de76"] < t) and not r["rgb_gates_in"])
         less = sum(1 for r in all_rows if not (r["de76"] < t) and r["rgb_gates_in"])
-        out.append({"de76_threshold": t, "lab_gates_in_more": more, "lab_gates_in_less": less})
+        m0 = sum(1 for r in all_rows if (r["de2000"] < t) and not r["rgb_gates_in"])
+        l0 = sum(1 for r in all_rows if not (r["de2000"] < t) and r["rgb_gates_in"])
+        out.append({"threshold": t, "lab_gates_in_more": more,
+                    "lab_gates_in_less": less,
+                    "de2000_gates_in_more": m0, "de2000_gates_in_less": l0})
     return out
 
 
@@ -184,11 +212,22 @@ def main() -> int:
 
     more = [r for r in every if r["flip"] == "lab_gates_in_more"]
     less = [r for r in every if r["flip"] == "lab_gates_in_less"]
+    m0 = [r for r in every if r["flip2000"] == "de2000_gates_in_more"]
+    l0 = [r for r in every if r["flip2000"] == "de2000_gates_in_less"]
     print(f"\n{len(every)} clusters across {len(docs)} fixtures")
     print(f"  RGB gate says KEEP, dE76 says substrate : {len(more):3d}  "
           f"({sum(r['px'] for r in more):,} px)")
     print(f"  RGB gate says substrate, dE76 says KEEP : {len(less):3d}  "
           f"({sum(r['px'] for r in less):,} px)")
+    print(f"  RGB keeps, dE2000 says substrate        : {len(m0):3d}  "
+          f"({sum(r['px'] for r in m0):,} px)")
+    print(f"  RGB says substrate, dE2000 says KEEP    : {len(l0):3d}  "
+          f"({sum(r['px'] for r in l0):,} px)")
+    _near = sorted(every, key=lambda r: r["de2000"])[:6]
+    print("\n  six clusters nearest the substrate under dE2000:")
+    for r in _near:
+        print(f"    {r['center_hex']}  bgr {r['rgb_distance']:8.3f}  "
+              f"dE76 {r['de76']:7.3f}  dE2000 {r['de2000']:7.3f}  {r['px']:8d} px")
     doc = {
         "produced_by": "scripts/measure_substrate_metric.py",
         "code": code_provenance(),
@@ -200,6 +239,10 @@ def main() -> int:
             "clusters": len(every),
             "lab_gates_in_more": len(more),
             "lab_gates_in_less": len(less),
+            "de2000_gates_in_more": len(m0),
+            "de2000_gates_in_less": len(l0),
+            "de2000_gates_in_more_px": sum(r["px"] for r in m0),
+            "de2000_gates_in_less_px": sum(r["px"] for r in l0),
             "lab_gates_in_more_px": sum(r["px"] for r in more),
             "lab_gates_in_less_px": sum(r["px"] for r in less),
         },
@@ -207,10 +250,12 @@ def main() -> int:
         "fixtures": docs,
     }
     if args.sweep:
-        print(f"\n{'dE76':>6s}  {'dE gates in MORE':>17s}  {'gates in LESS':>15s}")
+        print(f"\n{'thresh':>6s}  {'dE76 in+':>8s} {'dE76 in-':>8s}  "
+              f"{'dE2000 in+':>10s} {'dE2000 in-':>10s}")
         for s in doc["sweep"]:
-            print(f"{s['de76_threshold']:6.1f}  {s['lab_gates_in_more']:17d}  "
-                  f"{s['lab_gates_in_less']:15d}")
+            print(f"{s['threshold']:6.2f}  {s['lab_gates_in_more']:8d} "
+                  f"{s['lab_gates_in_less']:8d}  {s['de2000_gates_in_more']:10d} "
+                  f"{s['de2000_gates_in_less']:10d}")
     print(f"\ntree: {describe(doc['code'])}   fixtures: {len(docs)}")
     if args.json:
         Path(args.json).write_text(json.dumps(doc, indent=2) + "\n")

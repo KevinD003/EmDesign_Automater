@@ -308,7 +308,55 @@ SUBSTRATE_ENCLOSED_MAX_MM2 = 40.0
 # metric that should ship and needs an implementation verified against Sharma et
 # al.'s published pairs first; dE76 is weakest exactly in the saturated region
 # where the prediction was untested, so that half is UNTESTED, not refuted.
+# SUPERSEDED 2026-08-25 AND NO LONGER THE GATE. Kept defined for one reason: the
+# metric survey reports a before-and-after column and cannot do that if the
+# "before" vanishes. Nothing in `app/` compares against it any more —
+# `tests/test_substrate_gate.py` asserts that, because a retired constant that
+# quietly stays wired is how two thresholds come to disagree.
 SUBSTRATE_DELTA = 12.0
+
+# ── The live gate: perceptual, and derived from what the rule is FOR ──────────
+#
+# The BGR constant above cost 5.80 machine-minutes per garment on A02 and could
+# not be fixed by moving its number: past 13.9 it would have been fitted to one
+# fixture. The measured case against it, in the order that matters:
+#
+#   INVARIANCE. A perceptual metric is invariant to the pipeline's own
+#   preprocessing; a BGR constant is not. Ablating the textured mean-shift moves
+#   A02's darkest cluster from BGR 8.2 (gated in, deleted) to 13.3 (sewn) — the
+#   verdict flipped because of OUR smoothing, not because the garment changed.
+#   Across that same ablation dE2000 never crosses this threshold.
+#
+#   SCALE. A single BGR number is not a single perceptual number: measured on
+#   the two clusters nearest the gate, 12.0 is about dE76 1.9 near black and
+#   2.6 near white — strict where it must be gentle and gentle where it must be
+#   strict.
+#
+# WHY 2.0 AND NOT THE JND. The obvious answer was CIEDE2000's unit JND, 1.0.
+# MEASURED, IT FAILS TWICE (`scripts/measure_substrate_metric.py`, 82 clusters):
+# A02's `#080808` reads dE2000 1.263, so at 1.0 the defect is NOT fixed; and
+# fixture 02's `#fafafa` page reads 1.092, so at 1.0 it would newly be KEPT and
+# 15,893 px of page would be sewn as artwork. Both the ruling and I had reasoned
+# from the JND, and the corpus says the JND is the wrong perceptual level for
+# this question.
+#
+# It is the wrong level because of what the rule ASKS. Unit dE2000 is "a trained
+# observer, controlled viewing, can just tell these apart". This rule asks
+# whether A CUSTOMER LOOKING AT THE GARMENT would see thread lying on cloth —
+# the "perceptible at a glance" level, which is the standard 2.0. Derived from
+# the use, not from the corpus, and a better derivation than the JND was.
+#
+# AND THE CORPUS SHOWS A PLATEAU that makes the choice within it inconsequential
+# rather than delicate. Ranked by dE2000 the clusters go 0.000 (exact
+# substrate), 1.092 (02's page), 1.263 (A02, twice), then 5.986 (07's cream
+# artwork). Any threshold in [1.263, 5.986) gives IDENTICAL verdicts on all 82:
+# 2.0 sits inside it with 0.74 below and 3.99 above.
+#
+# THE CAVEAT TRAVELS WITH THE NUMBER: that plateau is a property of THESE
+# SIXTEEN. Real artwork sitting 1.3-6.0 dE from the garment would land inside it
+# and the choice would start to matter — which is why the intake spec asks for
+# light-garment artwork with a near-white element.
+SUBSTRATE_DE2000 = 2.0
 
 # ── The alpha channel as a DECLARATION of what is artwork (DET3) ─────────────
 # Everything above is a heuristic answering "is this pixel the garment or the
