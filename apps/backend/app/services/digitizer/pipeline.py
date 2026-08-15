@@ -24,11 +24,17 @@ from app.models.design import (
 )
 from app.services import direction_field, segmentation
 from app.services.digitizer import constants, staging
+from app.services.digitizer.accounting import (
+    _stream_census,
+    attribute_stops_from_stream,
+    build_accounting,
+)
 from app.services.digitizer.constants import (
     _CLASSIFICATION_LOG,
     _DROP_LOG,
     _MAX_WORK_PX,
     _MIN_WORK_PX,
+    _SUBSTRATE_LOG,
     _UPSCALE_MIN_SRC_PX,
     CONNECT_MM,
     CONTOUR_FILL_MAX_BAND_RATIO,
@@ -116,11 +122,6 @@ from app.services.digitizer.routing import (
     _route_travel,
     coalesce_params,
     travel_route_pad_px,
-)
-from app.services.digitizer.accounting import (
-    _stream_census,
-    attribute_stops_from_stream,
-    build_accounting,
 )
 from app.services.digitizer.satin import (
     _fill_border,
@@ -387,8 +388,7 @@ def digitize_image(
     # deleted as "the cloth". A caller that knows what it is stitching onto says
     # so; everyone else keeps the border guess, which is the old behaviour.
     substrate_declared = substrate_color is not None
-    substrate = (_parse_bgr(substrate_color) if substrate_declared
-                 else _border_color(img))
+    substrate = _parse_bgr(substrate_color) if substrate_declared else _border_color(img)
 
     # Darkest-first stitching order (spec §4.2). Clusters emptied by halo
     # suppression are skipped so they never open a colour stop.
@@ -410,9 +410,8 @@ def digitize_image(
     min_area_px = max(0.0, float(min_region_mm2)) / (mm_per_px * mm_per_px)
     connect_px = CONNECT_MM / mm_per_px
 
-    _CLASSIFICATION_LOG.clear()
-    _LAST_HAIRLINE_BRANCHES.clear()
-    _DROP_LOG.clear()
+    for _diag in (_CLASSIFICATION_LOG, _LAST_HAIRLINE_BRANCHES, _DROP_LOG, _SUBSTRATE_LOG):
+        _diag.clear()
     stitches: list[Stitch] = []
     color_stops: list[ColorStop] = []
     objects: list[DesignObject] = []
@@ -534,13 +533,18 @@ def digitize_image(
         # deleted as "the garment"; a transparent PNG with the design's own
         # colour near the substrate is the most common real digitizing input
         # there is.
-        if declared_mask is None and float(np.linalg.norm(center.astype(float) - substrate)) < SUBSTRATE_DELTA:
+        _sub_d = float(np.linalg.norm(center.astype(float) - substrate))
+        _SUBSTRATE_LOG.append({"center_bgr": [float(v) for v in center.astype(float)],
+                               "substrate_bgr": [float(v) for v in substrate],
+                               "rgb_distance": _sub_d, "px": int(cv2.countNonZero(mask)),
+                               "gated_in": bool(declared_mask is None and _sub_d < SUBSTRATE_DELTA)})
+        if declared_mask is None and _sub_d < SUBSTRATE_DELTA:
             # The garment is not a thread (v2 Part 41). A cluster the colour of
             # the cloth is the cloth showing between the design's elements, and
-            # stitching it lays thread over bare fabric: measured on the black
-            # neckline panel, 2,925 stitches (5.1% of all sewing) went into
-            # near-black stops sitting 10.5 from the substrate — the gaps
-            # BETWEEN petals, rendered as thread.
+            # stitching it lays thread over bare fabric — the gaps BETWEEN
+            # petals, rendered as thread. A MEASURED CLAIM THAT SAT HERE WENT
+            # FALSE; re-measured and diagnosed on `SUBSTRATE_DELTA` in
+            # constants.py, beside the constant anyone would change.
             #
             # This used to keep small enclosed regions as "knocked-out detail"
             # (a catchlight in a pupil, a counter). That is the wrong default

@@ -270,12 +270,26 @@ corrected to say so.
 
 ## 6. What the promotion surfaced. Classified, not fixed.
 
-### 6a. A02 sews 21 % of the design in the garment's own colour
+### 6a. A02 sews 5.80 machine-minutes of invisible thread, every garment
+
+Priced in the currency the business runs on, per the ruling of 2026-08-23 — "21 % of
+penetrations" is a share, and a share is not a decision:
+
+> **4,638 penetrations ÷ 800 spm = 5.80 machine-minutes per garment, spent sewing black
+> thread onto black cloth**, on a design that takes 38.14 minutes end to end. Fifteen per
+> cent of the run time. Invisible thread, real thread cost, real needle wear, real machine
+> time — and it is the first defect in this engagement that converts directly into money.
+> The promotion found it on its first real photograph.
+
+    scripts/trace.py A02_real_neckline_black --key machine.minutes_net_of_trim   # 38.14
+    4638 / SPM (800.0, run_quality_bench.py:52) = 5.7975 min
 
 **4,638 of 22,079 penetrations (21.0 %) are `#080808` thread on a substrate the pipeline
-inferred as pure black (BGR 0,0,0).** The cluster sits **13.86** from the substrate against
-`SUBSTRATE_DELTA = 12.0` — it misses deletion by **1.86, or 15.5 %**. Visible in the baseline
-render as black fragments in the pockets between flowers.
+inferred as pure black (BGR 0,0,0).** The cluster sits **13.856** from the substrate against
+`SUBSTRATE_DELTA = 12.0` — analytically exact, `sqrt(3 x 8^2)` — so it misses deletion by
+**1.86, or 15.5 %**. Visible in the baseline render as black fragments in the pockets between
+flowers. At the corpus runner's own block the same defect is 10,706 penetrations =
+**13.38 minutes**; at 100x100 it is 1,179 = **1.47 minutes**. It is never zero.
 
 Classification: **the gate is wrong, and the fourteen were not hiding it — the parameters
 never were.** Measured at four blocks:
