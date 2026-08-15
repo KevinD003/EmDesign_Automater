@@ -143,3 +143,36 @@ def build_accounting(*, stitches, pre_merge, merge_inserted, pre_lock,
         "stops_partition_matches": stops_partition_matches,
         "stop_penetrations_total": sum(cs_.penetration_count for cs_ in color_stops),
     }
+
+
+def record_substrate(center, substrate, de2000: float, px: int,
+                     gated_in: bool) -> None:
+    """One entry per colour cluster reaching the substrate rule.
+
+    Lives here rather than inline at the decision site so `pipeline.py` spends
+    one line on it and stays under its 1500-line gate — the same reason the
+    stream census moved out. Diagnostic only: appended, never read back by the
+    pipeline, cleared per digitize.
+
+    BOTH metrics are recorded, not just the live one, because the survey's whole
+    job is the before-and-after and a log that only carried the winner could not
+    show what the change did. The SUPERSEDED Euclidean-BGR distance is computed
+    HERE rather than passed in, so the decision site does not mention the metric
+    it no longer uses -- a retired metric still named at the gate is how two
+    thresholds come to disagree.
+    """
+    import math
+
+    from app.services.digitizer.constants import _SUBSTRATE_LOG
+
+    rgb_distance = math.sqrt(sum((float(a) - float(b)) ** 2
+                                 for a, b in zip(center, substrate, strict=True)))
+
+    _SUBSTRATE_LOG.append({
+        "center_bgr": [float(v) for v in center],
+        "substrate_bgr": [float(v) for v in substrate],
+        "rgb_distance": float(rgb_distance),
+        "de2000": float(de2000),
+        "px": int(px),
+        "gated_in": bool(gated_in),
+    })

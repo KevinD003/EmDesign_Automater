@@ -28,7 +28,9 @@ from app.services.digitizer.accounting import (
     _stream_census,
     attribute_stops_from_stream,
     build_accounting,
+    record_substrate,
 )
+from app.services.digitizer.colordiff import bgr_ciede2000
 from app.services.digitizer.constants import (
     _CLASSIFICATION_LOG,
     _DROP_LOG,
@@ -64,7 +66,7 @@ from app.services.digitizer.constants import (
     SATIN_PREGATE_SLACK,
     SKETCH_MAX_RETRIES,
     SKETCH_MIN_COVERAGE,
-    SUBSTRATE_DELTA,
+    SUBSTRATE_DE2000,
     SUBSTRATE_ENCLOSED_MAX_MM2,
     SUBSTRATE_ENCLOSED_MAX_SHARE,
     TEXTURE_MS_COLOR,
@@ -533,19 +535,17 @@ def digitize_image(
         # deleted as "the garment"; a transparent PNG with the design's own
         # colour near the substrate is the most common real digitizing input
         # there is.
-        _sub_d = float(np.linalg.norm(center.astype(float) - substrate))
-        _SUBSTRATE_LOG.append({"center_bgr": [float(v) for v in center.astype(float)],
-                               "substrate_bgr": [float(v) for v in substrate],
-                               "rgb_distance": _sub_d, "px": int(cv2.countNonZero(mask)),
-                               "gated_in": bool(declared_mask is None and _sub_d < SUBSTRATE_DELTA)})
-        if declared_mask is None and _sub_d < SUBSTRATE_DELTA:
+        _cf, _px = center.astype(float), cv2.countNonZero(mask)
+        _sub_de = bgr_ciede2000(_cf, substrate)
+        record_substrate(_cf, substrate, _sub_de, _px,
+                         declared_mask is None and _sub_de < SUBSTRATE_DE2000)
+        if declared_mask is None and _sub_de < SUBSTRATE_DE2000:
             # The garment is not a thread (v2 Part 41). A cluster the colour of
             # the cloth is the cloth showing between the design's elements, and
             # stitching it lays thread over bare fabric — the gaps BETWEEN
-            # petals, rendered as thread. A MEASURED CLAIM THAT SAT HERE WENT
-            # FALSE; re-measured and diagnosed on `SUBSTRATE_DELTA` in
-            # constants.py, beside the constant anyone would change.
-            #
+            # petals, rendered as thread. The metric is PERCEPTUAL since
+            # 2026-08-25; its derivation, the claim that went false, and the
+            # plateau evidence all sit on `SUBSTRATE_DE2000` in constants.py.
             # This used to keep small enclosed regions as "knocked-out detail"
             # (a catchlight in a pupil, a counter). That is the wrong default
             # for embroidery: you do not stitch the background colour, you let
@@ -1189,7 +1189,7 @@ def digitize_image(
             line_hex = min((s.hex for s in color_stops), key=_lum) if color_stops else "#202020"
             _lh = line_hex.lstrip("#")
             _line_bgr = np.array([int(_lh[4:6], 16), int(_lh[2:4], 16), int(_lh[0:2], 16)], np.float32)
-            if float(np.linalg.norm(_line_bgr - substrate)) < SUBSTRATE_DELTA:
+            if bgr_ciede2000(_line_bgr, substrate) < SUBSTRATE_DE2000:
                 # Drawing the garment's own colour onto the garment (v2 Part 41):
                 # the darkest available thread IS the cloth here, so this pass
                 # would trace the gaps between elements in invisible thread.

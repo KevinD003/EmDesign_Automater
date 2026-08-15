@@ -39,10 +39,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from app.services.digitizer.constants import (
-    SPUR_MIN_MM,
     NO_AXIS_SPECK_MM2,
     SATIN_MAX_UNCOVERED,
     SATIN_MAX_W_MM,
+    SPUR_MIN_MM,
 )
 from app.services.digitizer.fills import _fill_angle, _fill_by_component
 from app.services.digitizer.satin import _skeleton_satin_hires
@@ -321,7 +321,9 @@ def hairline_runs(region, mm_per_px: float, pitch_mm: float):
     import numpy as np
 
     from app.services.digitizer.skeleton import (
-        _prune_spurs, _skeleton_branches, _zhang_suen_thin,
+        _prune_spurs,
+        _skeleton_branches,
+        _zhang_suen_thin,
     )
     from app.services.digitizer.underlay import _manual_run
 
