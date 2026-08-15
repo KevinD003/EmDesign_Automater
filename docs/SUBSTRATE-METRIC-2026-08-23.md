@@ -198,10 +198,13 @@ changes the answer.
 length ÷ step. It does not separate the groups: kept **0.033–0.663**, lost **0.547–0.938**,
 overlapping across 0.547–0.663.
 
-**The mechanism is chord-versus-arc.** `_resample_open` walks the *arc length* of the traced
-chain and emits a point every step — but the object stores the **chord polyline through those
-samples**, which is shorter than the curve it came from. Rebuild can only see the chords, so
-it resamples a shorter path. That predicts the rebuild count exactly:
+**The mechanism is chord-versus-arc, and §4a-bis names exactly which emitter does it** — the
+ruling of 2026-08-25 challenged this reading and the challenge was right about the function it
+read and wrong about which function A01 uses. `_resample_open` walks the *arc length* of the
+traced chain and emits a point every step; the **dark-linework emitter** then stores those
+samples as the contour, so the stored geometry is the chord polyline and is shorter than the
+curve it came from. Rebuild can only see the chords, so it resamples a shorter path. That
+predicts the rebuild count exactly:
 
     floor(L_chord_truncated / step_px_int) + 2   ==   actual rebuild penetrations   36 / 36
 
@@ -221,6 +224,60 @@ And the shortening statistic separates perfectly, which the floor statistic did 
 longest and wiggliest) loses **2** at only 6.5 % shortening. `delta >= -1` would have been
 fitted to A01's five-penetration objects and would fail on a longer traced line. Running the
 test before designing the bound is the only reason that number is not now in the repository.
+
+### 4a-bis. Challenged, settled, and the challenge was reading the other emitter
+
+The ruling of 2026-08-25 read `generation.py:356-360` and observed that `path_mm` iterates
+`pts_px` — the dense pruned skeleton — not the resampled `pts`, concluding "there is no chord
+approximation at storage; THE ARC IS ALREADY STORED", and that the whole mechanism must
+therefore be rebuild's `to_px` truncation, whose one-line fix is `round` for `int`.
+
+**That reading of `hairline_runs` is exactly correct. A01 does not use `hairline_runs`.** A01
+contributes **zero** sub-thread regions — measured in the previous tranche, narrowest region
+0.34 mm against `MIN_FEATURE_W_MM` 0.25 — so RS1 never runs on it. All 36 of its
+`RUNNING_SINGLE` objects come from the **dark-linework pass in `pipeline.py`**:
+
+```python
+path = _resample_open(chain, run_px)                                   # the samples
+...
+contour=[Point(x=x * mm_per_px, y=y * mm_per_px) for x, y in path],    # stored AS the contour
+```
+
+Three measurements settle it, run before this paragraph was written:
+
+**(i) The stored contour IS the resampled path.** `contour_points == penetration_count` for
+**36 of 36** of A01's run objects, at a mean point spacing of 1.09–1.27 mm against the 1.4 mm
+pitch. A dense chain would carry hundreds of points at ~0.1 mm.
+
+**(ii) `round()` does not fix it.** Re-predicting with `to_px` using exact, `int` and `round`
+coordinates:
+
+| `to_px` | predicts rebuild's actual count | predicted total | objects that would be lossless |
+| --- | ---: | ---: | ---: |
+| exact (no quantisation) | 35 / 36 | 194 | 15 / 36 |
+| `int` (today) | **36 / 36** | 193 | 15 / 36 |
+| `round` | 35 / 36 | 194 | 15 / 36 |
+
+Digitize emits 215. So quantisation accounts for **one penetration out of twenty-two**, and
+with *perfect* coordinates 21 of the 22 losses remain. It is a real 1-stitch effect and it is
+not the mechanism.
+
+**(iii) The two emitters disagree, and the corpus contains the controlled comparison.**
+
+| fixture | run emitter | `contour_pts == pen` | mean spacing | round-trip lossless |
+| --- | --- | ---: | ---: | ---: |
+| 04, 08, C24, C11 | `hairline_runs` (RS1) | **0 / 11** | 0.088–0.113 mm | **10 / 11** |
+| A01 | dark-linework | **36 / 36** | 1.09–1.27 mm | 15 / 36 |
+
+The emitter that stores the arc round-trips losslessly; the one that stores samples loses on
+21 of 36. (04, the single RS1 exception, *gains* +3 — the opposite sign, which is what a
+preserved arc allows.)
+
+**So §4b's "store the arc" is not a no-op.** It is precisely what RS1 already does, and the
+candidate fix is to make the linework emitter store what it traced rather than what it
+sampled. Two run emitters with two storage conventions is itself the finding — it is the
+drift class this repository keeps paying for, and neither emitter's docstring mentions the
+other.
 
 ### 4b. It does not compound — three generations, measured
 
@@ -365,14 +422,14 @@ application, by the instructed push that unblocked review. That is scoped explic
 than left as a silent exception: **an instruction from review may unblock a push; a judgement
 about risk may not.**
 
-## 9. Process
+## 9. Process — the rule, and its one scoped exception
 
 The rule the ruling asked for is now in `docs/ENGINEERING_STANDARDS.md` §5, binding rather
 than disclosed: **both lanes finish before the push.** It records why — three disclosed
 pushes, each green, which is a pattern rather than an incident — and that disclosure was a
 stopgap, not a substitute. This tranche follows it.
 
-## 9. Standing
+## 10. Standing
 
 Nothing has been sewn. The intake spec is open, empty, and still the highest-value input on
 the board — now with one more line in it, and with a reason for that line that is a
