@@ -120,6 +120,19 @@ Before every commit:
   measurements that justify the change.
 - Develop and push on the branch named in the task. Never push elsewhere without
   being asked.
+- **BOTH TEST LANES FINISH BEFORE THE PUSH.** Not "the default lane plus a
+  judgement about the risk" — both, green, then push. The lanes are `pytest -q`
+  and `STITCHIQ_NO_REBUILD_PASSTHROUGH=1 pytest -q`, about 25 minutes each on a
+  4-CPU box.
+
+  Made binding 2026-08-23. Three pushes had gone out with the second lane still
+  running. Each was disclosed in its report and each came back green, so no
+  damage was done and the disclosure worked — but three is a pattern rather than
+  an incident, and the cost of waiting is minutes against a red `main` that
+  every later measurement has to be re-attributed around. Disclosure was the
+  right stopgap and is not a substitute for the rule.
+- Do not chain (`&&`) or pipe (`| tail`) a test lane: the exit code becomes the
+  chain's or the pipe's, and a red lane has been read as green that way.
 - **No build artifacts committed** — `.coverage`, `__pycache__`, `node_modules`,
   local databases. (A `.coverage` file slipped into a Part 4 commit and had to be
   removed; `.gitignore` now covers it.)

@@ -232,6 +232,65 @@ SUBSTRATE_ENCLOSED_MAX_SHARE = 0.05
 # it was calibrated for catchlights (a mascot's is ~4mm2) and would have kept only
 # the smaller half of the wordmark's letters, which is worse than dropping it.
 SUBSTRATE_ENCLOSED_MAX_MM2 = 40.0
+
+# ── How close to the cloth's colour counts as "this cluster IS the cloth" ─────
+#
+# THE MOST EXPENSIVE CONSTANT IN THIS FILE, and it is under review. Read this
+# before changing the number, because the answer is probably not the number.
+#
+# WHAT IT COSTS TODAY. A02, the black neckline panel, sews 4,638 penetrations —
+# 21.0 % of the design, 5.80 MACHINE-MINUTES AT 800 SPM on a 38-minute design —
+# in near-black thread on black cloth. Invisible thread, real thread cost, real
+# needle wear, real machine time. Its `#080808` cluster measures 13.856 against
+# a pure-black substrate (exactly sqrt(3 x 8^2)) and this gate is 12.0, so it
+# misses deletion by 1.86. Reproduced at four parameter blocks including the
+# corpus runner's own (360x350/12: 13.304, 10,706 penetrations, 13.38 min).
+#
+# A MEASURED CLAIM ABOUT THIS RULE WENT FALSE, and it is recorded rather than
+# quietly replaced. `pipeline.py`'s substrate branch used to say "2,925 stitches
+# (5.1 % of all sewing) went into near-black stops sitting 10.5 from the
+# substrate". 2925/0.051 = 57,353 identifies the block as the corpus runner's.
+# The stitches are no longer deleted and the distance is no longer 10.5.
+#
+# WHAT MOVED IT, by ablation rather than argument: the textured path's
+# mean-shift filter (v2 Part 29) averages each pixel with its neighbourhood and
+# lifts a near-black cluster off pure black. With the filter made an identity,
+# the same fixture reads 8.246 at 360x350/12 and 9.000 at 130x180/6 — UNDER
+# this gate, deleted, which is the behaviour the old claim describes. The rule
+# was derived on an image that had not been mean-shifted, and smoothing added
+# later moves the very cluster it exists to catch, in the one direction that
+# defeats it. HONEST LIMIT: the ablation BRACKETS 10.5 (8.2 off, 13.3 on)
+# rather than reproducing it; the residue belongs to other movement since
+# (palette planning, halo suppression, the 0.4/0.3 mm morphology) and is not
+# diagnosed.
+#
+# WHY RAISING THE NUMBER IS THE WRONG FIX. Past 13.9 it is a constant fitted to
+# one fixture. The deeper problem is that EUCLIDEAN BGR IS THE WRONG QUANTITY
+# NEAR BLACK: `#080808` and `#000000` are the same colour to a human, and in
+# CIE L*a*b* they are 2.185 apart — under the ~2.3 just-noticeable difference —
+# while BGR calls them 13.856. Under the same ablation the perceptual figure
+# barely moves (1.389 -> 2.185; 1.666 -> 2.050 at the other block) and stays on
+# the correct side throughout. BGR crosses the gate; dE does not. A perceptual
+# metric would take its threshold FROM JND rather than from this corpus.
+#
+# MEASURED BEFORE BELIEVING IT (`scripts/measure_substrate_metric.py`, all
+# sixteen fixtures, 82 clusters): swapping to dE76 at the JND changes exactly
+# TWO cluster verdicts, both of them this one, and ZERO in the other direction —
+# so the ruling's own prediction that RGB would over-state difference near white
+# and in saturated colours, and therefore delete artwork it should keep, is NOT
+# borne out anywhere in the standing set. The nearest miss is fixture 02's
+# `#fafafa` page against white: BGR 8.660, dE76 1.892, both sides agreeing.
+# Ranked by distance there is nothing between 13.856 and 26.439 in BGR, or
+# between 2.185 and 7.407 in dE — the JND sits inside a 5.2-wide plateau and the
+# answer is identical for every threshold from 2.3 to 5.0. That is the opposite
+# of a fitted number, with the caveat that the plateau is a property of THESE
+# SIXTEEN and real artwork sitting 3-7 dE from the garment would make the choice
+# matter.
+#
+# NOT CHANGED HERE. Mechanism first (CTO ruling 2026-08-23). CIEDE2000 is the
+# metric that should ship and needs an implementation verified against Sharma et
+# al.'s published pairs first; dE76 is weakest exactly in the saturated region
+# where the prediction was untested, so that half is UNTESTED, not refuted.
 SUBSTRATE_DELTA = 12.0
 
 # ── The alpha channel as a DECLARATION of what is artwork (DET3) ─────────────
@@ -369,6 +428,32 @@ SPECK_KEEP_MM2 = 0.15
 _CLASSIFICATION_LOG: list[dict] = []
 
 
+# Every substrate decision from the most recent digitize_image call: one entry per
+# colour cluster reaching the rule, carrying the cluster centre, the substrate the
+# pipeline inferred, the Euclidean BGR distance it compared, and whether that
+# distance GATED THE CLUSTER IN to the substrate branch.
+#
+# `gated_in` is deliberately not called "deleted", and the distinction is not
+# pedantic: entering the branch is not the end of the decision. Textured input is
+# deleted immediately, but FLAT artwork then faces further tests (contiguous with
+# the page, or a large enclosed expanse) and can still survive — fixture 02's
+# `#fafafa` page cluster gates in while its white wordmark, whose deletion was a
+# real shipped defect, does not. A field named "deleted" would have made that a
+# false claim in a report. What this log pins is the GATE, which is the quantity
+# the metric question is about.
+#
+# It exists because the A02 promotion (2026-08-22) found 4,638 penetrations —
+# 5.8 machine-minutes — sewn in the garment's own colour, and the question the
+# CTO's ruling of 2026-08-23 put next cannot be answered from colour STOPS alone:
+# a cluster deleted as substrate never becomes a stop, so a stop-level survey can
+# see the clusters a stricter metric would newly delete and is structurally blind
+# to the ones a looser metric would newly KEEP. Both directions matter, so the
+# decision has to be logged where it is made.
+#
+# Diagnostic only: appended, never read by the pipeline, cleared per call.
+_SUBSTRATE_LOG: list[dict] = []
+
+
 # (area_mm2, perimeter_mm) of every region the speck filter dropped in the last
 # digitize — the raw material for the too-small-to-sew warning, and inspectable
 # by the bench when the warning's calibration is questioned.
@@ -502,6 +587,19 @@ TEXTURE_MS_COLOR = 52
 # pass that second gate even if it ever crossed the first, because
 # mean-shift recovers nothing on art that was already traced. Locked
 # fixtures never reach the retry (max 0.148 < 0.19) and stay byte-identical.
+#
+# A SECOND QUESTION IS OWED WHEN THIS IS RE-DERIVED (CTO ruling 2026-08-23),
+# and it is not about the threshold. The retry is guarded on `not is_textured`,
+# which is coherent — it exists to rescue UNDETECTED texture, and a detected
+# photograph has already been smoothed. But the consequence is that the three
+# highest-uncovered fixtures in the standing set are precisely the ones it can
+# never fire on: A02 at 20.15 %, C24 at 17.75 %, A01 at 13.41 %, all above this
+# 0.19 gate. THE LOSS DETECTOR'S ONLY ACTION IS UNAVAILABLE EXACTLY WHERE LOSS
+# IS GREATEST.
+#
+# So the re-derivation must answer: what IS the response for a TEXTURED design
+# at 20 % uncovered? Today the answer is nothing at all, and nothing is a choice
+# that should be made deliberately rather than inherited from a guard clause.
 TEXTURE_RETRY_UNCOVERED = 0.19
 
 

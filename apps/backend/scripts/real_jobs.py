@@ -25,6 +25,18 @@ NOTHING IS TUNED AGAINST THIS. The instrument exists before the material, on
 purpose. When real pairs arrive the first question is what the comparison says,
 not what it can be made to say.
 
+WHAT TO ASK FOR is kept beside the (empty) directory, in
+`tests/fixtures/corpus_real/README.md`, so whoever is about to send material
+reads it rather than this module. One line of it is load-bearing enough to
+repeat here: **at least one FLAT-LIT SCAN, not only photographs.** The A01/A02
+promotion measured that a photograph takes the textured path and therefore
+cannot reach `hairline_runs` AT ALL — its close/open at 0.4/0.3 mm removes
+everything the 0.25 mm sub-thread census could see, and both promoted
+photographs contributed zero regions with their narrowest at 0.34 and 0.38 mm.
+So more photographs will never exercise the hairline machinery, and the noise
+criterion deferred on 2026-08-18 is deferred on a class that cannot reach the
+code. Artwork scoring under `TEXTURE_SMOOTH_MIN` (6.0) is what reaches it.
+
     python scripts/real_jobs.py            # list what is present, validate it
 """
 
