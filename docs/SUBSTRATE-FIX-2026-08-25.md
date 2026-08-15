@@ -168,8 +168,9 @@ the finding.
 
 Both on the exact tree pushed, both after the DET3 fix; the earlier run that went red is
 reported in R5 rather than discarded. CI **31900577885** (#129) on `9e62310`:
-`conclusion: success`, from the API. CI **31908105848** (#130) on `0c5d70f`: reported when it
-completes.
+`conclusion: success`, from the API. CI **31908105848** (#130) on `0c5d70f`: `status: completed`,
+**`conclusion: success`** — the run that carries the gate change itself. Both read from the
+GitHub API, not substituted from a local line.
 
 ## 7. What is NOT done
 
