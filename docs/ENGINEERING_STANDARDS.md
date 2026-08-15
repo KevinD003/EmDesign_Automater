@@ -131,6 +131,17 @@ Before every commit:
   an incident, and the cost of waiting is minutes against a red `main` that
   every later measurement has to be re-attributed around. Disclosure was the
   right stopgap and is not a substitute for the rule.
+
+  **The one exception, scoped rather than silent:** an explicit instruction from review may
+  unblock a push mid-lane — nothing is verifiable until it is on `main`, and a reviewer
+  blocked on an unpushed commit is a worse failure than a lane that has not finished. A
+  judgement of your own about how low the risk looks is NOT an exception; that is exactly the
+  reasoning this rule replaces. Either way, report which lanes had finished at push time.
+- **A REPORT DESCRIBES `origin`, NOT YOUR WORKING TREE.** Push before writing that something
+  "is now" in the repository. A pack whose reproduction commands cannot be run is not a pack;
+  a missing Base → Head line, a missing CI section, and an unrunnable command are one
+  omission, not three. Made binding 2026-08-24, after a full tranche was written, sent and
+  never pushed.
 - Do not chain (`&&`) or pipe (`| tail`) a test lane: the exit code becomes the
   chain's or the pipe's, and a red lane has been read as green that way.
 - **No build artifacts committed** — `.coverage`, `__pycache__`, `node_modules`,

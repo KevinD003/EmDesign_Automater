@@ -42,6 +42,20 @@ exercises it and cannot assert on it: at the tightest band this repo uses, **2 o
 run objects are assertable**. A percentage band is the wrong instrument for a 5-penetration
 object.
 
+**R6 — my own `floor()` hypothesis is refuted, and so is the absolute-delta bound I proposed
+in its place.** Added 2026-08-24 after running the test rather than naming it. The statistic
+that would confirm a floor() flip — the fractional part of path length over step — **overlaps
+between the two groups** (kept 0.033–0.663, lost 0.547–0.938). The real discriminator is
+chord-versus-arc shortening of the *stored* path and it separates with **zero overlap**. And
+because the loss is `k − (floor(L/step) + 2)`, it is **not bounded at 1**: the longest object
+already loses 2. A `delta >= -1` bound would have been a number fitted to A01's short objects.
+See §4.
+
+**R7 — and my product framing was wrong too.** I was going to report that every traced line
+erodes on every edit cycle. Measured across three generations: **215 → 193 → 193 → 193**, with
+the stored path length constant at 202.219 mm. Rebuild regenerates stitches from the stored
+contour without rewriting it, so the loss is a one-time deterministic gap, **not a ratchet**.
+
 ---
 
 ## 1. §6a, priced (P0)
@@ -173,10 +187,66 @@ unchanged and one losing 2. Three SATIN objects lose 29, 21 and 18 penetrations 
 
 **This is not `ce254a8` resurfacing.** That defect dropped a run object's first point and
 would hit all 36 uniformly. The sizes refute a systematic cause too: lost-one objects are
-5–10 penetrations (median 5), unchanged ones 4–9 (median 5) — fully overlapping. Consistent
-with a resampling `floor()` flip on the stored path. **Hypothesis, not diagnosis** — the cheap
-test is whether the losing paths' lengths sit near an integer multiple of the pixel step, and
-it has not been run.
+5–10 penetrations (median 5), unchanged ones 4–9 (median 5) — fully overlapping.
+
+### 4a. The `floor()` test, RUN (2026-08-24) — and it refutes the hypothesis it tested
+
+The ruling required this before any bound was designed, and it was right to: the result
+changes the answer.
+
+**The hypothesis was wrong.** A floor() flip would show up in the fractional part of
+length ÷ step. It does not separate the groups: kept **0.033–0.663**, lost **0.547–0.938**,
+overlapping across 0.547–0.663.
+
+**The mechanism is chord-versus-arc.** `_resample_open` walks the *arc length* of the traced
+chain and emits a point every step — but the object stores the **chord polyline through those
+samples**, which is shorter than the curve it came from. Rebuild can only see the chords, so
+it resamples a shorter path. That predicts the rebuild count exactly:
+
+    floor(L_chord_truncated / step_px_int) + 2   ==   actual rebuild penetrations   36 / 36
+
+(The truncation is rebuild's own `to_px`, which is `int(...)`, not `round`. Using the
+untruncated length predicts 35 of 36 — so both halves of the mechanism are load-bearing.)
+
+And the shortening statistic separates perfectly, which the floor statistic did not:
+
+| group | n | chord length vs the arc digitize walked |
+| --- | ---: | --- |
+| kept | 15 | −33.3 % … **−0.6 %** — all negative |
+| lost 1 | 20 | **+2.0 %** … +13.9 % — all positive |
+| lost 2 | 1 | +6.5 % |
+
+**So the absolute-delta bound I proposed in §0-R5 is superseded.** The loss is
+`k − (floor(L/step) + 2)`, which grows with accumulated shortening: seq 102 (17 points, the
+longest and wiggliest) loses **2** at only 6.5 % shortening. `delta >= -1` would have been
+fitted to A01's five-penetration objects and would fail on a longer traced line. Running the
+test before designing the bound is the only reason that number is not now in the repository.
+
+### 4b. It does not compound — three generations, measured
+
+| generation | run objects | run penetrations | stored path | stream |
+| --- | ---: | ---: | ---: | ---: |
+| 0 (digitize) | 36 | **215** | 202.219 mm | 5,776 |
+| 1 (rebuild) | 36 | **193** | 202.219 mm | 5,540 |
+| 2 | 36 | 193 | 202.219 mm | 5,540 |
+| 3 | 36 | 193 | 202.219 mm | 5,540 |
+
+Rebuild regenerates stitches from the stored contour but does not rewrite it, so the chord
+polyline is stable and the map is **idempotent after one application**.
+
+**That yields the instrument the bound could not.** `rebuild(rebuild(d)) == rebuild(d)` is an
+exact assertion needing no band and no fitted constant, and it is derived from this
+measurement rather than chosen. It does not cover the digitize→rebuild gap, which is
+representational: the stored contour is a lossy chord approximation of the traced curve, and
+the honest fix is to store the arc or raise the sampling, not to widen a tolerance.
+
+### 4c. The product reading, taken
+
+**Twenty of A01's thirty-six traced lines are one stitch short in the rebuilt design, and one
+is two short, at 1.4 mm pitch, on a real photograph.** That is a systematic shortfall at line
+ends, exactly the class no numeric gate catches and the surface metrics would. It is bounded
+and deterministic (§4b) rather than progressive — which lowers its severity without changing
+that a customer who edits and rebuilds gets shorter lines than the design they approved.
 
 **Why the P1 goal is not met.** The probe's assertability minimum is `min_pen =
 max(2, round(1 / max_loss))`, derived from the band arithmetic itself:
@@ -233,7 +303,69 @@ threshold:
 | what moved the residue between 8.2 and 10.5 | **untouched** |
 | branch coverage after the promotion | **untouched**, still owed from the last tranche |
 
-## 8. Process
+## 7b. The near-white window is EMPTY, which converts the untested half into an ask
+
+The ruling's sharpening, reproduced from the measurements: a flip in the predicted direction
+needs BGR **under** 12.0 and dE **over** 2.3. At the measured near-white ratio (4.58, from
+fixture 02's `#fafafa`: BGR 8.660 / dE76 1.892), BGR 12.0 corresponds to dE ≈ 2.6, so the
+window is roughly **BGR 8.7 – 12.0**. Across all 82 clusters in the standing sixteen **nothing
+falls in it** — the nearest point is that same `#fafafa` at 8.66, below the window.
+
+The prediction was not merely untested; **no fixture we have could have tested it.** So it
+becomes an intake ask rather than an open question, and it is now the second named line in
+`tests/fixtures/corpus_real/README.md` §2b: **light-garment artwork with a near-white
+element** — a white-on-white logo, a cream monogram on ivory, tone-on-tone lettering. Two
+named inputs, each justified by a measurement rather than a preference.
+
+## 7c. The metric argument now leads with invariance, not with the JND
+
+Recorded on `SUBSTRATE_DELTA` in that order, because the ruling rated it the stronger form and
+it explains R5 mechanically rather than re-measuring it:
+
+> **A perceptual metric is invariant to the pipeline's own preprocessing; a BGR constant is
+> not, and nothing warned when the preprocessing landed.**
+
+Mean-shift off → BGR 8.2, gated in and deleted; on → BGR 13.3, sewn. Across the same change
+dE76 moves 1.666 → 2.050 and stays under the JND on both sides. The gate's verdict flipped
+because of *our* smoothing, not because the garment changed.
+
+**The sRGB→Lab implementation is named**, since a Sharma et al. verification depends on which
+one feeds it: OpenCV `cv2.cvtColor(..., COLOR_BGR2Lab)` on float32 in 0–1, giving true L* in
+0–100. It returns **L\* = 2.185** for sRGB(8,8,8); the CIE formula by hand gives **2.193**. The
+0.008 is immaterial inside a 5.2-wide plateau and is **not resolved here** — stated, not
+picked.
+
+## 8. Verification
+
+**Base → Head: `444f623..9e62310`** (the instrument, the survey, the intake spec, the
+standards rule). CI **run 31900577885** (`ci.yml` #129) — conclusion reported from the GitHub
+API when it completes, not substituted from a local line.
+
+Local lanes on `9e62310`, both run to completion before being reported:
+
+| lane | result | exit | time |
+| --- | --- | ---: | ---: |
+| `pytest -q` | 1415 passed, 2 skipped, 2 deselected, 3 xfailed | 0 | 17:13 |
+| `STITCHIQ_NO_REBUILD_PASSTHROUGH=1 pytest -q` | 1409 passed, 8 skipped, 2 deselected, 3 xfailed | 0 | 16:51 |
+
+**The §4a/§4b/§7b/§7c material above is NOT in `9e62310`** — it is a later commit, and this
+line exists because the previous pack asserted a repository state that was only true of my
+working tree. Its Base → Head and CI run are reported when it lands.
+
+## 8b. Process — the failure that produced this ruling
+
+The previous pack was written, sent, and never pushed. `9e62310` sat local while the report
+described it in the present tense, so §8's "the rule is now in ENGINEERING_STANDARDS §5,
+binding" was false of the repository and every reproduction command in §1–§4 was unrunnable.
+The missing Base → Head line, the missing CI section and the unverifiable commands were one
+omission, not three.
+
+The both-lanes rule from `ENGINEERING_STANDARDS.md` §5 was then broken on its first
+application, by the instructed push that unblocked review. That is scoped explicitly rather
+than left as a silent exception: **an instruction from review may unblock a push; a judgement
+about risk may not.**
+
+## 9. Process
 
 The rule the ruling asked for is now in `docs/ENGINEERING_STANDARDS.md` §5, binding rather
 than disclosed: **both lanes finish before the push.** It records why — three disclosed

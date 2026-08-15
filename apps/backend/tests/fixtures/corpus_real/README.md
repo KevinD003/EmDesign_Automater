@@ -52,6 +52,26 @@ or a clean vector export rather than a phone photograph of cloth. Practically:
 One such input is worth more here than ten more photographs. If you can send only one thing,
 send this.
 
+## 2b. LIGHT-GARMENT ARTWORK WITH A NEAR-WHITE ELEMENT
+
+Added 2026-08-24, for the same kind of reason and from the same kind of measurement.
+
+The substrate rule deletes a colour cluster that is close to the garment's colour. Euclidean
+BGR is not perceptually uniform, so a single threshold is stricter near black than near white —
+measured, `SUBSTRATE_DELTA = 12.0` is about dE 1.9 near black and about dE 2.6 near white.
+The predicted consequence is that near white the rule should delete artwork it ought to keep,
+which is the direction that costs a customer their design rather than their machine time.
+
+**It could not be tested.** That failure needs BGR under 12.0 *and* dE over the ~2.3 JND, so
+the window is roughly **BGR 8.7 to 12.0** — and across all 82 colour clusters in the standing
+sixteen, **the window is empty.** The nearest point is fixture 02's `#fafafa` page at BGR
+8.66. The prediction is untested, not refuted, and no fixture we have can change that.
+
+**What closes it:** artwork on a white or cream garment carrying an element that is nearly but
+not exactly the garment colour — a white-on-white logo, a cream monogram on ivory, tone-on-tone
+lettering. One such job would test the half of the substrate question that sixteen fixtures
+cannot reach.
+
 ## 3. Metadata worth having, if it is cheap
 
 In `job.json`, or just in an email:
