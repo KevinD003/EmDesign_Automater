@@ -264,14 +264,31 @@ SUBSTRATE_ENCLOSED_MAX_MM2 = 40.0
 # (palette planning, halo suppression, the 0.4/0.3 mm morphology) and is not
 # diagnosed.
 #
-# WHY RAISING THE NUMBER IS THE WRONG FIX. Past 13.9 it is a constant fitted to
-# one fixture. The deeper problem is that EUCLIDEAN BGR IS THE WRONG QUANTITY
-# NEAR BLACK: `#080808` and `#000000` are the same colour to a human, and in
-# CIE L*a*b* they are 2.185 apart — under the ~2.3 just-noticeable difference —
-# while BGR calls them 13.856. Under the same ablation the perceptual figure
-# barely moves (1.389 -> 2.185; 1.666 -> 2.050 at the other block) and stays on
-# the correct side throughout. BGR crosses the gate; dE does not. A perceptual
-# metric would take its threshold FROM JND rather than from this corpus.
+# WHY RAISING THE NUMBER IS THE WRONG FIX, AND THE ARGUMENT LEADS WITH
+# INVARIANCE RATHER THAN WITH THE JND (CTO ruling 2026-08-24, which rated the
+# invariance form the stronger of the two — it explains R5 mechanically instead
+# of re-measuring it):
+#
+#   A PERCEPTUAL METRIC IS INVARIANT TO THE PIPELINE'S OWN PREPROCESSING; A BGR
+#   CONSTANT IS NOT, AND NOTHING WARNED WHEN THE PREPROCESSING LANDED.
+#
+# The ablation above is the evidence: mean-shift off -> BGR 8.2, gated in and
+# deleted; on -> BGR 13.3, sewn. Across that same change dE76 moves 1.666 ->
+# 2.050 (1.389 -> 2.185 at the other block) and stays under the JND on BOTH
+# sides. The gate's verdict flipped because of OUR smoothing, not because the
+# garment changed. That is a property argument, not a threshold argument.
+#
+# The threshold argument is secondary and still holds: `#080808` and `#000000`
+# are the same colour to a human, 2.185 apart in Lab — under the ~2.3
+# just-noticeable difference — while BGR calls them 13.856, so a perceptual
+# metric takes its threshold FROM JND rather than from this corpus.
+#
+# THE IMPLEMENTATION IS NAMED, because the verification depends on it: OpenCV
+# `cv2.cvtColor(..., COLOR_BGR2Lab)` on float32 in 0-1, which returns true L*
+# in 0-100 rather than the 8-bit encoding. It gives L* = 2.185 for sRGB(8,8,8);
+# the CIE formula by hand gives 2.193. The 0.008 is immaterial inside a
+# 5.2-wide plateau and is NOT resolved here — it is stated because a
+# verification run against Sharma et al. must know which implementation fed it.
 #
 # MEASURED BEFORE BELIEVING IT (`scripts/measure_substrate_metric.py`, all
 # sixteen fixtures, 82 clusters): swapping to dE76 at the JND changes exactly
