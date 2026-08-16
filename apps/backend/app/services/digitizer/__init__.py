@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from app.services.digitizer import constants
 from app.services.digitizer.accounting import (
+    log_classification,
     _stream_census,
     attribute_stops_from_stream,
     build_accounting,
@@ -42,6 +43,8 @@ from app.services.digitizer.columns import (
     _raycast_columns,
 )
 from app.services.digitizer.constants import (
+    _EDGE_LOG,
+    _SURFACE_LOG,
     _CLASSIFICATION_LOG,
     _DROP_LOG,
     _MAX_WORK_PX,
@@ -239,6 +242,13 @@ from app.services.digitizer.routing import (
     coalesce_params,
     travel_route_pad_px,
 )
+from app.services.digitizer.surface import (
+    _percentile,
+    _signed_distances,
+    boundary_deviation,
+    design_summary,
+    record,
+)
 from app.services.digitizer.satin import (
     _fill_border,
     _satin_axis_deg,
@@ -376,6 +386,14 @@ __all__ = [
     "SPUR_PRUNE_MULT",
     "SUBSTRATE_DE2000",
     "SUBSTRATE_DELTA",
+    "_EDGE_LOG",
+    "_SURFACE_LOG",
+    "_percentile",
+    "_signed_distances",
+    "boundary_deviation",
+    "design_summary",
+    "log_classification",
+    "record",
     "SUBSTRATE_ENCLOSED_MAX_MM2",
     "SUBSTRATE_ENCLOSED_MAX_SHARE",
     "SUBSTRATE_MAX_MM2",

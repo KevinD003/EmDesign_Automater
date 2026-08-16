@@ -39,6 +39,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from app.services.digitizer.constants import (
+    _EDGE_LOG,
     NO_AXIS_SPECK_MM2,
     SATIN_MAX_UNCOVERED,
     SATIN_MAX_W_MM,
@@ -86,6 +87,10 @@ def spine_satin(region, *, mm_per_px: float, spacing_px: int, max_step_px: int,
     like the satin column it sits inside; those are separate fabric-profile keys
     that happen to coincide on cotton.
     """
+    # SURFACE METRIC 1 owns its call: the per-side edge log is cleared HERE
+    # rather than by the caller, so a row can never carry the previous
+    # object's edges under this object's name — the C11 splice in miniature.
+    _EDGE_LOG.clear()
     import cv2
 
     # PULL COMPENSATION, PER SIDE (UP1). `pull_mm` is documented per side and

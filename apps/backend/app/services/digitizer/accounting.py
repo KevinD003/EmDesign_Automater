@@ -16,6 +16,10 @@ import it.
 
 from __future__ import annotations
 
+# `constants` is the layer BELOW this one, so importing it keeps the stated
+# contract ("imports nothing from the generation stack") intact.
+from app.services.digitizer.constants import _CLASSIFICATION_LOG
+
 # The commands a digitized stream is allowed to contain. Named, and closed:
 # an earlier draft counted with `out.get(key, 0) + 1`, which admits ANY command
 # and therefore always sums to `len(stitches)`. That made the census incapable
@@ -176,3 +180,28 @@ def record_substrate(center, substrate, de2000: float, px: int,
         "px": int(px),
         "gated_in": bool(gated_in),
     })
+
+
+def log_classification(seq: int, *, region_w: float, skeleton_w: float,
+                       uncovered: float, reason: str, decision: str,
+                       branches: int | None = None) -> None:
+    """One row of the satin/tatami decision log.
+
+    Lives here rather than inline in `pipeline.py` for the reason every other
+    census does: the emitters are two (the classification pass and the
+    sub-thread arm) and a hand-built dict in each is how two diagnostics come to
+    disagree about their own key names. It also buys `pipeline.py` nine lines
+    against its 1500-line gate, which had been paid in comment-golf for three
+    tranches — a structural constraint should be met structurally.
+    """
+    row = {
+        "seq": seq,
+        "region_median_w_mm": round(region_w, 2),
+        "skeleton_median_w_mm": round(skeleton_w, 2),
+        "uncovered_share": round(uncovered, 3),
+        "reason": reason,
+        "decision": decision,
+    }
+    if branches is not None:
+        row["pruned_branches"] = branches
+    _CLASSIFICATION_LOG.append(row)

@@ -26,6 +26,7 @@ from app.services import direction_field, segmentation
 from app.services.digitizer import constants, staging
 from app.services.digitizer.accounting import (
     _stream_census,
+    log_classification,
     attribute_stops_from_stream,
     build_accounting,
     record_substrate,
@@ -35,8 +36,10 @@ from app.services.digitizer.constants import (
     _CLASSIFICATION_LOG,
     _DROP_LOG,
     _MAX_WORK_PX,
+    _EDGE_LOG,
     _MIN_WORK_PX,
     _SUBSTRATE_LOG,
+    _SURFACE_LOG,
     _UPSCALE_MIN_SRC_PX,
     CONNECT_MM,
     CONTOUR_FILL_MAX_BAND_RATIO,
@@ -125,6 +128,7 @@ from app.services.digitizer.routing import (
     coalesce_params,
     travel_route_pad_px,
 )
+from app.services.digitizer.surface import record as record_surface
 from app.services.digitizer.satin import (
     _fill_border,
     _satin_axis_deg,
@@ -412,8 +416,9 @@ def digitize_image(
     min_area_px = max(0.0, float(min_region_mm2)) / (mm_per_px * mm_per_px)
     connect_px = CONNECT_MM / mm_per_px
 
-    for _diag in (_CLASSIFICATION_LOG, _LAST_HAIRLINE_BRANCHES, _DROP_LOG, _SUBSTRATE_LOG):
-        _diag.clear()
+    for _d in (_CLASSIFICATION_LOG, _LAST_HAIRLINE_BRANCHES, _DROP_LOG, _SUBSTRATE_LOG,
+               _SURFACE_LOG, _EDGE_LOG):
+        _d.clear()
     stitches: list[Stitch] = []
     color_stops: list[ColorStop] = []
     objects: list[DesignObject] = []
@@ -873,16 +878,11 @@ def digitize_image(
                     # NO_AXIS_REASONS for why they are named in one place.
                     skeleton_tatami_fallback += 1
             is_satin = skel_pts is not None
-            _CLASSIFICATION_LOG.append(
-                {
-                    "seq": seq + 1,
-                    "region_median_w_mm": round(region_med_w, 2),
-                    "skeleton_median_w_mm": round(median_w, 2),
-                    "uncovered_share": round(uncovered, 3),
-                    "reason": reason,
-                    "decision": "SATIN" if is_satin else "TATAMI",
-                }
-            )
+            if is_satin and _EDGE_LOG:
+                record_surface(seq + 1, contour, mm_per_px, list(_EDGE_LOG), hole_contours)
+            log_classification(seq + 1, region_w=region_med_w, skeleton_w=median_w,
+                               uncovered=uncovered, reason=reason,
+                               decision="SATIN" if is_satin else "TATAMI")
             fill_angle = 0.0  # satin carries its column angle instead; see below
             use_contour = False
             if skel_pts is not None:

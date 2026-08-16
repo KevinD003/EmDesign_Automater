@@ -39,6 +39,10 @@ LAYERS = [
     "columns",
     "fills",
     "satin",
+    # Surface metric 1. Above `satin` because it consumes the per-side edge sets
+    # `_column_ends` produces, and below `generation` so both the digitize and
+    # rebuild paths can reach it without either importing the other.
+    "surface",
     "underlay",
     "generation",
     "routing",

@@ -14,6 +14,7 @@ from app.services.digitizer.columns import (
     _raycast_columns,
 )
 from app.services.digitizer.constants import (
+    _EDGE_LOG,
     FILL_BORDER_MM,
     FILL_STAGGER_ROWS,
     HIRES_CROP_PAD_PX,
@@ -136,6 +137,10 @@ def _satin_columns(region, binary, dist, skel, used, step: int, max_step_px: int
         if not pairs:
             continue
         last_pair = pairs[-1]
+        # SURFACE METRIC 1: the per-side edge points, taken at the only place
+        # they exist as edges (spec §1.3). Diagnostic only — appended, never
+        # read here — so it cannot move a stitch.
+        _EDGE_LOG.extend((tuple(a), tuple(b)) for a, b in pairs)
         emitted, prev_end = _emit_columns(pairs, max_step_px, prev_end, float(step))
         pts.extend(emitted)
     if pts:
@@ -182,6 +187,13 @@ def _skeleton_satin_hires(region, mm_per_px, sat_step, max_step_px, extra_half_p
     )
     cand = [(x / f, y / f, j) for x, y, j in cand]
     axis_pts = [(x / f, y / f, j) for x, y, j in axis_pts]
+    # SURFACE METRIC 1: the edge log is written INSIDE `_skeleton_satin`, i.e. in
+    # HI-RES pixels, and must come back to working pixels with everything else.
+    # Scaled here, beside `cand` and `axis_pts`, so a future change to `f`
+    # cannot rescale two of the three. Missing this made the first surface
+    # measurement report 226 mm of deviation on a 90 mm design — physically
+    # impossible, which is the only reason it was caught immediately.
+    _EDGE_LOG[:] = [((ax / f, ay / f), (bx / f, by / f)) for (ax, ay), (bx, by) in _EDGE_LOG]
     wide_mask = cv2.resize(wide_mask, (region.shape[1], region.shape[0]),
                            interpolation=cv2.INTER_AREA)
     wide_mask = (wide_mask > 127).astype(region.dtype) * 255

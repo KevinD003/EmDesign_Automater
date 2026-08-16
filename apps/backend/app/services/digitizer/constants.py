@@ -529,6 +529,30 @@ _CLASSIFICATION_LOG: list[dict] = []
 _SUBSTRATE_LOG: list[dict] = []
 
 
+# SURFACE METRIC 1 — the satin EDGE PENETRATIONS of the object being generated,
+# per side, in working pixels: [(sideA, sideB), ...] one entry per column.
+#
+# Recorded HERE, at generation, because a failed prototype established that it
+# cannot be recovered anywhere else (SURFACE-METRICS-SPEC §1.3). Reading the
+# final stream back and capturing penetrations near a contour is confounded
+# three ways: the capture radius truncates the very distribution it measures
+# (every object's max came back at exactly the radius), fill interiors pollute
+# the edge population, and on a column narrower than twice the radius both sides
+# land in one band so the spread measures COLUMN WIDTH rather than raggedness.
+#
+# `_column_ends` already computes exactly these points, per side, by
+# construction. The instrument takes them rather than inferring them.
+#
+# Appended, never read by the pipeline; drained per object by the caller.
+_EDGE_LOG: list[tuple[tuple[float, float], tuple[float, float]]] = []
+
+# Per-object boundary-deviation rows for the most recent digitize_image call.
+# Populated from `_EDGE_LOG` once per satin object, against that object's OWN
+# stored contour, so the number a report quotes is the number the customer's
+# saved design would reproduce.
+_SURFACE_LOG: list[dict] = []
+
+
 # (area_mm2, perimeter_mm) of every region the speck filter dropped in the last
 # digitize — the raw material for the too-small-to-sew warning, and inspectable
 # by the bench when the warning's calibration is questioned.
