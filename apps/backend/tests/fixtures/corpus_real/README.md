@@ -72,6 +72,29 @@ not exactly the garment colour — a white-on-white logo, a cream monogram on iv
 lettering. One such job would test the half of the substrate question that sixteen fixtures
 cannot reach.
 
+## 2c. A MID-TONE OR DARK GARMENT WITH TONE-ON-TONE ARTWORK
+
+Added 2026-08-27, and it is the first ask justified by **two independent measurements**.
+It unblocks two queued items at once.
+
+**Reason one — the phantom `COLOR_CHANGE`.** It needs the dark-linework pass to run and then
+be suppressed. On a truly dark garment the pass is skipped one guard earlier
+(`substrate_lum >= DARK_CLOTH_LUM`, 60.0), so the phantom is unreachable; the class that can
+reach it is a mid-tone garment, light enough to clear 60.0 with its darkest thread inside the
+substrate distance. The corpus has none.
+
+**Reason two — `_INK_DELTA`.** `segmentation._reclaim_missed_ink` rescues artwork the matte
+dropped when it is at least 60.0 in **Euclidean BGR** from the garment. Measured across the
+sixteen, that single number spans **dE2000 7.4 to 20.4 — a 2.77x spread**, monotone in
+substrate luminance: dE 7.4 on white, dE 20.4 on black. So the darker the garment, the more
+perceptually distinct artwork must be before it will be rescued. What the corpus cannot answer
+is whether that ever discards something real, because its dark fixtures (A02, C24) carry
+high-contrast florals — nothing near their own cloth's tone.
+
+**What closes it:** a job on a royal-blue polo, a heather-grey tee, a tan cap — with an
+element close to the garment's own tone. A navy monogram on navy, a tonal crest, a grey-on-grey
+logo. That is where both mechanisms live.
+
 ## 3. Metadata worth having, if it is cheap
 
 In `job.json`, or just in an email:
