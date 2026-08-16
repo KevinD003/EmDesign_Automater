@@ -24,3 +24,8 @@ apps/*/.env
 .DS_Store
 .idea/
 .vscode/
+
+# digitizer benchmark artifacts (regenerate with tools/make_corpus.py)
+apps/backend/tools/corpus/
+apps/backend/tools/gt/
+apps/backend/tools/baseline.json
