@@ -308,11 +308,21 @@ SUBSTRATE_ENCLOSED_MAX_MM2 = 40.0
 # metric that should ship and needs an implementation verified against Sharma et
 # al.'s published pairs first; dE76 is weakest exactly in the saturated region
 # where the prediction was untested, so that half is UNTESTED, not refuted.
-# SUPERSEDED 2026-08-25 AND NO LONGER THE GATE. Kept defined for one reason: the
-# metric survey reports a before-and-after column and cannot do that if the
-# "before" vanishes. Nothing in `app/` compares against it any more —
-# `tests/test_substrate_gate.py` asserts that, because a retired constant that
-# quietly stays wired is how two thresholds come to disagree.
+# SUPERSEDED 2026-08-25. FATE DECIDED 2026-08-26: **RETAINED, AS INSTRUMENT
+# INPUT ONLY** — not left lying around, and the distinction is the point.
+#
+# It has exactly one legitimate reader: `scripts/measure_substrate_metric.py`,
+# which exists to compare the two metrics and cannot print a before-column if
+# the "before" is deleted. That is a real, ongoing need — the next threshold
+# question will want the same comparison — so retiring it outright would cost
+# the instrument to tidy a name.
+#
+# Everything else that read it has been MOVED, not re-pointed by habit: the
+# enumeration is in `docs/SUBSTRATE-SPACE-ENUMERATION-2026-08-26.md` and the
+# rule is that a live comparison against this constant is a defect.
+# `tests/test_substrate_gate.py::test_the_superseded_bgr_constant_is_not_
+# compared_against_anywhere` enforces it across `app/`, because a retired
+# constant that quietly stays wired is how two thresholds come to disagree.
 SUBSTRATE_DELTA = 12.0
 
 # ── The live gate: perceptual, and derived from what the rule is FOR ──────────
