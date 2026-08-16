@@ -197,6 +197,44 @@ def _corner_mask(img):
 # A component U2-Net dropped is reclaimed when it is at least this far (in BGR
 # distance) from the substrate colour — i.e. unmistakably ink rather than a
 # shadow or a compression artefact. Same threshold family as _corner_mask's 40.
+#
+# ── SETTLED 2026-08-27: THERE IS NO AXIS. Queued for a perceptual metric. ─────
+#
+# 60.0 does not express a fixed perceptual criterion, and the reason is stronger
+# than "it varies by garment". Held at a FIXED 60-BGR distance, dE2000 varies
+# 2.77x-3.46x purely from the DIRECTION of the step, at every luminance from 0.7
+# to 255. The between-substrate spread of the medians is only 1.4x.
+#
+# TWO WRONG ANSWERS WERE PROPOSED BEFORE THAT ONE, and both are recorded because
+# each looked like the finding at the time:
+#
+#   * saturation — extrapolated from the substrate gate's BGR/dE ratios (6.34
+#     near black, 4.58 near white, ~2.0 saturated), predicting coloured garments
+#     as the strict end at roughly threefold. The MAGNITUDE was right, the axis
+#     was not.
+#   * luminance — my own reading of the field survey, which found dE 7.4 at luma
+#     255 rising to 20.4 at luma 12 and called it monotone in garment tone. It is
+#     not: those field values sit at different points WITHIN each substrate's own
+#     range (7.4-11.0 against that substrate's minimum of 7.27; 19.5 against its
+#     median of 18.95), so the trend describes which artwork each fixture happens
+#     to carry, not the garment. A survey of real pixels cannot separate the two;
+#     only a controlled sweep at fixed distance can, and it was the CTO's.
+#
+# WHY THIS COMPLETES THE CASE WITHOUT NEW MATERIAL. If direction alone moves the
+# criterion 3x at a single substrate, then ONE FIXTURE DEMONSTRATES IT and no
+# comparison between garments is needed. The argument is the same invariance
+# argument that carried SUBSTRATE_DELTA to CIEDE2000: a Euclidean-BGR constant
+# cannot express a perceptual criterion anywhere in the space.
+#
+# CONSEQUENCE, and note the SIGN: this is the opposite error from the substrate
+# gate. That one sewed invisible thread; this one DISCARDS VISIBLE ARTWORK the
+# matte already dropped, on whichever side of the space the step happens to run.
+#
+# NOT MOVED HERE, deliberately — not in the same tranche as the legibility
+# metric. What the intake ask (corpus_real/README.md §2c, tone-on-tone artwork
+# on a dark garment) still buys is the narrower question of CONSEQUENCE: whether
+# the current constant produces a WRONG VERDICT on real artwork. That is no
+# longer a blocker on the change, only on knowing what the change is worth.
 _INK_DELTA = 60.0
 # ...and at least this share of the frame, so JPEG speckle and stray pixels are
 # not promoted into objects. 0.02% of a 900x900 frame is ~160px: far below a
