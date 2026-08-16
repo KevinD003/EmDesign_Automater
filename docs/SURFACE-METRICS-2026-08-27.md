@@ -24,15 +24,29 @@ merely surprising.** The first run reported **226 mm of deviation on a 90 mm des
 hi-res space collision); the second reported ring *width* as raggedness (holes not counted as
 boundaries). Both in §3.
 
-**R3 — the `_INK_DELTA` magnitude I predicted is right and the AXIS is wrong.** I extrapolated
-from the substrate gate's BGR/dE ratios that saturated or coloured garments would be the strict
-end, roughly threefold. Measured: the spread is **2.77×** — magnitude correct — but it is
-monotone in **luminance**, running the other way. **The darker the garment, the more perceptual
-difference this rule demands before it will rescue dropped artwork.**
+**R3 — CORRECTED 2026-08-27. Both proposed axes are wrong, including my own, and the truth is
+stronger than either.** I first predicted saturation; the survey led me to claim **luminance**
+instead. The CTO's controlled sweep settles it: held at a fixed 60-BGR distance, dE2000 varies
+**2.77×–3.46× purely from the DIRECTION of the step**, at every luminance from 0.7 to 255,
+while the between-substrate spread of the medians is only **1.4×**.
+
+**So there is no axis.** My "monotone in luminance" reading was an artefact of comparing field
+values that sit at different points within each substrate's own range — 7.4–11.0 at luma 255
+against that substrate's *minimum* of 7.27; 19.5 at luma 0.7 against its *median* of 18.95. The
+trend described which artwork each fixture carries, not the garment. A survey of real pixels
+cannot separate those; only a controlled sweep can, and mine was not one.
+
+**This is a promotion, not a demotion.** If direction alone moves the criterion threefold at a
+single substrate, **one fixture demonstrates it** and no comparison between garments is needed.
+The case for moving `_INK_DELTA` to a perceptual metric is therefore **complete and no longer
+blocked on the intake ask** — it rests on the same invariance argument that carried the
+substrate gate. The ask stays open for the narrower question of *consequence*: whether the
+current constant produces a **wrong verdict** on real tone-on-tone artwork.
 
 **R4 — my own "the corpus has no mid-tones" framing was too coarse.** 09 sits at luma 162 and
-C18 at 195; that is *why* the trend was measurable. What is missing is narrower and is stated
-as such in §4.
+C18 at 195; that is *why* a trend was visible at all. Under R3 this matters less than I thought:
+the between-substrate spread is only 1.4×, so mid-tones were never going to be the decisive
+material. What the intake ask buys is *consequence*, not the axis.
 
 ---
 
@@ -154,10 +168,16 @@ BGR from the garment. Sampling the real pixels within ±5 of that boundary on al
 | 12 | C24 | 20.4 |
 | 0.7 | A02 | **19.5** |
 
-**2.77× spread in what "unmistakably ink" means** — and monotone in luminance, not saturation
-(R3). The substrate gate's ratios do not transfer because they were measured at *small*
-distances near black where L\* is steep; 60 BGR from black lands well up the L\* curve while
-60 BGR from white barely moves it. **A ratio is a local property, and carrying it across a
+**2.77× spread in what "unmistakably ink" means.** My reading of this table — that the spread
+is monotone in garment luminance — is **withdrawn**; see R3. These are field values at whatever
+distances the real artwork happens to sit, and they cannot separate a garment effect from an
+artwork effect. What they do establish, and what survives, is the *magnitude*: a single
+Euclidean-BGR constant means very different things to a human at different points in the space.
+The controlled sweep locates that variation in step DIRECTION, not in the garment.
+
+The substrate gate's own ratios (6.34 near black, 4.58 near white) do not transfer here either,
+and that is worth keeping: they were measured at *small* distances near black where L\* is
+steep, while 60 BGR is a large step. **A ratio is a local property, and carrying it across a
 distance is the same class of error as carrying a constant across a space.**
 
 **Direction matters: this is the opposite error from the substrate gate.** That one sewed
@@ -188,7 +208,8 @@ One job unblocks two queued items.
 | **Surface Metric 2 — legibility** | **not built** — and §2b makes it the load-bearing half |
 | a band or gate on boundary deviation | **deliberately absent** |
 | fills' boundary points | **not instrumented** — only satin objects are measured; a fill's scanline–edge intersections are equally explicit at generation but were not hooked |
-| `_INK_DELTA`'s decision test | **blocked on §5** |
+| `_INK_DELTA` moved to a perceptual metric | **queued, NO LONGER BLOCKED** (R3) — deliberately not in the same tranche as the legibility metric |
+| `_INK_DELTA`'s decision test (does it produce a WRONG verdict?) | **blocked on §5** — consequence, not space |
 | aligning the two run emitters | **named, not written** |
 | rebuild census, TEXTURE_RETRY's second question, SH2 | **queued** |
 
