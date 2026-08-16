@@ -21,20 +21,39 @@ from app.models.design import (
     StitchType,
     UnderlayType,
 )
+from app.services import shape
 
 # Tunables (mm unless noted) — see spec "Quick Reference" table.
-ROW_SPACING_MM = 0.6      # fill row pitch (~4-6 stitches/mm density class)
+# Fill row pitch. 0.6mm was sparse enough to leave fabric showing between rows with
+# standard 40wt thread (~0.4mm laid width); 0.40mm is the industry-standard tatami
+# density and is what makes a fill read as solid.
+ROW_SPACING_MM = 0.40
 MAX_STITCH_MM = 6.0       # subdivide longer runs (machine safety << 12.7mm)
 MIN_REGION_MM2 = 4.0      # drop specks smaller than this
 CONNECT_MM = 3.0          # row-to-row travel below this = stitch, else JUMP
 DEFAULT_MAX_COLORS = 6
 
-# Satin classification (spec: min column 0.8mm, max width 10-12mm; we cap at 4mm
-# where satin clearly beats tatami, and require an elongated shape).
+# Satin classification (spec: min column 0.8mm, max width 10-12mm). Width is measured
+# from the DISTANCE TRANSFORM (services/shape.local_width), not a bounding box, so a
+# curved swoosh or a ring is classified on its true stroke width. Length is derived as
+# area/width, which is likewise curvature-invariant (a bounding box is not).
 SATIN_MIN_W_MM = 0.8
-SATIN_MAX_W_MM = 4.0
+SATIN_MAX_W_MM = 6.0      # above this, split-satin/tatami reads better than one column
 SATIN_ASPECT = 2.5
-SATIN_SPACING_MM = 0.4    # zigzag pitch along the column
+SATIN_SPACING_MM = 0.4    # spacing between penetrations on the SAME rail (visible density)
+
+# Tatami stagger (spec §4.3): consecutive rows must not put their needle penetrations
+# on the same x, or the fill shows a straight "split line" down the shape. Fractions of
+# one stitch length, cycled row to row — the classic 4-step brick pattern.
+STAGGER_PATTERN = (0.0, 0.5, 0.25, 0.75)
+FILL_STITCH_MM = 4.0      # nominal tatami stitch length (subdivision pitch within a row)
+FILL_DEFAULT_ANGLE = 45.0  # blobby regions: 45° avoids aligning with the fabric weave
+FILL_ELONGATION_MIN = 1.6  # above this, fill along the shape's own long axis instead
+
+# Travel runs (spec §4.6): short hops between objects are stitched as a running stitch
+# (hidden under later layers) instead of TRIM + JUMP. Trims are slow and leave tails.
+TRAVEL_MAX_MM = 8.0
+TRAVEL_STEP_MM = 2.0
 
 # Underlay (spec §4.6): edge-walk inside fills, center-walk under satin columns.
 UNDERLAY_STEP_MM = 2.0    # running-stitch length
@@ -82,6 +101,250 @@ def _is_background(center_bgr, corners_bgr) -> bool:
     return bool(np.linalg.norm(center_bgr.astype(float) - corners_bgr.astype(float)) < 40.0)
 
 
+def _background_clusters(labels, centers_lab, n_clusters: int) -> set[int]:
+    """Identify backdrop clusters from the image BORDER RING, not the four corners.
+
+    The v1 rule compared each cluster to the average of the 4 corner pixels. One
+    subject touching one corner poisons that average, the true backdrop stops matching,
+    and the entire background is stitched as a solid object (measured on a subject-in-
+    corner test: a 3038-stitch white block with 132 jumps). Border-ring occupancy is
+    unaffected by a subject touching an edge.
+
+    Guards:
+    - if no cluster dominates the ring, the image is full-bleed (a photo, not artwork
+      on a backdrop) and nothing is treated as background;
+    - a cluster perceptually close to the dominant backdrop is also background, which
+      catches patterned/striped backdrops.
+    """
+    import numpy as np
+
+    h, w = labels.shape
+    band = max(2, int(min(h, w) * 0.01))
+    ring = np.concatenate([
+        labels[:band, :].ravel(), labels[-band:, :].ravel(),
+        labels[:, :band].ravel(), labels[:, -band:].ravel(),
+    ])
+    if ring.size == 0:
+        return set()
+    share = np.bincount(ring, minlength=n_clusters).astype(np.float64) / ring.size
+    dominant = int(np.argmax(share))
+    if share[dominant] < 0.45:
+        return set()  # full-bleed image — no backdrop to remove
+    bg = set()
+    for c in range(n_clusters):
+        if share[c] >= 0.35:
+            bg.add(c)
+        elif share[c] >= 0.08 and float(np.linalg.norm(centers_lab[c] - centers_lab[dominant])) < 25.0:
+            bg.add(c)  # same backdrop, different shade (stripes, gradients, paper tone)
+    return bg
+
+
+def _decode(data: bytes):
+    """Decode to ``(bgr, alpha_mask_or_None)``.
+
+    ``IMREAD_COLOR`` silently DISCARDS the alpha channel, which destroys the most
+    common real upload: a logo on a transparent background. A dark logo then becomes
+    indistinguishable from the (also-black) transparent area and the whole canvas
+    digitizes as one blob. Decoding UNCHANGED and keeping alpha as an explicit
+    foreground mask fixes that outright.
+    """
+    import cv2
+    import numpy as np
+
+    img = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_UNCHANGED)
+    if img is None:
+        raise ValueError("Could not decode image (expected PNG/JPEG/BMP/WebP)")
+    if img.ndim == 2:
+        return cv2.cvtColor(img, cv2.COLOR_GRAY2BGR), None
+    if img.shape[2] == 4:
+        alpha = img[..., 3]
+        bgr = img[..., :3].copy()
+        # Composite over white so semi-transparent edges quantize toward the artwork
+        # colour rather than toward black.
+        a = (alpha.astype(np.float32) / 255.0)[..., None]
+        bgr = (bgr.astype(np.float32) * a + 255.0 * (1.0 - a)).astype(np.uint8)
+        return bgr, (alpha > 127).astype(np.uint8) * 255
+    return img[..., :3].copy(), None
+
+
+def _quantize(img, k: int, fg_mask):
+    """K-means colour quantization in CIE L*a*b*, over foreground pixels only.
+
+    Two corrections over the v1 BGR clustering:
+    - **L*a*b***: Euclidean distance in Lab approximates *perceived* colour difference,
+      so clusters split where a human sees a different colour. In BGR the same distance
+      means different things in different parts of the cube, which mangles skin tones,
+      greens and shadows.
+    - **Foreground-only**: fitting over background pixels wastes cluster budget on the
+      backdrop — a 6-colour logo on white would spend a centre describing the white.
+
+    Returns ``(labels_hw, centers_bgr)``.
+    """
+    import cv2
+    import numpy as np
+
+    lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
+    h, w = lab.shape[:2]
+    flat = lab.reshape(-1, 3).astype(np.float32)
+    sel = (fg_mask.reshape(-1) > 0) if fg_mask is not None else np.ones(h * w, bool)
+    if sel.sum() < k:
+        sel = np.ones(h * w, bool)
+    sample = flat[sel]
+    k = max(1, min(k, int(sel.sum())))
+    _, lbl, centers = cv2.kmeans(
+        sample, k, None,
+        (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.5), 5, cv2.KMEANS_PP_CENTERS,
+    )
+    # Assign every pixel (including background) to its nearest centre so the label map
+    # stays whole-image; background pixels get masked out by the caller.
+    d = ((flat[:, None, :] - centers[None, :, :]) ** 2).sum(axis=2)
+    labels = np.argmin(d, axis=1).reshape(h, w)
+
+    counts = np.bincount(labels.reshape(-1)[sel], minlength=len(centers)).astype(np.float64)
+    centers, labels = _merge_near_clusters(centers, labels, counts)
+    centers_bgr = cv2.cvtColor(centers.astype(np.uint8)[None, ...], cv2.COLOR_LAB2BGR)[0]
+    return labels, centers_bgr, centers
+
+
+# Two Lab colours closer than this read as the SAME thread — no thread chart resolves
+# finer, and no embroiderer would load a second needle for it.
+DELTA_E_MERGE = 12.0
+
+
+def _merge_near_clusters(centers, labels, counts):
+    """Merge clusters that are perceptually identical (Lab ΔE < ``DELTA_E_MERGE``).
+
+    Anti-aliased artwork has a fringe of intermediate colours along every edge, and
+    k-means happily spends real cluster budget describing it — on a 2-colour logo, 4 of
+    6 centres went to fringe bands of 41-608 px. Those bands fall under the minimum
+    region area and get dropped, so the pixels they stole are simply never stitched
+    (measured: 95%→78% coverage). Merging by ΔE returns them to their parent colour.
+    """
+    import numpy as np
+
+    n = len(centers)
+    parent = list(range(n))
+
+    def find(i):
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    order = np.argsort(-counts)  # merge small clusters into large ones
+    for a_i in range(n):
+        for b_i in range(a_i + 1, n):
+            a, b = int(order[a_i]), int(order[b_i])
+            if find(a) == find(b):
+                continue
+            if float(np.linalg.norm(centers[a] - centers[b])) < DELTA_E_MERGE:
+                parent[find(b)] = find(a)
+
+    roots = sorted({find(i) for i in range(n)})
+    remap = {r: i for i, r in enumerate(roots)}
+    lut = np.array([remap[find(i)] for i in range(n)], np.int32)
+
+    new_centers = np.zeros((len(roots), 3), np.float32)
+    for r in roots:
+        members = [i for i in range(n) if find(i) == r]
+        w = counts[members]
+        tot = w.sum()
+        new_centers[remap[r]] = (
+            (centers[members] * w[:, None]).sum(axis=0) / tot if tot > 0 else centers[members].mean(axis=0)
+        )
+    return new_centers, lut[labels]
+
+
+def _prefilter(img):
+    """Edge-preserving smoothing before quantization.
+
+    Photos and re-saved JPEGs carry noise and ringing that k-means turns into thousands
+    of speckle regions (each one an object, a trim and two jumps). A bilateral filter
+    flattens those while keeping the hard colour edges that become stitch boundaries.
+    """
+    import cv2
+
+    return cv2.bilateralFilter(img, d=7, sigmaColor=45, sigmaSpace=7)
+
+
+def _segment_inside(mask, a, b, samples: int = 24) -> bool:
+    """True when the straight segment a→b stays inside ``mask`` (both in pixel space)."""
+    h, w = mask.shape[:2]
+    for i in range(samples + 1):
+        t = i / samples
+        x = int(round(a[0] + (b[0] - a[0]) * t))
+        y = int(round(a[1] + (b[1] - a[1]) * t))
+        if not (0 <= x < w and 0 <= y < h) or mask[y, x] == 0:
+            return False
+    return True
+
+
+def _subdivide(pts, max_step_px: float):
+    """Split any segment longer than ``max_step_px`` so no stitch exceeds the machine limit."""
+    if len(pts) < 2:
+        return list(pts)
+    out = [pts[0]]
+    for prev, cur in zip(pts, pts[1:]):
+        d = _dist(prev, cur)
+        n = max(1, int(-(-d // max_step_px)))  # ceil
+        for i in range(1, n + 1):
+            out.append((prev[0] + (cur[0] - prev[0]) * i / n, prev[1] + (cur[1] - prev[1]) * i / n))
+    return out
+
+
+def _center_walk_rails(rail_a, rail_b, step_px: float):
+    """Center-walk underlay for a rail-defined satin column.
+
+    ``_center_walk`` rotates the region and takes the mid-row of each column, which is
+    only correct for a straight bar. On a RING it returns the midpoint between the top
+    and bottom arcs — i.e. a straight chord across the middle of the circle, stitched
+    as a visible line that is not in the artwork. Halfway between the two rails is the
+    column's true midline for any curvature. Returns [(x, y, is_jump)].
+    """
+    mids = [((a[0] + b[0]) / 2.0, (a[1] + b[1]) / 2.0) for a, b in zip(rail_a, rail_b)]
+    if len(mids) < 2:
+        return []
+    out = [mids[0]]
+    acc = 0.0
+    for prev, cur in zip(mids, mids[1:]):
+        acc += _dist(prev, cur)
+        if acc >= step_px:
+            out.append(cur)
+            acc = 0.0
+    if out[-1] != mids[-1]:
+        out.append(mids[-1])
+    if len(out) < 2:
+        return []
+    return [(out[0][0], out[0][1], True)] + [(p[0], p[1], False) for p in out[1:]]
+
+
+def _satin_from_rails(rail_a, rail_b, max_step_px: float, pull_px: float = 0.0):
+    """True satin zigzag across a column defined by its two rails.
+
+    At each station the needle alternates rails, so every stitch crosses the column —
+    and because the rails follow the outline, the column follows curvature (an S-stroke
+    or a ring stitches correctly, which a single-angle rotation cannot do).
+
+    ``pull_px`` extends each crossing outward at BOTH ends: pull compensation belongs
+    across the column's width only, never along its length (an isotropic dilation also
+    lengthens the column, smearing its ends).
+    """
+    raw: list[tuple[float, float]] = []
+    for i, (a, b) in enumerate(zip(rail_a, rail_b)):
+        dx, dy = b[0] - a[0], b[1] - a[1]
+        L = (dx * dx + dy * dy) ** 0.5
+        if L < 1e-9:
+            continue
+        ux, uy = dx / L, dy / L
+        A = (a[0] - ux * pull_px, a[1] - uy * pull_px)
+        B = (b[0] + ux * pull_px, b[1] + uy * pull_px)
+        raw.append(A if i % 2 == 0 else B)
+    if len(raw) < 2:
+        return []
+    pts = _subdivide(raw, max_step_px)
+    return [(pts[0][0], pts[0][1], True)] + [(p[0], p[1], False) for p in pts[1:]]
+
+
 def digitize_image(
     data: bytes,
     fabric_type: str = "cotton",
@@ -92,10 +355,7 @@ def digitize_image(
     import cv2
     import numpy as np
 
-    buf = np.frombuffer(data, np.uint8)
-    img = cv2.imdecode(buf, cv2.IMREAD_COLOR)
-    if img is None:
-        raise ValueError("Could not decode image (expected PNG/JPEG/BMP/WebP)")
+    img, alpha_fg = _decode(data)
 
     hoop_w, hoop_h = _parse_hoop(hoop_size)
     ih, iw = img.shape[:2]
@@ -104,26 +364,33 @@ def digitize_image(
     if max(iw, ih) > _MAX_WORK_PX:
         f = _MAX_WORK_PX / max(iw, ih)
         img = cv2.resize(img, (int(iw * f), int(ih * f)), interpolation=cv2.INTER_AREA)
+        if alpha_fg is not None:
+            alpha_fg = cv2.resize(alpha_fg, (img.shape[1], img.shape[0]), interpolation=cv2.INTER_NEAREST)
         mm_per_px /= f
         ih, iw = img.shape[:2]
 
-    # K-means quantization in BGR.
-    k = max(2, min(int(max_colors) + 1, 8))  # +1 slot for background
-    Z = img.reshape(-1, 3).astype(np.float32)
-    _, labels, centers = cv2.kmeans(
-        Z, k, None, (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 20, 1.0), 3, cv2.KMEANS_PP_CENTERS
-    )
-    labels = labels.reshape(ih, iw)
-    centers = centers.astype(np.uint8)
+    img = _prefilter(img)
 
-    corners = np.array(
-        [img[0, 0], img[0, -1], img[-1, 0], img[-1, -1]], dtype=np.float32
-    ).mean(axis=0)
-
-    # Collect foreground clusters, darkest-first stitching order (spec §4.2).
-    clusters = [
-        (int(c.astype(int).sum()), idx, c) for idx, c in enumerate(centers) if not _is_background(c, corners)
-    ]
+    if alpha_fg is not None:
+        # Alpha is authoritative: quantize the visible artwork only, spend the whole
+        # colour budget on it, and skip backdrop detection entirely.
+        fg_mask = alpha_fg
+        k = max(1, min(int(max_colors), 8))
+        labels, centers, _lab = _quantize(img, k, fg_mask)
+        clusters = [(int(c.astype(int).sum()), idx, c) for idx, c in enumerate(centers)]
+    else:
+        # Quantize over ALL pixels, with extra budget so the backdrop (and its shades)
+        # get their own clusters. The backdrop must be REPRESENTED in the label map for
+        # the border-ring rule to identify it — fitting over a guessed foreground makes
+        # every background pixel fall into an artwork cluster, and the whole image is
+        # then either kept or dropped together.
+        k = max(2, min(int(max_colors) + 2, 10))
+        labels, centers, centers_lab = _quantize(img, k, None)
+        bg = _background_clusters(labels, centers_lab, len(centers))
+        keep = [i for i in range(len(centers)) if i not in bg]
+        clusters = [(int(centers[i].astype(int).sum()), i, centers[i]) for i in keep]
+        fg_mask = np.isin(labels, keep).astype(np.uint8) * 255
+    # Darkest-first stitching order (spec §4.2).
     clusters.sort(key=lambda t: t[0])
     if not clusters:  # image was all "background" — keep the darkest cluster anyway
         darkest = min(range(len(centers)), key=lambda i: int(centers[i].astype(int).sum()))
@@ -142,7 +409,11 @@ def digitize_image(
     emitted_stop = 0  # actual color-stop count — only clusters that yield objects get one
     for _, cluster_idx, center in clusters:
         mask = (labels == cluster_idx).astype(np.uint8) * 255
+        mask = cv2.bitwise_and(mask, fg_mask)  # never stitch the background
+        # OPEN clears speckle, CLOSE fills the pinholes that quantization punches into
+        # otherwise-solid areas (each pinhole would otherwise become a spurious hole).
         mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
         # RETR_CCOMP: 2-level hierarchy — top-level outlines + their interior holes
         # (letter counters, donuts). RETR_EXTERNAL would fill an 'o' solid.
         contours, hierarchy = cv2.findContours(mask, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
@@ -169,23 +440,57 @@ def digitize_image(
             for h in hole_contours:
                 cv2.drawContours(region, [h], -1, 0, thickness=cv2.FILLED)
 
-            # Narrow elongated region → satin column; otherwise tatami fill.
+            # --- Satin vs fill, decided on TRUE stroke width (not a bounding box) ---
             rect = cv2.minAreaRect(contour)
-            w_mm = min(rect[1]) * mm_per_px
-            l_mm = max(rect[1]) * mm_per_px
-            is_satin = SATIN_MIN_W_MM <= w_mm <= SATIN_MAX_W_MM and l_mm / max(w_mm, 0.01) >= SATIN_ASPECT
+            med_w_px, _ = shape.local_width(region)
+            w_mm = med_w_px * mm_per_px
+            # Length from area/width is curvature-invariant, so an S-stroke or a ring
+            # measures its real run length rather than its bounding diagonal.
+            len_mm = (net_area * mm_per_px * mm_per_px) / max(w_mm, 0.01)
+            is_satin = (
+                SATIN_MIN_W_MM <= w_mm <= SATIN_MAX_W_MM
+                and len_mm / max(w_mm, 0.01) >= SATIN_ASPECT
+            )
             under_step_px = max(1, round(UNDERLAY_STEP_MM / mm_per_px))
             pull_mm = _default_pull(fabric_type)
-            top_region = _dilate_pull(region, pull_mm, mm_per_px)  # pull comp widens the top layer
+            rails = None
             if is_satin:
-                satin_step_px = max(1, round(SATIN_SPACING_MM / mm_per_px))
-                under = _center_walk(region, rect, under_step_px, connect_px)  # underlay on the true shape
-                pts = _with_underlay(under, _satin_zigzag(top_region, rect, satin_step_px, connect_px, max_step_px), connect_px)
+                # One station per half-spacing: alternating rails puts penetrations on
+                # each side SATIN_SPACING_MM apart, which is the density the user sees.
+                station_px = max(1.0, (SATIN_SPACING_MM / 2.0) / mm_per_px)
+                stations = int(min(4000, max(4, round(len_mm / mm_per_px / station_px))))
+                # Reject branching shapes (a cross, a star, the letters H/K/X): their
+                # rails are not the two sides of one column, so zigzagging between them
+                # lays stitches straight across the artwork.
+                rails = (
+                    shape.column_rails(region, stations)
+                    if shape.is_single_column(region, med_w_px)
+                    else None
+                )
+                is_satin = rails is not None
+
+            fill_angle = 0.0
+            if is_satin:
+                pull_px = (pull_mm / 2.0) / mm_per_px
+                under = _center_walk_rails(rails[0], rails[1], under_step_px)
+                pts = _with_underlay(
+                    under, _satin_from_rails(rails[0], rails[1], max_step_px, pull_px), connect_px
+                )
                 underlay = UnderlayType.CENTER_WALK
             else:
+                top_region = _dilate_pull(region, pull_mm, mm_per_px)  # pull comp widens the top layer
+                # Aim the fill along the shape; blobby regions get 45° so rows never run
+                # parallel to the fabric weave (a flat, banded look).
+                ang, elong = shape.principal_angle(region)
+                fill_angle = ang if elong >= FILL_ELONGATION_MIN else FILL_DEFAULT_ANGLE
                 inset_px = max(1, round(EDGE_INSET_MM / mm_per_px))
                 under = _edge_walk(region, inset_px, under_step_px, connect_px)
-                pts = _with_underlay(under, _scanline_fill(top_region, row_px, max_step_px, connect_px), connect_px)
+                fill_step_px = max(2, round(FILL_STITCH_MM / mm_per_px))
+                pts = _with_underlay(
+                    under,
+                    _scanline_angled(top_region, fill_angle, row_px, fill_step_px, connect_px),
+                    connect_px,
+                )
                 underlay = UnderlayType.EDGE_WALK
             if len(pts) < 2:
                 continue
@@ -196,9 +501,32 @@ def digitize_image(
                     stitches.append(Stitch(x=stitches[-1].x, y=stitches[-1].y, command="COLOR_CHANGE"))
                 stop_start = len(stitches)
             obj_start = len(stitches)
+            connect = ConnectMethod.TRIM
             if stitches and stitches[-1].command != "COLOR_CHANGE":
-                stitches.append(Stitch(x=stitches[-1].x, y=stitches[-1].y, command="TRIM"))
-                stitches.append(Stitch(x=pts[0][0] * mm_per_px, y=pts[0][1] * mm_per_px, command="JUMP"))
+                ex, ey = pts[0][0] * mm_per_px, pts[0][1] * mm_per_px
+                last = stitches[-1]
+                gap = _dist((last.x, last.y), (ex, ey))
+                # A travel run is only invisible if it stays ON this colour's own
+                # artwork, where surrounding stitching hides it. Crossing bare fabric
+                # (between two strokes of a line drawing, say) would show as a stray
+                # thread that is not in the customer's image, so that must be a trim.
+                covered = _segment_inside(
+                    mask, (last.x / mm_per_px, last.y / mm_per_px), (pts[0][0], pts[0][1])
+                )
+                if gap <= TRAVEL_MAX_MM and covered:
+                    # Short hop → walk there with running stitches (hidden by later
+                    # layers) instead of TRIM + JUMP. Trims are slow and leave tails.
+                    n = max(1, int(-(-gap // TRAVEL_STEP_MM)))
+                    for i in range(1, n + 1):
+                        stitches.append(Stitch(
+                            x=last.x + (ex - last.x) * i / n,
+                            y=last.y + (ey - last.y) * i / n,
+                            command="STITCH",
+                        ))
+                    connect = ConnectMethod.TRAVEL_RUN
+                else:
+                    stitches.append(Stitch(x=last.x, y=last.y, command="TRIM"))
+                    stitches.append(Stitch(x=ex, y=ey, command="JUMP"))
             for (x, y, jump) in pts:
                 stitches.append(
                     Stitch(x=x * mm_per_px, y=y * mm_per_px, command="JUMP" if jump else "STITCH")
@@ -220,12 +548,12 @@ def digitize_image(
                     stitch_type=StitchType.SATIN if is_satin else StitchType.TATAMI,
                     color_stop=this_stop,
                     density=1.0 / (SATIN_SPACING_MM if is_satin else ROW_SPACING_MM),
-                    stitch_angle=round(float(rect[2]), 1) if is_satin else 0.0,
+                    stitch_angle=round(float(rect[2]), 1) if is_satin else round(fill_angle, 1),
                     underlay_type=underlay,
                     pull_compensation=round(pull_mm, 2),
                     entry_point=Point(x=pts[0][0] * mm_per_px, y=pts[0][1] * mm_per_px),
                     exit_point=Point(x=pts[-1][0] * mm_per_px, y=pts[-1][1] * mm_per_px),
-                    connect_method=ConnectMethod.TRIM,
+                    connect_method=connect,
                     stitch_count=count,
                     contour=outline,
                     holes=hole_outlines,
@@ -266,35 +594,112 @@ def digitize_image(
 
 
 def _scanline_fill(region, row_px: int, max_step_px: int, connect_px: float):
-    """Boustrophedon scanline fill of a filled-contour mask.
+    """Boustrophedon scanline fill with cell decomposition.
 
-    Returns [(x_px, y_px, is_jump)] — stitch points row by row, alternating
-    direction; long runs subdivided; far row-to-row moves flagged as jumps.
+    Returns [(x_px, y_px, is_jump)]. Rows are grouped into *cells* that each carry a
+    single run per row, so a cell is stitched start-to-finish without interruption.
     """
     import numpy as np
 
-    pts: list[tuple[float, float, bool]] = []
     h = region.shape[0]
-    left_to_right = True
+
+    # --- 1. rows -> runs -------------------------------------------------------
+    rows: list[list[tuple[int, int]]] = []
+    ys: list[int] = []
     for y in range(0, h, row_px):
         cols = np.flatnonzero(region[y])
+        ys.append(y)
         if cols.size == 0:
+            rows.append([])
             continue
-        # Split the row into contiguous runs (handles concave shapes/holes).
         splits = np.flatnonzero(np.diff(cols) > 1)
         runs = np.split(cols, splits + 1)
-        segs = [(int(rn[0]), int(rn[-1])) for rn in runs if rn.size >= 2]
+        rows.append([(int(rn[0]), int(rn[-1])) for rn in runs if rn.size >= 2])
+
+    # --- 2. boustrophedon cell decomposition ----------------------------------
+    # A shape with a hole (a ring, the counter of an 'o') puts TWO runs on each row.
+    # Serpentining straight through them jumps across the hole on EVERY row - measured
+    # at 107-130 jumps and >3m of travel on one 90mm ring logo. Splitting the region
+    # into cells that each carry one run per row removes those jumps outright: only the
+    # (few) cell-to-cell transitions can become jumps.
+    cell_of: dict[tuple[int, int], int] = {}
+    next_cell = 0
+    prev_ri = -1
+    for ri, segs in enumerate(rows):
         if not segs:
+            prev_ri = -1  # a gap in the shape always breaks the cell chain
             continue
-        segs.sort(key=lambda s: s[0], reverse=not left_to_right)
-        for x0, x1 in segs:
+        prev_segs = rows[prev_ri] if prev_ri >= 0 else []
+        for si, s in enumerate(segs):
+            over = [pj for pj, ps in enumerate(prev_segs) if not (s[1] < ps[0] or s[0] > ps[1])]
+            if len(over) == 1:
+                ps = prev_segs[over[0]]
+                back = [sj for sj, ss in enumerate(segs) if not (ss[1] < ps[0] or ss[0] > ps[1])]
+                if len(back) == 1:  # 1-to-1 continuation -> same cell
+                    cell_of[(ri, si)] = cell_of[(prev_ri, over[0])]
+                    continue
+            cell_of[(ri, si)] = next_cell  # a split, a merge, or a fresh start
+            next_cell += 1
+        prev_ri = ri
+
+    cells: dict[int, list[tuple[int, int]]] = {}
+    for key, c in cell_of.items():
+        cells.setdefault(c, []).append(key)
+
+    # --- 3. serpentine each cell, chaining cells nearest-first ----------------
+    pts: list[tuple[float, float, bool]] = []
+    pending = {c: sorted(v) for c, v in cells.items()}
+    cur: tuple[float, float] | None = None
+    row_i = 0
+    while pending:
+        if cur is None:
+            cid = min(pending, key=lambda c: (pending[c][0][0], rows[pending[c][0][0]][pending[c][0][1]][0]))
+        else:  # enter the cell whose start is closest to where the needle already is
+            def _entry(c, _cur=cur):
+                ri, si = pending[c][0]
+                x0, x1 = rows[ri][si]
+                return min(_dist(_cur, (x0, ys[ri])), _dist(_cur, (x1, ys[ri])))
+            cid = min(pending, key=_entry)
+        members = pending.pop(cid)
+
+        left_to_right = True
+        if cur is not None:
+            ri, si = members[0]
+            x0, x1 = rows[ri][si]
+            left_to_right = _dist(cur, (x0, ys[ri])) <= _dist(cur, (x1, ys[ri]))
+
+        for ri, si in members:
+            x0, x1 = rows[ri][si]
+            y = ys[ri]
             a, b = (x0, x1) if left_to_right else (x1, x0)
-            first = not pts or _dist(pts[-1], (a, y)) > connect_px
-            pts.append((float(a), float(y), first))
-            n = max(1, round(abs(b - a) / max_step_px))
-            for i in range(1, n + 1):
-                pts.append((a + (b - a) * i / n, float(y), False))
-        left_to_right = not left_to_right
+            jump = bool(pts) and _dist(pts[-1], (a, y)) > connect_px
+            # A run only a few pixels long (the very tip of a circle, a taper) would
+            # emit two penetrations a fraction of a millimetre apart, which shreds
+            # thread. One penetration covers it.
+            if abs(b - a) < max(1.0, max_step_px * 0.08):
+                pts.append((float((a + b) / 2.0), float(y), jump if pts else True))
+                cur = ((a + b) / 2.0, float(y))
+                left_to_right = not left_to_right
+                row_i += 1
+                continue
+            pts.append((float(a), float(y), jump if pts else True))
+            # Brick-stagger the interior penetrations: without this every row breaks on
+            # the same x and the fill shows a straight split line (spec 4.3).
+            phase = STAGGER_PATTERN[row_i % len(STAGGER_PATTERN)]
+            span = b - a
+            step = max_step_px if span >= 0 else -max_step_px
+            sgn = 1.0 if span >= 0 else -1.0
+            t = a + phase * step
+            # Drop any penetration landing within a third of a step of either row end -
+            # those become sub-0.5mm stitches, which shred thread and wear needles.
+            while (t - b) * sgn < -abs(step) / 3.0:
+                if abs(t - a) > abs(step) / 3.0:
+                    pts.append((float(t), float(y), False))
+                t += step
+            pts.append((float(b), float(y), False))
+            cur = (float(b), float(y))
+            left_to_right = not left_to_right
+            row_i += 1
     return pts
 
 
