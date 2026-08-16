@@ -1228,8 +1228,8 @@ def digitize_image(
                         connect_method=ConnectMethod.TRIM,
                         penetration_count=obj_pen,
                         stream_span=len(stitches) - obj_start,
-                        # The PATH, not an area: rebuild's RUNNING branch stitches
-                        # along the stored contour rather than filling it.
+                        # The PATH, stored as RESAMPLED SAMPLES (chords);
+                        # `hairline_runs` stores the arc — 10/11 vs 15/36.
                         contour=[Point(x=x * mm_per_px, y=y * mm_per_px) for x, y in path],
                     )
                 )

@@ -15,7 +15,9 @@ from __future__ import annotations
 import cv2
 import numpy as np
 
-from app.services.digitizer import DARK_CLOTH_LUM, SUBSTRATE_DELTA, digitize_image
+from app.services.digitizer import DARK_CLOTH_LUM, digitize_image
+from app.services.digitizer.colordiff import bgr_ciede2000
+from app.services.digitizer.constants import SUBSTRATE_DE2000
 
 
 def _png(img) -> bytes:
@@ -30,9 +32,12 @@ def _lum(hex_colour: str) -> float:
 
 
 def _dist_to(hex_colour: str, bgr) -> float:
+    """PERCEPTUAL distance, since 2026-08-26. This helper used to return
+    Euclidean BGR, and that is how this file came to pass on the very defect it
+    exists to catch — see the assertion below."""
     h = hex_colour.lstrip("#")
-    v = np.array([int(h[4:6], 16), int(h[2:4], 16), int(h[0:2], 16)], np.float32)
-    return float(np.linalg.norm(v - np.asarray(bgr, np.float32)))
+    v = (int(h[4:6], 16), int(h[2:4], 16), int(h[0:2], 16))
+    return bgr_ciede2000(v, bgr)
 
 
 def _design_on_black():
@@ -47,10 +52,29 @@ def _design_on_black():
 
 
 def test_no_thread_is_laid_in_the_garment_colour():
+    """THIS TEST PASSED ON A02 WHILE A02 SEWED 4,638 STITCHES OF BLACK ON BLACK.
+
+    Recorded because the failure is instructive and the repair is only half of
+    it. Until 2026-08-26 the assertion read `>= SUBSTRATE_DELTA` in Euclidean
+    BGR. A02's `#080808` sits 13.856 from pure black; the gate was 12.0; so the
+    stop was sewn AND `13.856 >= 12.0` passed here. The regression test for "no
+    thread in the garment colour" shared the constant that permitted the thread.
+
+    It now measures in the space the gate uses. But note what that does and does
+    not buy, because re-pointing it at the new constant would otherwise look
+    like a fix:
+
+        A TEST THAT READS THE SAME CONSTANT AS THE GATE CAN CATCH THE GATE BEING
+        BYPASSED. IT CAN NEVER CATCH THE GATE BEING WRONG.
+
+    Both sides move together by construction. That is why
+    `test_a02_sews_nothing_in_its_garment_colour` exists in
+    `tests/test_substrate_gate.py` and names no gate constant at all.
+    """
     design = digitize_image(_png(_design_on_black()), "cotton", "120x120", 6)
     assert design.color_stops, "the design itself must still be stitched"
     for stop in design.color_stops:
-        assert _dist_to(stop.hex, (0, 0, 0)) >= SUBSTRATE_DELTA, (
+        assert _dist_to(stop.hex, (0, 0, 0)) >= SUBSTRATE_DE2000, (
             f"stop {stop.hex} is the cloth's own colour — it must not be sewn"
         )
 

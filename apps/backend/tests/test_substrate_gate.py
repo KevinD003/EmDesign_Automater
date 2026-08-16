@@ -102,3 +102,76 @@ def test_the_two_constants_are_not_confusable():
     """One is a BGR distance, one is a dE. Both are floats near a small number,
     which is exactly how a unit error ships."""
     assert SUBSTRATE_DELTA == 12.0 and SUBSTRATE_DE2000 == 2.0
+
+
+# ── The assertion that shares NO constant with the gate ──────────────────────
+#
+# Everything above compares against `SUBSTRATE_DE2000`, and so does every
+# assertion in test_part41 and test_part45. That family can catch the gate being
+# BYPASSED and can never catch the gate being WRONG, because both sides move
+# together by construction. It is not a hypothetical limit: test_part41 is the
+# regression test for "no thread in the garment colour" and it PASSED on A02
+# while A02 sewed 4,638 stitches of black on black, because 13.856 >= 12.0.
+#
+# So this one names no gate constant. Its threshold is 3.0 dE2000, justified
+# independently below and deliberately LOOSER than the live gate, so that
+# raising `SUBSTRATE_DE2000` toward it does not silently satisfy this too.
+
+#: Two colours this far apart in CIEDE2000 are "clearly different" — well past
+#: perceptible-at-a-glance. Justified by the render examined on 2026-08-22: A02's
+#: black-on-black regions were INVISIBLE in the sew-out preview, and the nearest
+#: real artwork in the whole corpus (07's cream, 5.986) sits at twice this. Any
+#: stop closer than this to the cloth is thread the customer cannot see.
+INVISIBLE_ON_CLOTH_DE2000 = 3.0
+
+
+def test_a02_sews_nothing_in_its_garment_colour():
+    """THE ASSERTION THAT WOULD HAVE CAUGHT THE ORIGINAL DEFECT.
+
+    No gate constant appears here. It states the product requirement directly —
+    a real photograph of a black garment must not come back with stitches in a
+    thread the customer cannot distinguish from the cloth — and it is measured
+    on penetrations, not on cluster distances, because penetrations are what
+    cost machine time.
+
+    Before the fix this read 4,638 penetrations, 21.0 % of the design, 5.80
+    machine-minutes per garment. VERIFIED TO BITE rather than assumed to: re-run
+    with `SUBSTRATE_DE2000` forced to 1.0 -- the unit JND both the CTO and I
+    first reasoned toward -- it fails with exactly those 4,638 penetrations. So
+    it catches the original defect AND the threshold choice that would have
+    shipped it, which is more than the gate-constant family can do. It is the fixture's own conditions from
+    `A_TIER_PARAMS`, so a change to the promoted parameters moves the test with
+    the corpus rather than leaving it measuring something else.
+    """
+    import cv2
+
+    from app.services.digitizer import digitize_image
+    from coverage_audit import A_TIER_PARAMS, CORPUS_DIR
+    from run_quality_bench import RNG_SEED
+
+    name = "A02_real_neckline_black"
+    src = CORPUS_DIR / f"{name}.png"
+    if not src.exists():                       # skip, never error — CI has no generator
+        pytest.skip(f"{src} is missing; test_corpus_baseline_fixtures asserts its presence")
+    params = A_TIER_PARAMS[name]
+    cv2.setRNGSeed(RNG_SEED)
+    design = digitize_image(
+        src.read_bytes(), fabric_type=params["fabric"],
+        hoop_size=params["hoop"], max_colors=params["colors"],
+    )
+    # The garment, inferred exactly as the pipeline infers it: this fixture's
+    # border is pure black. Stated as a literal rather than re-running
+    # `_border_color`, so the test does not share THAT machinery either.
+    substrate = (0, 0, 0)
+    invisible = [
+        (s.hex, int(s.penetration_count))
+        for s in design.color_stops
+        if bgr_ciede2000(
+            (int(s.hex.lstrip("#")[4:6], 16), int(s.hex.lstrip("#")[2:4], 16),
+             int(s.hex.lstrip("#")[0:2], 16)), substrate) < INVISIBLE_ON_CLOTH_DE2000
+    ]
+    wasted = sum(p for _h, p in invisible)
+    assert wasted == 0, (
+        f"{wasted} penetrations ({wasted / 800.0:.2f} machine-minutes at 800 spm) "
+        f"are sewn in thread indistinguishable from the garment: {invisible}"
+    )

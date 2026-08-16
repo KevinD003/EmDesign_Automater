@@ -232,6 +232,21 @@ def hairline_runs(region, mm_per_px: float, pitch_mm: float):
     because none reaches this function. A flat-lit scan scoring under 6.0 could,
     and that is the input to ask for.
 
+    THIS IS ONE OF TWO RUN EMITTERS AND THEY STORE DIFFERENT THINGS. The other
+    is the dark-linework pass in `pipeline.py` (search `_resample_open(chain,
+    run_px)`), and until 2026-08-26 neither docstring mentioned the other, which
+    is how the divergence stayed invisible through three tranches:
+
+        this one       stores `pts_px`, the DENSE pruned skeleton -- the ARC
+        dark-linework  stores `path`, the RESAMPLED points -- the CHORDS
+
+    Measured consequence on the round trip, because rebuild can only resample
+    what was stored: RS1 objects (04, 08, C24, C11) come back lossless 10 of 11
+    -- 04 even GAINS 3, which only a preserved arc allows -- while linework
+    objects (A01) come back lossless 15 of 36, losing one penetration each on 20
+    of them and two on the longest. Storing the arc is the better convention and
+    this function already has it; aligning the other one is named, not written.
+
     Returns a list of (path_mm, pts) per viable branch: `path_mm` is the fine
     centreline to store as the object's contour, `pts` the emission points from
     `_manual_run` — THE SAME FUNCTION rebuild's RUNNING branch calls, at the
@@ -274,8 +289,12 @@ def hairline_runs(region, mm_per_px: float, pitch_mm: float):
       2. colour coherence (mean |pixel - cluster centre| under the region):
          INVERTED — the noise speckle averages to its own centre (5.2) while
          real parametric regions read 35-69;
-      3. substrate distance (|cluster - garment| vs SUBSTRATE_DELTA): noise
-         64.8 vs real C24 61.4 — no separation at all.
+      3. substrate distance (|cluster - garment|): noise 64.8 vs real C24 61.4
+         — no separation at all. Measured in Euclidean BGR against
+         SUBSTRATE_DELTA, which stopped being the substrate gate on 2026-08-25;
+         the REFUTATION is unaffected (two numbers 3.4 apart separate nothing in
+         any metric) but the constant it names is retired, and re-running it in
+         dE2000 would still be a criterion fitted to fourteen images.
 
     So the boundary is the one the ruling of 2026-08-18 authorised for exactly
     this outcome: ONLY REGIONS WHOSE PRUNED SKELETON IS A SINGLE BRANCH are
